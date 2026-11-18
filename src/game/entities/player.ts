@@ -5,6 +5,8 @@ import type { Collider } from '../world/collision'
 import { resolveCircle } from '../world/collision'
 import type { DerivedStats } from '../systems/stats'
 import { CharacterModel, type AnimMode, type Appearance } from './character'
+import { characterModelUrlFor } from './characterAssets'
+import { DEFAULT_CHARACTER_PROFILE, parseCharacterProfile, type CharacterProfile } from '../data/characterProfile'
 import { attackDuration, comboMultiplier, weaponProfile, type WeaponProfile } from '../combat/weapons'
 import type { AbilityDef } from '../combat/abilities'
 
@@ -112,12 +114,22 @@ export class Player {
   private chargedAttack = false
   private animTime = 0
   private spawnPoint = new THREE.Vector3()
+  private characterProfile: CharacterProfile
 
-  constructor(private readonly world: PlayerWorld, spawn: THREE.Vector3, stats: DerivedStats, appearance?: Partial<Appearance>) {
+  constructor(
+    private readonly world: PlayerWorld,
+    spawn: THREE.Vector3,
+    stats: DerivedStats,
+    appearance?: Partial<Appearance>,
+    profile: CharacterProfile = DEFAULT_CHARACTER_PROFILE,
+  ) {
     this.stats = stats
-    this.model = new CharacterModel(appearance)
+    this.characterProfile = parseCharacterProfile(profile)
+    this.model = new CharacterModel(appearance, characterModelUrlFor(this.characterProfile.modelId), Math.PI)
+    this.model.setAuraColor(this.characterProfile.auraColor)
     this.root.add(this.model.root)
     this.position.copy(spawn)
+    this.root.position.copy(spawn)
     this.spawnPoint.copy(spawn)
     this.safe.copy(spawn)
     this.health = stats.maxHealth
@@ -253,6 +265,14 @@ export class Player {
   setWeapon(kind: WeaponKind): void {
     this.weapon = kind
     this.model.setEquipment({ weapon: kind, rarity: 'raro' })
+  }
+
+  setCharacterProfile(profile: CharacterProfile): void {
+    const safeProfile = parseCharacterProfile(profile)
+    const modelChanged = safeProfile.modelId !== this.characterProfile.modelId
+    this.characterProfile = safeProfile
+    this.model.setAuraColor(safeProfile.auraColor)
+    if (modelChanged) this.model.setKayKitModel(safeProfile.modelId)
   }
 
   teleport(to: THREE.Vector3): void {

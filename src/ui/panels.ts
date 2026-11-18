@@ -26,6 +26,7 @@ export type PanelActions = {
   trackQuest: (id: string) => void
   close: () => void
   save: () => void
+  customize: () => void
   quit: () => void
   respawn: () => void
   settings: (patch: Partial<Settings>) => void
@@ -420,6 +421,7 @@ export class Panels {
         <div class="setting"><span>Reduzir movimento</span><input type="checkbox" data-setting="reducedMotion" ${ctx.settings.reducedMotion ? 'checked' : ''}></div>
         <div class="setting"><span>Inverter eixo Y</span><input type="checkbox" data-setting="invertY" ${ctx.settings.invertY ? 'checked' : ''}></div>
         <div class="pause-actions">
+          <button class="btn" data-customize type="button">Personalizar personagem</button>
           <button class="btn btn--primary" data-close type="button">Continuar</button>
           <button class="btn" data-save type="button">Salvar agora</button>
           <button class="btn btn--danger" data-quit type="button">Sair para o título</button>
@@ -433,6 +435,7 @@ export class Panels {
         ctx.actions.settings({ [key]: value } as Partial<Settings>)
       })
     })
+    panel.querySelector('[data-customize]')?.addEventListener('click', () => ctx.actions.customize())
     panel.querySelector('[data-save]')?.addEventListener('click', () => ctx.actions.save())
     panel.querySelector('[data-quit]')?.addEventListener('click', () => ctx.actions.quit())
     this.mount(panel, 'pausa', ctx)

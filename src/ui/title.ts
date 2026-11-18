@@ -5,6 +5,7 @@ export type TitleCallbacks = {
   onNew: () => void
   onContinue: () => void
   onSettings: () => void
+  onCustomize: () => void
 }
 
 /** Front-end screen shown before and after a run. */
@@ -41,12 +42,17 @@ export class TitleScreen {
       if (save.hasGame && !window.confirm('Começar de novo apaga o progresso atual. Continuar?')) return
       callbacks.onNew()
     })
+    const customizeButton = document.createElement('button')
+    customizeButton.type = 'button'
+    customizeButton.className = 'btn btn--ghost'
+    customizeButton.textContent = 'Personalizar personagem'
+    customizeButton.addEventListener('click', () => callbacks.onCustomize())
     const settingsButton = document.createElement('button')
     settingsButton.type = 'button'
     settingsButton.className = 'btn btn--ghost'
     settingsButton.textContent = 'Configurações'
     settingsButton.addEventListener('click', () => callbacks.onSettings())
-    menu.append(this.continueButton, newButton, settingsButton)
+    menu.append(this.continueButton, newButton, customizeButton, settingsButton)
     this.meta = this.root.querySelector<HTMLDivElement>('.title__meta')!
     parent.appendChild(this.root)
   }

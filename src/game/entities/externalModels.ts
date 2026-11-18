@@ -5,6 +5,18 @@ import { clone } from 'three/addons/utils/SkeletonUtils.js'
 const loader = new GLTFLoader()
 const cache = new Map<string, Promise<{ scene: THREE.Group; animations: THREE.AnimationClip[] }>>()
 
+function stripRootMotion(clip: THREE.AnimationClip): THREE.AnimationClip {
+  clip.tracks = clip.tracks.filter(track => {
+    const split = track.name.lastIndexOf('.')
+    if (split < 0) return true
+    const property = track.name.slice(split + 1)
+    const node = track.name.slice(0, split).split(/[/.|:]/).at(-1)?.toLowerCase()
+    return !(property === 'position' && (node === 'root' || node === 'hips'))
+  })
+  clip.resetDuration()
+  return clip
+}
+
 // Shared visual scale: current humanoid assets are oversized relative to the game's world units.
 export const HUMANOID_VISUAL_SCALE = 0.78
 
@@ -48,7 +60,10 @@ export class ExternalCharacter {
   static async load(url: string, targetHeight: number): Promise<ExternalCharacter> {
     let pending = cache.get(url)
     if (!pending) {
-      pending = loader.loadAsync(url).then(gltf => ({ scene: gltf.scene, animations: gltf.animations }))
+      pending = loader.loadAsync(url).then(gltf => ({
+        scene: gltf.scene,
+        animations: gltf.animations.map(stripRootMotion),
+      }))
       cache.set(url, pending)
       pending.catch(() => cache.delete(url))
     }
@@ -59,10 +74,11 @@ export class ExternalCharacter {
 
   play(mode: ExternalAnimation): void {
     const candidates: Record<ExternalAnimation, string[]> = {
-      idle: ['idle', 'stand'], walk: ['walk', 'walking'], run: ['walk', 'walking'],
-      attack: ['attack', 'special'], hit: ['hit', 'hurt', 'idle'], death: ['dead', 'death'],
+      idle: ['idle', 'stand', 'standing'], walk: ['walk', 'walking'], run: ['run', 'running', 'sprint', 'walk', 'walking'],
+      attack: ['attack', 'special', 'slash', 'sword'], hit: ['hit', 'hurt', 'hit_receive', 'hitrecieve'], death: ['dead', 'death', 'dying'],
     }
     const next = candidates[mode].map(name => this.actions.get(name)).find(Boolean)
+      ?? [...this.actions.entries()].find(([name]) => candidates[mode].some(candidate => name.includes(candidate)))?.[1]
       ?? this.actions.get('idle') ?? this.actions.values().next().value
     if (!next || this.active === next) return
     this.active?.fadeOut(0.12)

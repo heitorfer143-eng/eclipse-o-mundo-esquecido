@@ -15,6 +15,7 @@ import { Enemy, type EnemyContext, type EnemyEvent } from './entities/enemy'
 import { Player, type PlayerEvent, type PlayerIntent } from './entities/player'
 import { Population } from './entities/population'
 import { Spawner } from './entities/spawner'
+import type { CharacterProfile } from './data/characterProfile'
 import { Effects } from './combat/effects'
 import { Projectiles } from './combat/projectiles'
 import { abilityUnlocked, abilitiesFor, type AbilityDef } from './combat/abilities'
@@ -130,6 +131,8 @@ export class Game {
       },
       spawn,
       this.pendingStats,
+      undefined,
+      this.save.data.profile,
     )
     this.world.scene.add(this.player.root)
     this.player.model.setEquipment({ weapon: 'espada' })
@@ -205,6 +208,10 @@ export class Game {
     this.camera.camera.updateProjectionMatrix()
     this.reducedMotion = settings.reducedMotion
     this.world.setQuality(settings.quality)
+  }
+
+  applyCharacterProfile(profile: CharacterProfile): void {
+    this.player.setCharacterProfile(profile)
   }
 
   // ── main update ──────────────────────────────────────────────────────────
@@ -1120,6 +1127,7 @@ export class Game {
 
   private buildPanelActions(): PanelActions {
     return {
+      customize: () => this.ui.openCharacterCustomization(),
       equip: index => {
         const error = this.inventory.equipIndex(index, this.progression.level)
         if (error) this.ui.toast(error, 'warn')

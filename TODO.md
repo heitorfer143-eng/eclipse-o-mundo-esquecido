@@ -83,6 +83,13 @@ H poção · Tab inventário · K habilidades · M mapa · L missões · Esc pau
 - `Player.step(dt, intent, yaw, events)`; `Enemy.update(dt, ctx, events)`; `Boss.update(dt, ctx, events)`.
 - UI recebe `HudSnapshot` por frame e `PanelContext` ao abrir painéis.
 
+## 8. Escala e personalização de personagem (18 nov 2026)
+- [x] Manter a escala visual reduzida do branch público e normalizar os modelos selecionáveis ao mesmo alvo, sem alterar física nem hitboxes.
+- [x] Disponibilizar os cinco modelos KayKit CC0 e seis cores de aura em uma tela acessível no título e no menu de pausa.
+- [x] Aplicar a aparência apenas como cosmético e salvar o perfil com allowlist, preservando saves antigos, aventura e atributos.
+- [x] Manter fallback, cache/lazy-load de rigs, alinhamento de pés/frente e transições assíncronas sem root motion.
+- [x] Validar a integração nesta branch, rodar testes/build mobile e publicar o checkpoint em GitHub Pages.
+
 ## Ciclo atual: experiência móvel (solicitado em 18 nov 2026)
 - [x] Remover conflitos entre a zona de câmera, botões de combate e habilidades do HUD.
 - [x] Ajustar joystick, áreas de toque, safe areas e feedback visual dos controles.

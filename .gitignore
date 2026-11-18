@@ -2,3 +2,9 @@ node_modules/
 dist/
 shots/
 /.manus-webdev/preview-identity.json
+# Assets restored from assets.lock.json
+/assets/models/KayKitAdventurers/Barbarian.glb
+/assets/models/KayKitAdventurers/Knight.glb
+/assets/models/KayKitAdventurers/Mage.glb
+/assets/models/KayKitAdventurers/Rogue.glb
+/assets/models/KayKitAdventurers/Rogue_Hooded.glb

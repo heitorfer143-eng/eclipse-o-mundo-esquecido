@@ -1,4 +1,5 @@
 import { manusGameTuning } from './scripts/manus-tuning/vite.mjs'
+import { omitManagedModelCopies } from './scripts/manus-game-assets/vite.mjs'
 import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 
@@ -9,7 +10,7 @@ export default defineConfig(({ mode }) => {
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid PORT')
   return {
     base: './',
-    plugins: [manusGameTuning()],
+    plugins: [manusGameTuning(), omitManagedModelCopies()],
     server: {
       host: env.HOST ?? '127.0.0.1', port, strictPort: true,
       allowedHosts: ['.manuspre.computer', '.manus.computer', '.manus-asia.computer', '.manuscomputer.ai', '.manusvm.computer', 'localhost', '127.0.0.1'],

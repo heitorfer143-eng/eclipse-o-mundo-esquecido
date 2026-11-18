@@ -73,6 +73,7 @@ async function boot(): Promise<void> {
       applyQuality(renderer, settings.quality)
       game.applySettings(settings)
     },
+    onCharacterProfileChanged: profile => game.applyCharacterProfile(profile),
   })
 
   setProgress(0.84, 'Acordando os habitantes')
@@ -200,6 +201,13 @@ async function boot(): Promise<void> {
   let fpsAccum = 0
   let fpsFrames = 0
   const fixed = 1 / 60
+  const previewOrbitCenter = new THREE.Vector3()
+  const orbitCharacterPreview = (time: number): void => {
+    const mobilePreview = window.innerWidth <= 640
+    previewOrbitCenter.copy(game.player.position)
+    if (mobilePreview) previewOrbitCenter.y -= 0.75
+    camera.orbit(time, previewOrbitCenter, mobilePreview ? 6.2 : 7.5)
+  }
 
   const loop = (now: number): void => {
     const raw = Math.min(0.1, (now - last) / 1000)
@@ -218,7 +226,8 @@ async function boot(): Promise<void> {
     const look = input.takeLook()
 
     if (!started) {
-      camera.orbit(now / 1000, world.spawn, 14)
+      if (ui.characterCustomizationVisible) orbitCharacterPreview(now / 1000)
+      else camera.orbit(now / 1000, world.spawn, 14)
     } else if (game.mode === 'playing' && !ui.blocking) {
       accumulator += raw
       let steps = 0
@@ -253,7 +262,10 @@ async function boot(): Promise<void> {
       }
     } else {
       accumulator = 0
-      if (started && game.mode === 'paused') camera.orbit(now / 1000, game.position, 10)
+      if (started && game.mode === 'paused') {
+        if (ui.characterCustomizationVisible) orbitCharacterPreview(now / 1000)
+        else camera.orbit(now / 1000, game.position, 10)
+      }
     }
 
     if (ui.consumeTouch('ability0') && game.mode === 'playing' && !ui.blocking) game.castAbility(0)

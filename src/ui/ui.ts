@@ -1,15 +1,18 @@
 import * as THREE from 'three'
 import type { SaveStore, Settings } from '../engine/save'
 import type { ElementId } from '../game/data/types'
+import type { CharacterProfile } from '../game/data/characterProfile'
 import { Hud, type HudSnapshot } from './hud'
 import { Panels, type DialogueChoiceView, type PanelContext } from './panels'
 import { TitleScreen } from './title'
+import { CharacterCustomizer } from './characterCustomizer'
 import { TouchControls, type TouchAction } from './touch'
 
 export type UiCallbacks = {
   onNewGame: () => void
   onContinue: () => void
   onSettingsChanged?: (settings: Settings) => void
+  onCharacterProfileChanged?: (profile: CharacterProfile) => void
 }
 
 /** Single entry point for every screen: HUD, modal panels, dialogue, title and touch. */
@@ -19,28 +22,37 @@ export class Ui {
   readonly title: TitleScreen
   readonly touch: TouchControls
   private readonly settingsOverlay = document.createElement('div')
+  private readonly characterCustomizer: CharacterCustomizer
   private readonly save: SaveStore
   private readonly onSettingsChanged?: (settings: Settings) => void
+  private readonly onCharacterProfileChanged?: (profile: CharacterProfile) => void
 
   constructor(root: HTMLElement, save: SaveStore, callbacks: UiCallbacks) {
     this.save = save
     this.hud = new Hud(root)
     this.panels = new Panels(root)
     this.onSettingsChanged = callbacks.onSettingsChanged
+    this.onCharacterProfileChanged = callbacks.onCharacterProfileChanged
     this.touch = new TouchControls(root)
     document.documentElement.classList.toggle('touch-capable', TouchControls.supported)
     this.title = new TitleScreen(root, save, {
       onNew: () => callbacks.onNewGame(),
       onContinue: () => callbacks.onContinue(),
       onSettings: () => this.openSettings(),
+      onCustomize: () => this.openCharacterCustomization(),
     })
     this.settingsOverlay.className = 'overlay hidden'
     root.appendChild(this.settingsOverlay)
+    this.characterCustomizer = new CharacterCustomizer(root, () => this.syncTouch())
     this.syncTouch()
   }
 
   get blocking(): boolean {
-    return this.panels.isOpen || this.panels.dialogueOpen || this.title.visible || !this.settingsOverlay.classList.contains('hidden')
+    return this.panels.isOpen || this.panels.dialogueOpen || this.title.visible || !this.settingsOverlay.classList.contains('hidden') || this.characterCustomizer.visible
+  }
+
+  get characterCustomizationVisible(): boolean {
+    return this.characterCustomizer.visible
   }
 
   showTitle(): void {
@@ -69,6 +81,14 @@ export class Ui {
   openPause(ctx: PanelContext): void { this.panels.openPause(ctx); this.syncTouch() }
   closePanels(): void { this.panels.close(); this.syncTouch() }
   refreshPanels(): void { this.panels.refresh() }
+
+  openCharacterCustomization(): void {
+    this.characterCustomizer.open(this.save.data.profile, profile => {
+      const saved = this.save.updateProfile(profile)
+      this.onCharacterProfileChanged?.(saved)
+    })
+    this.syncTouch()
+  }
 
   showDialogue(speaker: string, role: string, text: string, choices: DialogueChoiceView[], onSelect: (index: number) => void): void {
     this.panels.showDialogue(speaker, role, text, choices, onSelect)

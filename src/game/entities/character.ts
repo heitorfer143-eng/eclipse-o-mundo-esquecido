@@ -4,6 +4,7 @@ import { RARITY_COLOR } from '../data/itemData'
 import type { Rarity } from '../data/types'
 import { clamp, damp } from '../core/math'
 import { ExternalCharacter, EXTERNAL_CHARACTER_URLS, HUMANOID_VISUAL_SCALE, type ExternalAnimation } from './externalModels'
+import { characterModelUrlFor, type KayKitCharacterId } from './characterAssets'
 
 export type AnimMode =
   | 'idle'
@@ -179,8 +180,12 @@ export class CharacterModel {
   private readonly metalMaterial: THREE.MeshStandardMaterial
   private external?: ExternalCharacter
   private externalMode: ExternalAnimation = 'idle'
+  private externalUrl = ''
+  private externalRequest = 0
+  private disposed = false
+  private auraColor = '#7fe3ff'
 
-  constructor(appearance: Partial<Appearance> = {}, externalUrl: string = EXTERNAL_CHARACTER_URLS.player) {
+  constructor(appearance: Partial<Appearance> = {}, externalUrl: string = EXTERNAL_CHARACTER_URLS.player, externalYaw = 0) {
     this.appearance = { ...DEFAULT_APPEARANCE, ...appearance }
     const skin = mat(this.appearance.skin, { roughness: 0.85 })
     this.clothMaterial = mat(this.appearance.cloth, { roughness: 0.9 })
@@ -305,17 +310,45 @@ export class CharacterModel {
         mesh.receiveShadow = true
       }
     })
-    void ExternalCharacter.load(externalUrl, 1.85).then(model => {
-      this.external = model
-      this.body.visible = false
-      this.aura.visible = true
-      this.root.add(model.root)
-      model.update(0, this.externalMode)
-    }).catch(error => console.warn('Não foi possível carregar personagem 3D externo:', error))
+    this.setExternalModelUrl(externalUrl, externalYaw)
   }
 
   get hands(): THREE.Object3D {
     return this.weaponSlot
+  }
+
+  /** Swap a licensed model lazily; stale requests never replace the newest selection. */
+  setKayKitModel(id: KayKitCharacterId): void {
+    this.setExternalModelUrl(characterModelUrlFor(id), Math.PI)
+  }
+
+  private setExternalModelUrl(url: string, yaw: number): void {
+    if (this.disposed || !url || url === this.externalUrl) return
+    this.externalUrl = url
+    const request = ++this.externalRequest
+    void ExternalCharacter.load(url, 1.85).then(model => {
+      if (this.disposed || request !== this.externalRequest) {
+        model.dispose()
+        return
+      }
+      this.external?.dispose()
+      this.external = model
+      this.body.visible = false
+      this.aura.visible = true
+      model.root.rotation.y = yaw
+      this.root.add(model.root)
+      model.update(0, this.externalMode)
+    }).catch(error => {
+      if (!this.disposed && request === this.externalRequest) {
+        console.warn('Não foi possível carregar personagem 3D externo:', error)
+      }
+    })
+  }
+
+  setAuraColor(color: string): void {
+    if (!/^#[0-9a-f]{6}$/i.test(color)) return
+    this.auraColor = color
+    ;(this.aura.material as THREE.MeshBasicMaterial).color.set(color)
   }
 
   /** Visible equipment: weapon model, armour plating, helmet and boots. */
@@ -353,8 +386,7 @@ export class CharacterModel {
     const bootMaterial = options.boots ? this.metalMaterial : this.leatherMaterial
     this.footL.material = bootMaterial
     this.footR.material = bootMaterial
-    const color = options.auraColor ?? '#7fe3ff'
-    ;(this.aura.material as THREE.MeshBasicMaterial).color.set(color)
+    this.setAuraColor(options.auraColor ?? this.auraColor)
   }
 
   /** Pose the rig for the current animation state. Called once per rendered frame. */
@@ -591,7 +623,10 @@ export class CharacterModel {
   }
 
   dispose(): void {
+    this.disposed = true
+    this.externalRequest += 1
     this.external?.dispose()
+    this.external = undefined
     this.root.traverse(obj => {
       const mesh = obj as THREE.Mesh
       if (mesh.isMesh) {

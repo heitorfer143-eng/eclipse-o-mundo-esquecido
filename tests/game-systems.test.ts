@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseSave, SAVE_KEY, SaveStore } from '../src/engine/save'
+import { DEFAULT_CHARACTER_PROFILE } from '../src/game/data/characterProfile'
 import { NPCS } from '../src/game/data/npcData'
 import { QUESTS, questById } from '../src/game/data/questData'
 import { DialogueRunner } from '../src/game/systems/dialogue'
@@ -61,6 +62,34 @@ describe('salvamento local', () => {
     const restored = new SaveStore(storage)
     restored.clearGame()
     expect(restored.data.game).toBeNull()
+  })
+  it('migra saves antigos e persiste somente escolhas cosméticas seguras fora da aventura', () => {
+    const values = new Map<string, string>()
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value) },
+      removeItem: (key: string) => { values.delete(key) },
+    }
+    const legacy = parseSave(JSON.stringify({ version: 2, game: null }))
+    expect(legacy.profile).toEqual(DEFAULT_CHARACTER_PROFILE)
+
+    const store = new SaveStore(storage)
+    store.updateProfile({ modelId: 'Rogue_Hooded', auraColor: '#c094ff' })
+    store.saveGame({
+      seed: 7, position: [0, 40, 800], facing: 0, playtime: 0, timeOfDay: 0.32,
+      progression: { level: 1, xp: 0, attributePoints: 0, skillPoints: 0, attributes: {} },
+      inventory: { stacks: [], equipment: {}, gold: 0 }, skills: {},
+      quests: { tracked: null, states: {} }, discovered: [], openedChests: [],
+      deaths: 0, kills: 0, createdAt: 1, updatedAt: 1,
+    })
+    const restored = new SaveStore(storage)
+    expect(restored.data.profile).toEqual({ modelId: 'Rogue_Hooded', auraColor: '#c094ff' })
+    restored.clearGame()
+    expect(new SaveStore(storage).data.game).toBeNull()
+    expect(new SaveStore(storage).data.profile).toEqual({ modelId: 'Rogue_Hooded', auraColor: '#c094ff' })
+
+    values.set(SAVE_KEY, JSON.stringify({ version: 2, game: null, profile: { modelId: '<script>', auraColor: 'url(javascript:alert(1))' } }))
+    expect(new SaveStore(storage).data.profile).toEqual(DEFAULT_CHARACTER_PROFILE)
   })
   it('normaliza posição com componentes Infinity, NaN e fora de limites, sem lançar', () => {
     const stored = JSON.stringify({ version: 2, game: { position: [Infinity, NaN, 1e999] } })

@@ -5,6 +5,7 @@
 import { ITEMS } from '../game/data/itemData'
 import { QUESTS } from '../game/data/questData'
 import { SKILL_NODES } from '../game/systems/skills'
+import { DEFAULT_CHARACTER_PROFILE, parseCharacterProfile, type CharacterProfile } from '../game/data/characterProfile'
 
 export type Quality = 'low' | 'medium' | 'high'
 export type Settings = {
@@ -39,6 +40,7 @@ export type SaveData = {
   version: 2
   settings: Settings
   game: GameSave | null
+  profile: CharacterProfile
 }
 export const SAVE_KEY = 'eclipse.o-mundo-esquecido.v2'
 const DEFAULT_POSITION: [number, number, number] = [0, 40, 800]
@@ -76,7 +78,7 @@ export function defaultSettings(): Settings {
   }
 }
 export function defaultSave(): SaveData {
-  return { version: 2, settings: defaultSettings(), game: null }
+  return { version: 2, settings: defaultSettings(), game: null, profile: DEFAULT_CHARACTER_PROFILE }
 }
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -222,7 +224,7 @@ export function parseSave(raw: string | null): SaveData {
     reducedMotion: settingsRaw.reducedMotion === true,
     language: 'pt-BR',
   }
-  return { version: 2, settings, game: parseGame(data.game) }
+  return { version: 2, settings, game: parseGame(data.game), profile: parseCharacterProfile(data.profile) }
 }
 export class SaveStore {
   data: SaveData
@@ -245,6 +247,12 @@ export class SaveStore {
   updateSettings(patch: Partial<Settings>): void {
     this.data = { ...this.data, settings: { ...this.data.settings, ...patch } }
     this.persist()
+  }
+  updateProfile(profile: CharacterProfile): CharacterProfile {
+    const safeProfile = parseCharacterProfile(profile)
+    this.data = { ...this.data, profile: safeProfile }
+    this.persist()
+    return safeProfile
   }
   saveGame(game: GameSave): void {
     this.data = { ...this.data, game: { ...game, updatedAt: Date.now() } }
