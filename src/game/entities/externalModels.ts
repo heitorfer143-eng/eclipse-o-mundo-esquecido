@@ -21,7 +21,7 @@ export class ExternalCharacter {
     scene.scale.setScalar(targetHeight / height)
     const scaledBounds = new THREE.Box3().setFromObject(scene)
     scene.position.y -= scaledBounds.min.y
-    scene.rotation.y = Math.PI // Gobkit models face +Z; Eclipse actors face -Z.
+    // Gobkit models are authored facing +Z; keep their original forward direction.
     scene.traverse(object => {
       const mesh = object as THREE.Mesh
       if (mesh.isMesh) {
@@ -56,8 +56,8 @@ export class ExternalCharacter {
 
   play(mode: ExternalAnimation): void {
     const candidates: Record<ExternalAnimation, string[]> = {
-      idle: ['idle', 'stand'], walk: ['walk', 'walking'], run: ['run', 'running', 'walk'],
-      attack: ['attack', 'special'], hit: ['hit', 'hurt'], death: ['death', 'dead'],
+      idle: ['idle', 'stand'], walk: ['walk', 'walking'], run: ['walk', 'walking'],
+      attack: ['attack', 'special'], hit: ['hit', 'hurt', 'idle'], death: ['dead', 'death'],
     }
     const next = candidates[mode].map(name => this.actions.get(name)).find(Boolean)
       ?? this.actions.get('idle') ?? this.actions.values().next().value
@@ -83,7 +83,7 @@ export class ExternalCharacter {
 }
 
 export const EXTERNAL_CHARACTER_URLS = {
-  player: 'https://gobkit.com/freebies/human010/BloodironKnight.glb',
+  player: 'https://gobkit.com/freebies/human003/HeavyWarrior.glb',
   guard: 'https://gobkit.com/freebies/human003/Footman.glb',
   merchant: 'https://gobkit.com/freebies/human017/MarketVendor.glb',
   blacksmith: 'https://gobkit.com/freebies/human010/BloodironSmith.glb',
