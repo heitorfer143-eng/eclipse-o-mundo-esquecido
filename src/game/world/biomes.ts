@@ -33,15 +33,15 @@ export const BIOMES: Record<BiomeId, BiomeDef> = {
   },
   planicie: {
     id: 'planicie', name: 'Planícies de Aster', grass: '#7aa54e', rock: '#8b8a76', accent: '#a8c46a',
-    treeDensity: 3, treeKind: 'carvalho', rockDensity: 3, grassDensity: 26, weather: 'chuva', fog: '#c8d6bb', ambience: 'planicie', enemyLevelBonus: 0,
+    treeDensity: 5, treeKind: 'carvalho', rockDensity: 4, grassDensity: 34, weather: 'chuva', fog: '#c8d6bb', ambience: 'planicie', enemyLevelBonus: 0,
   },
   floresta: {
     id: 'floresta', name: 'Floresta de Vael', grass: '#5d8c3f', rock: '#6f7261', accent: '#8fb95a',
-    treeDensity: 14, treeKind: 'carvalho', rockDensity: 3, grassDensity: 30, weather: 'chuva', fog: '#9fb79a', ambience: 'floresta', enemyLevelBonus: 1,
+    treeDensity: 17, treeKind: 'carvalho', rockDensity: 4, grassDensity: 38, weather: 'chuva', fog: '#9fb79a', ambience: 'floresta', enemyLevelBonus: 1,
   },
   'floresta-densa': {
     id: 'floresta-densa', name: 'Mata Sombria', grass: '#41682f', rock: '#5a5f4c', accent: '#6f9b45',
-    treeDensity: 22, treeKind: 'pinheiro', rockDensity: 2, grassDensity: 22, weather: 'neblina', fog: '#7e9382', ambience: 'floresta', enemyLevelBonus: 3,
+    treeDensity: 24, treeKind: 'pinheiro', rockDensity: 3, grassDensity: 28, weather: 'neblina', fog: '#7e9382', ambience: 'floresta', enemyLevelBonus: 3,
   },
   pantano: {
     id: 'pantano', name: 'Pântano de Mirel', grass: '#5f6b39', rock: '#4f5342', accent: '#87925a',
