@@ -16,7 +16,7 @@ export const QUALITY_PRESETS: Record<Quality, Preset> = {
 export function suggestQuality(): Quality {
   const coarse = matchMedia('(pointer: coarse)').matches
   const cores = navigator.hardwareConcurrency ?? 4
-  if (coarse || cores <= 4) return 'medium'
+  if (coarse || cores <= 4) return 'low'
   return 'high'
 }
 
