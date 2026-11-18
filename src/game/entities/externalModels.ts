@@ -5,6 +5,9 @@ import { clone } from 'three/addons/utils/SkeletonUtils.js'
 const loader = new GLTFLoader()
 const cache = new Map<string, Promise<{ scene: THREE.Group; animations: THREE.AnimationClip[] }>>()
 
+// Shared visual scale: current humanoid assets are oversized relative to the game's world units.
+export const HUMANOID_VISUAL_SCALE = 0.78
+
 export type ExternalAnimation = 'idle' | 'walk' | 'run' | 'attack' | 'hit' | 'death'
 
 export class ExternalCharacter {
