@@ -1,4 +1,6 @@
 import * as THREE from 'three'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { clone } from 'three/addons/utils/SkeletonUtils.js'
 import { hash2, mulberry32 } from '../core/rng'
 import { clamp } from '../core/math'
 import { BIOMES } from './biomes'
@@ -14,6 +16,27 @@ export type Lod = 'near' | 'far'
 
 const terrainMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.95, metalness: 0 })
 const propsMaterial = propMaterial()
+const animalLoader = new GLTFLoader()
+const animalAssets = [
+  'https://gobkit.com/freebies/animal006/Doe.glb',
+  'https://gobkit.com/freebies/animal006/Fox.glb',
+  'https://gobkit.com/freebies/animal006/Hare.glb',
+  'https://gobkit.com/freebies/animal006/Squirrel.glb',
+  'https://gobkit.com/freebies/animal012/WildBoar.glb',
+  'https://gobkit.com/freebies/animal012/PalominoHorse.glb',
+  'https://gobkit.com/freebies/animalB/Goat.glb',
+  'https://gobkit.com/freebies/animal005/Sheep.glb',
+]
+const animalCache = new Map<string, Promise<THREE.Group>>()
+function loadAnimal(url: string): Promise<THREE.Group> {
+  let pending = animalCache.get(url)
+  if (!pending) {
+    pending = animalLoader.loadAsync(url).then(gltf => gltf.scene)
+    animalCache.set(url, pending)
+    pending.catch(() => animalCache.delete(url))
+  }
+  return pending
+}
 
 export class Chunk {
   readonly group = new THREE.Group()
@@ -227,8 +250,43 @@ export class Chunk {
       group.add(mesh)
     }
 
+    this.populateWildlife(group, originX, originZ, random, centerHeight)
     this.propGroup = group
     this.group.add(group)
+  }
+
+  private populateWildlife(group: THREE.Group, originX: number, originZ: number, random: () => number, centerHeight: number): void {
+    if (centerHeight < SEA_LEVEL + 2) return
+    const count = 1 + Math.floor(random() * 2)
+    for (let i = 0; i < count; i += 1) {
+      const x = originX + 8 + random() * (CHUNK_SIZE - 16)
+      const z = originZ + 8 + random() * (CHUNK_SIZE - 16)
+      const y = this.terrainField.heightAt(x, z)
+      if (y < SEA_LEVEL + 2 || this.terrainField.slopeAt(x, z) > 0.65 || this.blocked(x, z)) continue
+      const biome = this.terrainField.biomeAt(x, z, y)
+      if (biome === 'oceano' || biome === 'vulcanico' || biome === 'cinzas') continue
+      const options = biome === 'deserto' ? [animalAssets[2], animalAssets[3], animalAssets[1]]
+        : biome === 'neve' || biome === 'montanha' ? [animalAssets[0], animalAssets[1], animalAssets[5]]
+        : biome === 'praia' || biome === 'ilha' ? [animalAssets[3], animalAssets[6], animalAssets[2]]
+        : animalAssets
+      const url = options[Math.floor(random() * options.length)]
+      void loadAnimal(url).then(source => {
+        if (!group.parent) return
+        const animal = clone(source) as THREE.Group
+        const bounds = new THREE.Box3().setFromObject(animal)
+        const size = bounds.getSize(new THREE.Vector3())
+        const scale = (url.includes('PalominoHorse') ? 1.65 : 0.95) / Math.max(0.01, size.y)
+        animal.scale.setScalar(scale)
+        const scaled = new THREE.Box3().setFromObject(animal)
+        animal.position.set(x - originX, y - scaled.min.y, z - originZ)
+        animal.rotation.y = random() * Math.PI * 2
+        animal.traverse(object => {
+          const mesh = object as THREE.Mesh
+          if (mesh.isMesh) { mesh.castShadow = true; mesh.receiveShadow = true }
+        })
+        group.add(animal)
+      }).catch(() => undefined)
+    }
   }
 
   dispose(): void {
