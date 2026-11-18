@@ -4,7 +4,7 @@ import { clamp, damp, dampAngle } from '../core/math'
 import type { Collider } from '../world/collision'
 import { resolveCircle } from '../world/collision'
 import { buildEnemyVisual, disposeEnemyVisual, type EnemyVisual } from './enemyModels'
-import { ExternalCharacter, EXTERNAL_CHARACTER_URLS, type ExternalAnimation } from './externalModels'
+import { ExternalCharacter, EXTERNAL_CHARACTER_URLS, HUMANOID_VISUAL_SCALE, type ExternalAnimation } from './externalModels'
 import { damageAfterDefense, elementalMultiplier, type StatusKind } from '../combat/damage'
 
 export type EnemyEvent =
@@ -100,7 +100,7 @@ export class Enemy {
     if (externalEnemyUrl) {
       // visual.height já inclui a escala do tipo e o bônus de elite.
       // Multiplicar por scale novamente aplicava a escala duas vezes.
-      void ExternalCharacter.load(externalEnemyUrl, this.visual.height).then(model => {
+      void ExternalCharacter.load(externalEnemyUrl, this.visual.height * HUMANOID_VISUAL_SCALE).then(model => {
         if (this.finished) { model.dispose(); return }
         this.external = model
         this.visual.root.visible = false
