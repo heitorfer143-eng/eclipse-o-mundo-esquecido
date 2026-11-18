@@ -1,67 +1,114 @@
 import * as THREE from 'three'
-import { RAPIER, type Physics } from '../engine/physics'
-import { CONFIG } from './config'
+import { clamp, damp } from './core/math'
 
-const C = CONFIG.camera
+export type CameraWorld = {
+  groundAt: (x: number, z: number, feetY: number) => number
+}
 
 /**
- * Orbit follow camera. Yaw/pitch come from mouse, right stick or touch drag; the boom shortens
- * when level geometry is between the player and the camera so the player never disappears.
+ * Orbiting third-person camera with terrain avoidance, sprint FOV, and trauma-based shake.
+ * Yaw is shared with movement so WASD always means "away from the camera".
  */
-export class FollowCamera {
-  readonly camera = new THREE.PerspectiveCamera(C.fov, 1, 0.1, 500)
+export class CameraRig {
+  readonly camera: THREE.PerspectiveCamera
   yaw = 0
-  pitch = 0.42
-  private distance: number = C.distance
-  private readonly focus = new THREE.Vector3()
+  pitch = 0.32
+  distance = 5.4
+  reducedMotion = false
   private shake = 0
+  private shakeTime = 0
+  private readonly desired = new THREE.Vector3()
+  private readonly target = new THREE.Vector3()
+  private readonly lookAt = new THREE.Vector3()
+  private initialized = false
+  private readonly baseFov = 62
 
-  constructor(private readonly physics: Physics, private readonly exclude: RAPIER.Collider) {}
+  constructor(aspect: number) {
+    this.camera = new THREE.PerspectiveCamera(this.baseFov, aspect, 0.15, 1400)
+    this.camera.rotation.order = 'YXZ'
+  }
+
+  resize(width: number, height: number): void {
+    this.camera.aspect = width / Math.max(1, height)
+    this.camera.updateProjectionMatrix()
+  }
 
   addShake(amount: number): void {
-    this.shake = Math.min(1, this.shake + amount)
+    if (this.reducedMotion) return
+    this.shake = Math.min(1.4, this.shake + amount)
   }
 
-  /** Snap without smoothing (spawn, respawn). */
-  reset(target: THREE.Vector3, yaw = this.yaw): void {
+  zoom(delta: number): void {
+    this.distance = clamp(this.distance + delta * 0.0018, 2.6, 9)
+  }
+
+  reset(target: THREE.Vector3, yaw = 0): void {
     this.yaw = yaw
-    this.focus.copy(target)
-    this.distance = C.distance
-    this.update(target, { x: 0, y: 0 }, 1, true)
+    this.pitch = 0.32
+    this.initialized = false
+    this.target.set(target.x, target.y + 1.55, target.z)
   }
 
-  update(target: THREE.Vector3, look: { x: number; y: number }, frameSeconds: number, snap = false, reducedMotion = false): void {
-    if (this.camera.fov !== C.fov) {
-      this.camera.fov = C.fov
-      this.camera.updateProjectionMatrix()
-    }
+  update(dt: number, target: THREE.Vector3, look: { x: number; y: number }, world: CameraWorld, sprinting: boolean, gliding: boolean): void {
     this.yaw -= look.x
-    this.pitch = THREE.MathUtils.clamp(this.pitch + look.y, C.minPitch, C.maxPitch)
+    this.pitch = clamp(this.pitch + look.y, -0.75, 1.15)
 
-    const aim = target.clone().add(new THREE.Vector3(0, C.height * 0.45, 0))
-    if (snap) this.focus.copy(aim)
-    else {
-      // Follow horizontally a bit tighter than vertically so jumps don't bounce the whole view.
-      const k = 1 - Math.exp(-C.follow * frameSeconds)
-      const kv = 1 - Math.exp(-C.follow * 0.55 * frameSeconds)
-      this.focus.x += (aim.x - this.focus.x) * k
-      this.focus.z += (aim.z - this.focus.z) * k
-      this.focus.y += (aim.y - this.focus.y) * kv
+    this.target.lerp(new THREE.Vector3(target.x, target.y + 1.55, target.z), this.initialized ? 1 - Math.exp(-14 * dt) : 1)
+    this.initialized = true
+
+    const horizontal = Math.cos(this.pitch) * this.distance
+    const vertical = Math.sin(this.pitch) * this.distance
+    this.desired.set(
+      this.target.x + Math.sin(this.yaw) * horizontal,
+      this.target.y + vertical + 0.35,
+      this.target.z + Math.cos(this.yaw) * horizontal,
+    )
+
+    // Keep the camera above terrain and out of steep slopes.
+    const ground = world.groundAt(this.desired.x, this.desired.z, this.desired.y)
+    if (this.desired.y < ground + 0.55) this.desired.y = ground + 0.55
+    // Sample along the boom so hills between camera and player do not hide the character.
+    for (let i = 1; i <= 4; i += 1) {
+      const t = i / 4
+      const sx = THREE.MathUtils.lerp(this.target.x, this.desired.x, t)
+      const sz = THREE.MathUtils.lerp(this.target.z, this.desired.z, t)
+      const sy = THREE.MathUtils.lerp(this.target.y, this.desired.y, t)
+      const g = world.groundAt(sx, sz, sy)
+      if (sy < g + 0.45) {
+        this.desired.x = sx
+        this.desired.y = g + 0.5
+        this.desired.z = sz
+        break
+      }
     }
 
-    const dir = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch))
-    let wanted: number = C.distance
-    const hit = this.physics.world.castRay(new RAPIER.Ray(this.focus, dir), C.distance, true, undefined, undefined, this.exclude)
-    if (hit) wanted = Math.max(1.2, hit.timeOfImpact - 0.35)
-    // Pull in instantly when blocked, ease back out when clear.
-    this.distance = wanted < this.distance || snap ? wanted : THREE.MathUtils.damp(this.distance, wanted, 4, frameSeconds)
+    this.camera.position.lerp(this.desired, this.initialized ? 1 - Math.exp(-18 * dt) : 1)
+    this.lookAt.copy(this.target)
 
-    this.camera.position.copy(this.focus).addScaledVector(dir, this.distance)
-    this.camera.lookAt(this.focus)
-    if (this.shake > 0 && !reducedMotion) {
-      const s = this.shake * this.shake * 0.35
-      this.camera.position.add(new THREE.Vector3((Math.random() - 0.5) * s, (Math.random() - 0.5) * s, (Math.random() - 0.5) * s))
+    // Trauma shake decays quickly and never fights the player's aim.
+    this.shakeTime += dt
+    if (this.shake > 0.001) {
+      const s = this.shake * this.shake
+      this.camera.position.x += Math.sin(this.shakeTime * 61) * s * 0.35
+      this.camera.position.y += Math.cos(this.shakeTime * 47) * s * 0.3
+      this.camera.position.z += Math.sin(this.shakeTime * 53) * s * 0.25
+      this.shake = Math.max(0, this.shake - dt * 2.6)
     }
-    this.shake = Math.max(0, this.shake - frameSeconds * 2.5)
+
+    this.camera.lookAt(this.lookAt)
+    const targetFov = this.baseFov + (sprinting ? 4 : 0) + (gliding ? 6 : 0)
+    this.camera.fov = damp(this.camera.fov, targetFov, 5, dt)
+    this.camera.updateProjectionMatrix()
+  }
+
+  /** Attract-mode orbit used by the title screen. */
+  orbit(time: number, center: THREE.Vector3, radius = 9): void {
+    const angle = time * 0.12
+    this.camera.position.set(center.x + Math.sin(angle) * radius, center.y + 3.2, center.z + Math.cos(angle) * radius)
+    this.camera.lookAt(center.x, center.y + 1.2, center.z)
+  }
+
+  get forward(): THREE.Vector3 {
+    return new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw))
   }
 }

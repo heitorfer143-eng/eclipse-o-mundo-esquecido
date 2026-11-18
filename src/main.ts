@@ -1,158 +1,272 @@
 import './styles/main.css'
+import * as THREE from 'three'
 import { Audio } from './engine/audio'
-import { I18n, resolveLocale } from './engine/i18n'
 import { Input } from './engine/input'
-import { GameLoop } from './engine/loop'
-import { SAVE_KEY, SaveStore, type SaveData } from './engine/save'
-import type { Game } from './game/game'
-import { TouchControls } from './ui/touch'
+import { SaveStore } from './engine/save'
+import { CameraRig } from './game/camera'
+import { Game, type GameInput } from './game/game'
+import type { ElementId } from './game/data/types'
+import { World } from './game/world/world'
 import { Ui } from './ui/ui'
+
+const TIPS = [
+  'Segure o botão direito para bloquear: um aparo no momento exato abre o inimigo para o contra-ataque.',
+  'Elementos reagem entre si. Congele um inimigo e acerte-o com raio.',
+  'Colete ervas, minérios e madeira: a bancada de alquimia transforma isso em sobrevivência.',
+  'Santuários marcam seu ponto de retorno e restauram vida e mana.',
+  'A noite traz criaturas mais fortes — e melhores recompensas.',
+  'Cada arma tem um ritmo. A adaga pune pelas costas, o espadão pune a paciência.',
+]
+
+const ELEMENT_KEYS: Record<string, ElementId> = {
+  Digit1: 'fogo', Digit2: 'gelo', Digit3: 'raio', Digit4: 'terra', Digit5: 'vento', Digit6: 'sombra',
+}
 
 async function boot(): Promise<void> {
   const canvas = document.querySelector<HTMLCanvasElement>('#game')!
-  const firstRun = safeGet(SAVE_KEY) === null
+  const uiRoot = document.querySelector<HTMLElement>('#ui')!
   const save = new SaveStore()
-
-  const i18n = new I18n(resolveLocale(save.data.locale, navigator.languages))
-  const input = new Input(canvas)
   const audio = new Audio()
-  let game: Game | undefined
-  let lockLostAt = 0
+  const input = new Input(canvas)
+  const camera = new CameraRig(window.innerWidth / window.innerHeight)
 
-  const applySettings = (d: SaveData) => {
-    input.sensitivity = d.sensitivity
-    input.invertY = d.invertY
-    audio.setVolumes(d.musicVolume, d.sfxVolume, d.muted)
-    if (game) game.reducedMotion = d.reducedMotion
+  const loading = buildLoading()
+  document.body.appendChild(loading.root)
+  loading.tip.textContent = TIPS[Math.floor(Math.random() * TIPS.length)]
+  const setProgress = (value: number, label: string): void => {
+    loading.fill.style.width = `${Math.round(value * 100)}%`
+    loading.label.textContent = label
   }
+  const nextFrame = (): Promise<void> => new Promise(resolve => requestAnimationFrame(() => resolve()))
 
-  const startRun = (tutorial: boolean) => {
-    if (!game) return
+  setProgress(0.06, 'Acendendo o renderizador')
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' })
+  renderer.setSize(window.innerWidth, window.innerHeight)
+  renderer.shadowMap.enabled = true
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap
+  renderer.toneMapping = THREE.ACESFilmicToneMapping
+  renderer.toneMappingExposure = 1.05
+  renderer.outputColorSpace = THREE.SRGBColorSpace
+  applyQuality(renderer, save.data.settings.quality)
+  await nextFrame()
+
+  setProgress(0.2, 'Esculpindo Aetherion')
+  const world = new World(20271117, save.data.settings.quality)
+  await nextFrame()
+
+  setProgress(0.62, 'Plantando florestas e ruínas')
+  await nextFrame()
+
+  const ui = new Ui(uiRoot, save, {
+    onNewGame: () => startGame(true),
+    onContinue: () => startGame(false),
+  })
+
+  setProgress(0.84, 'Acordando os habitantes')
+  const game = new Game({
+    world,
+    camera,
+    ui,
+    audio,
+    save,
+    onQuit: () => {
+      game.toTitle()
+      ui.showTitle()
+      input.unlockPointer()
+    },
+    onResumeRequest: () => {
+      audio.unlock()
+      input.lockPointer()
+    },
+  })
+  await nextFrame()
+  setProgress(1, 'Pronto')
+  await nextFrame()
+  loading.root.style.opacity = '0'
+  window.setTimeout(() => loading.root.remove(), 700)
+
+  let started = false
+  const startGame = (fresh: boolean): void => {
     audio.unlock()
     audio.startMusic()
-    game.start(tutorial)
-    ui.show('hud')
-    loop.resetAccumulator()
-    input.lockPointer()
-  }
-  const pause = () => {
-    if (game?.mode !== 'playing') return
-    game.pause()
-    ui.show('pause')
-    input.unlockPointer()
-  }
-  const resume = () => {
-    if (game?.mode !== 'paused') return
-    game.resume()
-    ui.show('hud')
-    loop.resetAccumulator()
+    started = true
+    game.start(fresh)
     input.lockPointer()
   }
 
-  const ui = new Ui(i18n, save, audio, input, {
-    play: () => startRun(!save.data.tutorialDone),
-    restart: () => startRun(false),
-    resume,
-    quit: () => {
-      game?.toTitle()
-      ui.show('title')
-      input.unlockPointer()
-    },
-    settings: patch => {
-      const qualityChanged = patch.quality !== undefined && patch.quality !== save.data.quality
-      save.update(patch)
-      applySettings(save.data)
-      if (patch.locale) i18n.set(patch.locale)
-      if (qualityChanged) game?.setQuality(save.data.quality)
-    },
-  })
-  ui.show('boot')
-  applySettings(save.data)
+  // ── input plumbing ──────────────────────────────────────────────────────
+  let mouseAttack = false
+  let mouseBlock = false
+  let attackPressed = false
+  let jumpPressed = false
+  let jumpHeld = false
 
-  // Boot: the UI above is already on screen; three.js, Rapier (WASM) and the game load as a
-  // separate chunk behind the progress bar. Preload models/textures here too (engine/assets.ts).
-  let loaded = 0
-  const track = <T>(p: Promise<T>): Promise<T> => p.then(v => (ui.setBootProgress(0.1 + (++loaded / 4) * 0.9), v))
-  ui.setBootProgress(0.1)
-  const [{ Game }, { Renderer, suggestQuality }, physics] = await Promise.all([
-    track(import('./game/game')),
-    track(import('./engine/renderer')),
-    track(import('./engine/physics')),
-    track(document.fonts.ready),
-  ])
-  await physics.initPhysics()
-  if (firstRun) {
-    save.update({ quality: suggestQuality() })
-    ui.refreshSettings()
-  }
-
-  const renderer = new Renderer(canvas, save.data.quality)
-  game = new Game(renderer, input, audio, {
-    popup: (text, at, kind) => ui.popup(text, at, kind),
-    hurt: () => ui.hurt(),
-    hint: hint => ui.hint(hint),
-    tutorialDone: () => save.update({ tutorialDone: true }),
-    end: run => {
-      input.unlockPointer()
-      window.setTimeout(() => ui.showResults(run), run.phase === 'won' ? 1400 : 900)
-    },
-  })
-  game.reducedMotion = save.data.reducedMotion
-  if (import.meta.env.DEV) {
-    const [{ registerGameTuning }, { tuning }] = await Promise.all([
-      import('../scripts/manus-tuning/adapter.js'), import('./game/tuning'),
-    ])
-    await registerGameTuning(tuning)
-  }
-  const g = game
-
-  const loop = new GameLoop({
-    beforeFrame: frameSeconds => input.update(frameSeconds),
-    step: dt => g.step(dt),
-    render: (alpha, frameSeconds) => {
-      if (input.consume('pause') && performance.now() - lockLostAt > 300) {
-        if (g.mode === 'playing') pause()
-        else if (g.mode === 'paused' && ui.screen === 'pause') resume()
-      }
-      ui.frame(frameSeconds)
-      loop.paused = g.mode === 'paused'
-      g.render(alpha, frameSeconds)
-      if (g.mode === 'playing' || g.mode === 'ended') ui.updateHud(g.run, g.compass())
-    },
-  })
-  loop.start()
-
-  document.addEventListener('pointerlockchange', () => {
-    // Browsers release pointer lock on Escape without delivering the key: treat that as pause.
-    if (!document.pointerLockElement && g.mode === 'playing' && input.method === 'keyboard') {
-      lockLostAt = performance.now()
-      pause()
+  canvas.addEventListener('mousedown', event => {
+    audio.unlock()
+    if (ui.blocking || game.mode !== 'playing') return
+    if (document.pointerLockElement !== canvas) {
+      input.lockPointer()
+      return
+    }
+    if (event.button === 0) {
+      mouseAttack = true
+      attackPressed = true
+    } else if (event.button === 2) {
+      mouseBlock = true
     }
   })
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) pause()
+  window.addEventListener('mouseup', event => {
+    if (event.button === 0) mouseAttack = false
+    if (event.button === 2) mouseBlock = false
   })
-  window.addEventListener('game:pause', pause)
-  canvas.addEventListener('click', () => {
-    if (g.mode === 'playing') input.lockPointer()
-  })
-  new TouchControls(document.getElementById('ui')!, input, () => g.mode === 'playing')
+  canvas.addEventListener('contextmenu', event => event.preventDefault())
 
-  window.setTimeout(() => ui.show('title'), 250)
-  // Debug/test hook (read-only use): smoke tests inspect run state through it.
-  ;(window as unknown as { __game: unknown }).__game = { game: g, ui, input, save }
+  window.addEventListener('keydown', event => {
+    audio.unlock()
+    if (event.repeat || ui.blocking || game.mode !== 'playing') return
+    if (event.code === 'Space') {
+      jumpPressed = true
+      jumpHeld = true
+    }
+    if (event.code === 'KeyJ') {
+      attackPressed = true
+      mouseAttack = true
+    }
+    if (event.code === 'KeyQ') mouseBlock = true
+    if (event.code === 'KeyH') game.usePotion()
+    if (event.code === 'Tab') {
+      event.preventDefault()
+      game.openPanel('inventario')
+    }
+    if (event.code === 'KeyK') game.openPanel('habilidades')
+    if (event.code === 'KeyM') game.openPanel('mapa')
+    if (event.code === 'KeyL') game.openPanel('missoes')
+    if (event.code === 'KeyZ') game.castAbility(0)
+    if (event.code === 'KeyX') game.castAbility(1)
+    if (event.code === 'KeyC') game.castAbility(2)
+    const element = ELEMENT_KEYS[event.code]
+    if (element) game.selectElement(element)
+  })
+  window.addEventListener('keyup', event => {
+    if (event.code === 'Space') jumpHeld = false
+    if (event.code === 'KeyJ') mouseAttack = false
+    if (event.code === 'KeyQ') mouseBlock = false
+  })
+
+  document.addEventListener('pointerlockchange', () => {
+    if (document.pointerLockElement === canvas) return
+    if (game.mode === 'playing' && !ui.blocking && started) game.pause()
+  })
+
+  window.addEventListener('resize', () => {
+    renderer.setSize(window.innerWidth, window.innerHeight)
+    camera.resize(window.innerWidth, window.innerHeight)
+  })
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && game.mode === 'playing') game.pause()
+  })
+
+  // ── main loop ───────────────────────────────────────────────────────────
+  let last = performance.now()
+  let accumulator = 0
+  let fpsAccum = 0
+  let fpsFrames = 0
+  const fixed = 1 / 60
+
+  const loop = (now: number): void => {
+    const raw = Math.min(0.1, (now - last) / 1000)
+    last = now
+    fpsAccum += raw
+    fpsFrames += 1
+    if (fpsAccum > 0.5) {
+      game.setFps(Math.round(fpsFrames / fpsAccum))
+      fpsAccum = 0
+      fpsFrames = 0
+    }
+
+    input.sensitivity = save.data.settings.sensitivity
+    input.invertY = save.data.settings.invertY
+    input.update(raw)
+    const look = input.takeLook()
+    const sensitivity = save.data.settings.sensitivity * 0.0024
+
+    if (!started) {
+      camera.orbit(now / 1000, world.spawn, 14)
+    } else if (game.mode === 'playing' && !ui.blocking) {
+      accumulator += raw
+      let steps = 0
+      while (accumulator >= fixed && steps < 4) {
+        const touchMove = ui.touch.move
+        const touchLook = ui.consumeTouchLook()
+        const intent: GameInput = {
+          moveX: clamp(input.move.x + touchMove.x, -1, 1),
+          moveY: clamp(input.move.y - touchMove.y, -1, 1),
+          sprint: input.held('sprint'),
+          jumpPressed: jumpPressed || input.pressed('jump') || ui.consumeTouch('jump'),
+          jumpHeld: jumpHeld || input.held('jump'),
+          rollPressed: input.pressed('dash') || ui.consumeTouch('roll'),
+          attackPressed: attackPressed || ui.consumeTouch('attack'),
+          attackHeld: mouseAttack || ui.heldTouch('attack'),
+          blockHeld: mouseBlock || ui.heldTouch('block'),
+          lookX: (look.x + touchLook.x * 1.6) * sensitivity,
+          lookY: (look.y + touchLook.y * 1.6) * sensitivity * (save.data.settings.invertY ? -1 : 1),
+          interact: input.consume('interact') || ui.consumeTouch('interact'),
+        }
+        game.update(fixed, intent)
+        attackPressed = false
+        jumpPressed = false
+        accumulator -= fixed
+        steps += 1
+      }
+    } else {
+      accumulator = 0
+      if (started && game.mode === 'paused') camera.orbit(now / 1000, game.position, 10)
+    }
+
+    if (input.consume('pause') && game.mode === 'playing' && !ui.blocking) game.pause()
+    if (ui.consumeTouch('pause') && game.mode === 'playing') game.pause()
+
+    renderer.render(world.scene, camera.camera)
+    input.endFrame()
+    requestAnimationFrame(loop)
+  }
+  requestAnimationFrame(loop)
+
+  ui.showTitle()
+  ;(window as unknown as { __eclipse: unknown }).__eclipse = { game, ui, save, world, input, renderer, camera }
 }
 
-function safeGet(key: string): string | null {
-  try {
-    return localStorage.getItem(key)
-  } catch {
-    return null
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
+function applyQuality(renderer: THREE.WebGLRenderer, quality: 'low' | 'medium' | 'high'): void {
+  const ratio = window.devicePixelRatio || 1
+  renderer.setPixelRatio(quality === 'low' ? 1 : quality === 'medium' ? Math.min(ratio, 1.35) : Math.min(ratio, 2))
+  renderer.shadowMap.enabled = quality !== 'low'
+  renderer.setSize(window.innerWidth, window.innerHeight)
+}
+
+function buildLoading(): { root: HTMLDivElement; fill: HTMLDivElement; label: HTMLDivElement; tip: HTMLDivElement } {
+  const root = document.createElement('div')
+  root.className = 'loading'
+  root.innerHTML = `
+    <div class="loading__sigil"></div>
+    <h1 class="loading__title">Eclipse</h1>
+    <div class="loading__sub">O Mundo Esquecido</div>
+    <div class="loading__bar"><div class="loading__fill"></div></div>
+    <div class="loading__tip"></div>`
+  return {
+    root,
+    fill: root.querySelector<HTMLDivElement>('.loading__fill')!,
+    label: root.querySelector<HTMLDivElement>('.loading__sub')!,
+    tip: root.querySelector<HTMLDivElement>('.loading__tip')!,
   }
 }
 
-boot().catch(err => {
-  console.error(err)
+boot().catch(error => {
+  console.error(error)
   const el = document.getElementById('ui')
-  if (el) el.innerHTML = `<div class="fatal">Failed to start: ${String((err as Error)?.message ?? err).replace(/[<>&]/g, '')}</div>`
+  if (el) el.innerHTML = `<div class="fatal" style="padding:24px;font-family:system-ui">Falha ao iniciar: ${String((error as Error)?.message ?? error).replace(/[<>&]/g, '')}</div>`
 })

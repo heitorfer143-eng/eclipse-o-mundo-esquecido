@@ -1,16 +1,10 @@
 /**
- * Versioned local save. Everything the player keeps between sessions lives in one JSON record so
- * it is easy to migrate. Corrupt or foreign data falls back to defaults instead of crashing.
+ * Versioned local save for Eclipse: settings plus a single adventure slot. Everything is one JSON
+ * record so migration is trivial and corrupt data can fall back to defaults without crashing.
  */
-export type Locale = 'en' | 'zh-CN'
 export type Quality = 'low' | 'medium' | 'high'
 
-export type ScoreEntry = { name: string; score: number; seconds: number; at: number }
-
-export type SaveData = {
-  version: 1
-  /** '' = never chosen; the game follows the browser language until the player picks one. */
-  locale: Locale | ''
+export type Settings = {
   musicVolume: number
   sfxVolume: number
   muted: boolean
@@ -18,34 +12,88 @@ export type SaveData = {
   invertY: boolean
   quality: Quality
   reducedMotion: boolean
-  tutorialDone: boolean
-  playerName: string
-  leaderboard: ScoreEntry[]
+  /** Always pt-BR for this game; kept for forward compatibility. */
+  language: 'pt-BR'
 }
 
-export const SAVE_KEY = 'game3d.save'
-export const LEADERBOARD_SIZE = 10
+export type GameSave = {
+  seed: number
+  position: [number, number, number]
+  facing: number
+  playtime: number
+  timeOfDay: number
+  progression: { level: number; xp: number; attributePoints: number; skillPoints: number; attributes: Record<string, number> }
+  inventory: { stacks: { id: string; count: number; plus: number }[]; equipment: Record<string, { id: string; count: number; plus: number } | null>; gold: number }
+  skills: Record<string, number>
+  quests: { tracked: string | null; states: Record<string, { status: 'ativa' | 'concluida'; progress: Record<string, number> }> }
+  discovered: string[]
+  openedChests: string[]
+  deaths: number
+  kills: number
+  createdAt: number
+  updatedAt: number
+}
 
-export function defaultSave(): SaveData {
+export type SaveData = {
+  version: 2
+  settings: Settings
+  game: GameSave | null
+}
+
+export const SAVE_KEY = 'eclipse.o-mundo-esquecido.v2'
+
+export function defaultSettings(): Settings {
   return {
-    version: 1,
-    locale: '',
-    musicVolume: 0.7,
+    musicVolume: 0.55,
     sfxVolume: 0.8,
     muted: false,
     sensitivity: 1,
     invertY: false,
     quality: 'high',
     reducedMotion: false,
-    tutorialDone: false,
-    playerName: 'PLAYER',
-    leaderboard: [],
+    language: 'pt-BR',
   }
 }
 
-const clamp01 = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : fallback)
+export function defaultSave(): SaveData {
+  return { version: 2, settings: defaultSettings(), game: null }
+}
 
-/** Parse untrusted stored JSON into a valid SaveData (pure; unit tested). */
+const clamp01 = (value: unknown, fallback: number): number => (typeof value === 'number' && Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : fallback)
+
+function parseGame(raw: unknown): GameSave | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const data = raw as Record<string, unknown>
+  const position: [number, number, number] = Array.isArray(data.position) && data.position.length === 3
+    ? [Number(data.position[0]) || 0, Number(data.position[1]) || 0, Number(data.position[2]) || 0]
+    : [0, 40, 800]
+  const progression = (data.progression ?? {}) as GameSave['progression']
+  return {
+    seed: typeof data.seed === 'number' && Number.isFinite(data.seed) ? data.seed : 20271117,
+    position,
+    facing: typeof data.facing === 'number' ? data.facing : 0,
+    playtime: typeof data.playtime === 'number' && data.playtime >= 0 ? data.playtime : 0,
+    timeOfDay: typeof data.timeOfDay === 'number' ? Math.min(0.999, Math.max(0, data.timeOfDay)) : 0.32,
+    progression: {
+      level: typeof progression.level === 'number' ? Math.max(1, Math.min(50, Math.round(progression.level))) : 1,
+      xp: typeof progression.xp === 'number' ? Math.max(0, progression.xp) : 0,
+      attributePoints: typeof progression.attributePoints === 'number' ? Math.max(0, Math.round(progression.attributePoints)) : 0,
+      skillPoints: typeof progression.skillPoints === 'number' ? Math.max(0, Math.round(progression.skillPoints)) : 0,
+      attributes: (progression.attributes ?? {}) as Record<string, number>,
+    },
+    inventory: (data.inventory ?? { stacks: [], equipment: {}, gold: 0 }) as GameSave['inventory'],
+    skills: (data.skills ?? {}) as Record<string, number>,
+    quests: (data.quests ?? { tracked: 'principal-01', states: {} }) as GameSave['quests'],
+    discovered: Array.isArray(data.discovered) ? data.discovered.filter((id): id is string => typeof id === 'string') : [],
+    openedChests: Array.isArray(data.openedChests) ? data.openedChests.filter((id): id is string => typeof id === 'string') : [],
+    deaths: typeof data.deaths === 'number' ? Math.max(0, Math.round(data.deaths)) : 0,
+    kills: typeof data.kills === 'number' ? Math.max(0, Math.round(data.kills)) : 0,
+    createdAt: typeof data.createdAt === 'number' ? data.createdAt : Date.now(),
+    updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : Date.now(),
+  }
+}
+
+/** Parse untrusted stored JSON into a valid SaveData. */
 export function parseSave(raw: string | null): SaveData {
   const base = defaultSave()
   if (!raw) return base
@@ -57,37 +105,25 @@ export function parseSave(raw: string | null): SaveData {
   } catch {
     return base
   }
-  if (data.version !== 1) return base
-  const board = Array.isArray(data.leaderboard) ? data.leaderboard : []
-  return {
-    version: 1,
-    locale: data.locale === 'en' || data.locale === 'zh-CN' ? data.locale : '',
-    musicVolume: clamp01(data.musicVolume, base.musicVolume),
-    sfxVolume: clamp01(data.sfxVolume, base.sfxVolume),
-    muted: data.muted === true,
-    sensitivity: typeof data.sensitivity === 'number' && data.sensitivity >= 0.2 && data.sensitivity <= 3 ? data.sensitivity : base.sensitivity,
-    invertY: data.invertY === true,
-    quality: data.quality === 'low' || data.quality === 'medium' || data.quality === 'high' ? data.quality : base.quality,
-    reducedMotion: data.reducedMotion === true,
-    tutorialDone: data.tutorialDone === true,
-    playerName: typeof data.playerName === 'string' && data.playerName.trim() ? data.playerName.trim().slice(0, 16) : base.playerName,
-    leaderboard: board
-      .filter((e): e is ScoreEntry => !!e && typeof e === 'object' && typeof (e as ScoreEntry).name === 'string' && Number.isFinite((e as ScoreEntry).score))
-      .map(e => ({ name: e.name.slice(0, 16), score: Math.max(0, Math.floor(e.score)), seconds: Number.isFinite(e.seconds) ? e.seconds : 0, at: Number.isFinite(e.at) ? e.at : 0 }))
-      .slice(0, LEADERBOARD_SIZE),
+  if (data.version !== 2) return base
+  const settingsRaw = (data.settings ?? {}) as Record<string, unknown>
+  const settings: Settings = {
+    musicVolume: clamp01(settingsRaw.musicVolume, base.settings.musicVolume),
+    sfxVolume: clamp01(settingsRaw.sfxVolume, base.settings.sfxVolume),
+    muted: settingsRaw.muted === true,
+    sensitivity: typeof settingsRaw.sensitivity === 'number' && settingsRaw.sensitivity >= 0.2 && settingsRaw.sensitivity <= 3 ? settingsRaw.sensitivity : 1,
+    invertY: settingsRaw.invertY === true,
+    quality: settingsRaw.quality === 'low' || settingsRaw.quality === 'medium' || settingsRaw.quality === 'high' ? settingsRaw.quality : 'high',
+    reducedMotion: settingsRaw.reducedMotion === true,
+    language: 'pt-BR',
   }
-}
-
-/** Insert a run into a bounded, deterministically ordered leaderboard (higher score, then faster, then earlier). */
-export function insertScore(board: ScoreEntry[], entry: ScoreEntry): { board: ScoreEntry[]; rank: number } {
-  const next = [...board, entry].sort((a, b) => b.score - a.score || a.seconds - b.seconds || a.at - b.at).slice(0, LEADERBOARD_SIZE)
-  return { board: next, rank: next.indexOf(entry) }
+  return { version: 2, settings, game: parseGame(data.game) }
 }
 
 export class SaveStore {
   data: SaveData
 
-  constructor(private readonly storage: Pick<Storage, 'getItem' | 'setItem'> | undefined = globalThis.localStorage) {
+  constructor(private readonly storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | undefined = safeStorage()) {
     let raw: string | null = null
     try {
       raw = this.storage?.getItem(SAVE_KEY) ?? null
@@ -97,12 +133,38 @@ export class SaveStore {
     this.data = parseSave(raw)
   }
 
-  update(patch: Partial<SaveData>): void {
-    this.data = { ...this.data, ...patch }
+  private persist(): void {
     try {
       this.storage?.setItem(SAVE_KEY, JSON.stringify(this.data))
     } catch {
-      // Private browsing or quota: the game keeps working with in-memory settings.
+      // Private browsing or quota: the session keeps working in memory.
     }
+  }
+
+  updateSettings(patch: Partial<Settings>): void {
+    this.data = { ...this.data, settings: { ...this.data.settings, ...patch } }
+    this.persist()
+  }
+
+  saveGame(game: GameSave): void {
+    this.data = { ...this.data, game: { ...game, updatedAt: Date.now() } }
+    this.persist()
+  }
+
+  clearGame(): void {
+    this.data = { ...this.data, game: null }
+    this.persist()
+  }
+
+  get hasGame(): boolean {
+    return this.data.game !== null
+  }
+}
+
+function safeStorage(): Storage | undefined {
+  try {
+    return globalThis.localStorage
+  } catch {
+    return undefined
   }
 }
