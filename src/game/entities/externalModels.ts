@@ -26,7 +26,7 @@ export class ExternalCharacter {
       const mesh = object as THREE.Mesh
       if (mesh.isMesh) {
         mesh.castShadow = true
-        mesh.receiveShadow = true
+        mesh.receiveShadow = false
         if (mesh.material) {
           const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
           for (const material of materials) material.side = THREE.FrontSide
