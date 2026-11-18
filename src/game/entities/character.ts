@@ -3,7 +3,7 @@ import type { WeaponKind } from '../data/types'
 import { RARITY_COLOR } from '../data/itemData'
 import type { Rarity } from '../data/types'
 import { clamp, damp } from '../core/math'
-import { ExternalCharacter, EXTERNAL_CHARACTER_URLS, type ExternalAnimation } from './externalModels'
+import { ExternalCharacter, EXTERNAL_CHARACTER_URLS, HUMANOID_VISUAL_SCALE, type ExternalAnimation } from './externalModels'
 
 export type AnimMode =
   | 'idle'
@@ -190,6 +190,7 @@ export class CharacterModel {
     const hair = mat(this.appearance.hair, { roughness: 0.95 })
     this.eyeMaterial = mat('#8fe8ff', { roughness: 0.2, emissive: '#6fe0ff', emissiveIntensity: 1.4 })
 
+    this.root.scale.setScalar(HUMANOID_VISUAL_SCALE)
     this.root.add(this.body)
     this.body.add(this.hips)
     this.hips.position.y = 0.9
