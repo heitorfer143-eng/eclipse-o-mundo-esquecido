@@ -28,6 +28,7 @@ export class Ui {
     this.panels = new Panels(root)
     this.onSettingsChanged = callbacks.onSettingsChanged
     this.touch = new TouchControls(root)
+    document.documentElement.classList.toggle('touch-capable', TouchControls.supported)
     this.title = new TitleScreen(root, save, {
       onNew: () => callbacks.onNewGame(),
       onContinue: () => callbacks.onContinue(),
@@ -35,7 +36,7 @@ export class Ui {
     })
     this.settingsOverlay.className = 'overlay hidden'
     root.appendChild(this.settingsOverlay)
-    this.touch.show(TouchControls.supported)
+    this.syncTouch()
   }
 
   get blocking(): boolean {
@@ -45,11 +46,13 @@ export class Ui {
   showTitle(): void {
     this.hud.show(false)
     this.title.show()
+    this.syncTouch()
   }
 
   showGame(): void {
     this.title.hide()
     this.hud.show(true)
+    this.syncTouch()
   }
 
   renderHud(snapshot: HudSnapshot, dt: number, camera: THREE.PerspectiveCamera, width: number, height: number): void {
@@ -57,30 +60,33 @@ export class Ui {
     this.hud.updateDamage(dt, camera, width, height)
   }
 
-  openInventory(ctx: PanelContext): void { this.panels.openInventory(ctx) }
-  openSkills(ctx: PanelContext): void { this.panels.openSkills(ctx) }
-  openMap(ctx: PanelContext): void { this.panels.openMap(ctx) }
-  openQuests(ctx: PanelContext): void { this.panels.openQuests(ctx) }
-  openCraft(ctx: PanelContext, station: 'alquimia' | 'forja' | 'fogueira' | 'bancada'): void { this.panels.openCraft(ctx, station) }
-  openShop(ctx: PanelContext, shop: Parameters<Panels['openShop']>[1]): void { this.panels.openShop(ctx, shop) }
-  openPause(ctx: PanelContext): void { this.panels.openPause(ctx) }
-  closePanels(): void { this.panels.close() }
+  openInventory(ctx: PanelContext): void { this.panels.openInventory(ctx); this.syncTouch() }
+  openSkills(ctx: PanelContext): void { this.panels.openSkills(ctx); this.syncTouch() }
+  openMap(ctx: PanelContext): void { this.panels.openMap(ctx); this.syncTouch() }
+  openQuests(ctx: PanelContext): void { this.panels.openQuests(ctx); this.syncTouch() }
+  openCraft(ctx: PanelContext, station: 'alquimia' | 'forja' | 'fogueira' | 'bancada'): void { this.panels.openCraft(ctx, station); this.syncTouch() }
+  openShop(ctx: PanelContext, shop: Parameters<Panels['openShop']>[1]): void { this.panels.openShop(ctx, shop); this.syncTouch() }
+  openPause(ctx: PanelContext): void { this.panels.openPause(ctx); this.syncTouch() }
+  closePanels(): void { this.panels.close(); this.syncTouch() }
   refreshPanels(): void { this.panels.refresh() }
 
   showDialogue(speaker: string, role: string, text: string, choices: DialogueChoiceView[], onSelect: (index: number) => void): void {
     this.panels.showDialogue(speaker, role, text, choices, onSelect)
+    this.syncTouch()
   }
 
-  hideDialogue(): void { this.panels.hideDialogue() }
+  hideDialogue(): void { this.panels.hideDialogue(); this.syncTouch() }
 
   showDeath(kills: number, level: number, onRespawn: () => void): void {
     this.panels.onDeathRespawn = onRespawn
     this.panels.openDeath(kills, level)
+    this.syncTouch()
   }
 
   showVictory(stats: { level: number; kills: number; deaths: number; playtime: number }, onContinue: () => void): void {
     this.panels.onVictoryContinue = onContinue
     this.panels.openVictory(stats)
+    this.syncTouch()
   }
 
   toast(text: string, kind?: 'info' | 'item' | 'quest' | 'warn' | 'level'): void { this.hud.toast(text, kind) }
@@ -112,9 +118,11 @@ export class Ui {
     this.settingsOverlay.innerHTML = ''
     this.settingsOverlay.appendChild(card)
     this.settingsOverlay.classList.remove('hidden')
+    this.syncTouch()
     const close = (): void => {
       this.settingsOverlay.classList.add('hidden')
       this.settingsOverlay.innerHTML = ''
+      this.syncTouch()
     }
     card.querySelectorAll<HTMLElement>('[data-close]').forEach(button => button.addEventListener('click', close))
     this.settingsOverlay.onclick = event => {
@@ -128,6 +136,10 @@ export class Ui {
         this.onSettingsChanged?.(this.save.data.settings)
       })
     })
+  }
+
+  private syncTouch(): void {
+    this.touch.show(TouchControls.supported && !this.blocking)
   }
 }
 

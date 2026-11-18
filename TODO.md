@@ -82,3 +82,9 @@ H poção · Tab inventário · K habilidades · M mapa · L missões · Esc pau
 - `World.groundAt(x,z,feetY)` para superfície; `world.collidersNear(x,z)` para colisão.
 - `Player.step(dt, intent, yaw, events)`; `Enemy.update(dt, ctx, events)`; `Boss.update(dt, ctx, events)`.
 - UI recebe `HudSnapshot` por frame e `PanelContext` ao abrir painéis.
+
+## Ciclo atual: experiência móvel (solicitado em 18 nov 2026)
+- [ ] Remover conflitos entre a zona de câmera, botões de combate e habilidades do HUD.
+- [ ] Ajustar joystick, áreas de toque, safe areas e feedback visual dos controles.
+- [ ] Revisar a hierarquia compacta do HUD em retrato e paisagem.
+- [ ] Validar viewports pequenos, rodar testes/typecheck/build e atualizar a publicação do GitHub Pages.

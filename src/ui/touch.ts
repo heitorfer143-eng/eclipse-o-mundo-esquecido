@@ -1,6 +1,14 @@
 export type TouchAction = 'attack' | 'jump' | 'roll' | 'interact' | 'block' | 'potion' | 'ability0' | 'ability1' | 'ability2' | 'pause'
 
 const HELD_ACTIONS = new Set<TouchAction>(['attack', 'jump', 'block'])
+const STICK_DEAD_ZONE = 0.14
+
+type ActiveButton = {
+  action: TouchAction
+  button: HTMLButtonElement
+  token: number
+  tapPending: boolean
+}
 
 /** Virtual stick, look pad and action buttons for phones and tablets. */
 export class TouchControls {
@@ -9,7 +17,9 @@ export class TouchControls {
   readonly look = { x: 0, y: 0 }
   private readonly pressed = new Set<TouchAction>()
   private readonly heldActions = new Set<TouchAction>()
-  private readonly activeButtons = new Map<number, { action: TouchAction; button: HTMLButtonElement }>()
+  private readonly activeButtons = new Map<number, ActiveButton>()
+  private readonly pendingPresses = new Map<TouchAction, Set<number>>()
+  private nextPressToken = 0
   private readonly knob: HTMLDivElement
   private stickId: number | null = null
   private lookId: number | null = null
@@ -31,19 +41,20 @@ export class TouchControls {
         <button class="touch__btn" data-action="roll" type="button" aria-label="Rolar">Rolar</button>
         <button class="touch__btn touch__btn--big" data-action="attack" type="button" aria-label="Atacar; mantenha pressionado para continuar">Atacar</button>
         <button class="touch__btn" data-action="potion" type="button" aria-label="Usar poção">Poção</button>
+        <button class="touch__btn" data-action="pause" type="button" aria-label="Pausar">Ⅱ</button>
       </div>`
     this.knob = this.root.querySelector<HTMLDivElement>('.touch__knob')!
     parent.appendChild(this.root)
 
     const stick = this.root.querySelector<HTMLElement>('.touch__stick')!
     stick.addEventListener('pointerdown', event => {
-      event.preventDefault()
-      if (this.stickId !== null) return
-      this.stickId = event.pointerId
-      stick.setPointerCapture(event.pointerId)
-      const rect = stick.getBoundingClientRect()
-      this.stickOrigin = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
-      this.updateStick(event.clientX, event.clientY, rect.width / 2)
+        event.preventDefault()
+        if (this.stickId !== null) return
+        this.stickId = event.pointerId
+        this.capturePointer(stick, event.pointerId)
+        const rect = stick.getBoundingClientRect()
+        this.stickOrigin = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+        this.updateStick(event.clientX, event.clientY, rect.width / 2)
     })
     stick.addEventListener('pointermove', event => {
       if (this.stickId !== event.pointerId) return
@@ -54,10 +65,7 @@ export class TouchControls {
     const releaseStick = (event: PointerEvent): void => {
       if (this.stickId !== event.pointerId) return
       event.preventDefault()
-      this.stickId = null
-      this.move.x = 0
-      this.move.y = 0
-      this.knob.style.transform = 'translate(0, 0)'
+      this.resetStick()
     }
     stick.addEventListener('pointerup', releaseStick)
     stick.addEventListener('pointercancel', releaseStick)
@@ -68,7 +76,7 @@ export class TouchControls {
       event.preventDefault()
       if (this.lookId !== null) return
       this.lookId = event.pointerId
-      look.setPointerCapture(event.pointerId)
+      this.capturePointer(look, event.pointerId)
       this.lookLast = { x: event.clientX, y: event.clientY }
     })
     look.addEventListener('pointermove', event => {
@@ -78,39 +86,92 @@ export class TouchControls {
       this.look.y += event.clientY - this.lookLast.y
       this.lookLast = { x: event.clientX, y: event.clientY }
     })
-    const releaseLook = (event: PointerEvent): void => {
-      if (this.lookId !== event.pointerId) return
-      event.preventDefault()
-      this.lookId = null
-    }
-    look.addEventListener('pointerup', releaseLook)
-    look.addEventListener('pointercancel', releaseLook)
-    look.addEventListener('lostpointercapture', releaseLook)
+    look.addEventListener('pointerup', event => this.releaseLook(event, false))
+    look.addEventListener('pointercancel', event => this.releaseLook(event, true))
+    look.addEventListener('lostpointercapture', event => this.releaseLook(event, true))
 
     this.root.querySelectorAll<HTMLButtonElement>('[data-action]').forEach(button => {
       button.addEventListener('pointerdown', event => {
         event.preventDefault()
         if (this.activeButtons.has(event.pointerId)) return
         const action = button.dataset.action as TouchAction
-        this.activeButtons.set(event.pointerId, { action, button })
-        if (action !== 'block') this.pressed.add(action)
+        const token = this.nextPressToken++
+        const tapPending = action !== 'block'
+        this.activeButtons.set(event.pointerId, { action, button, token, tapPending })
+        if (tapPending) {
+          let pending = this.pendingPresses.get(action)
+          if (!pending) {
+            pending = new Set<number>()
+            this.pendingPresses.set(action, pending)
+          }
+          pending.add(token)
+          this.pressed.add(action)
+        }
+        this.updateButtonAppearance(button)
         if (HELD_ACTIONS.has(action)) {
           this.heldActions.add(action)
           this.updateHeldAppearance(action)
         }
-        button.setPointerCapture(event.pointerId)
+        this.capturePointer(button, event.pointerId)
       })
       button.addEventListener('pointermove', event => event.preventDefault())
-      const releaseButton = (event: PointerEvent): void => {
+      button.addEventListener('pointerup', event => {
         event.preventDefault()
-        this.releaseButton(event.pointerId)
-      }
-      button.addEventListener('pointerup', releaseButton)
-      button.addEventListener('pointercancel', releaseButton)
-      button.addEventListener('lostpointercapture', releaseButton)
+        this.releaseButton(event.pointerId, false)
+      })
+      button.addEventListener('pointercancel', event => {
+        event.preventDefault()
+        this.releaseButton(event.pointerId, true)
+      })
+      button.addEventListener('lostpointercapture', event => {
+        event.preventDefault()
+        this.releaseButton(event.pointerId, true)
+      })
     })
 
+    window.addEventListener('pointerup', event => this.releasePointer(event, false))
+    window.addEventListener('pointercancel', event => this.releasePointer(event, true))
     window.addEventListener('blur', () => this.clearActiveControls())
+    window.addEventListener('pagehide', () => this.clearActiveControls())
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.clearActiveControls()
+    })
+  }
+
+  private capturePointer(element: HTMLElement, pointerId: number): void {
+    try {
+      element.setPointerCapture(pointerId)
+    } catch {
+      // Some touch providers end the pointer before capture; global listeners still release it.
+    }
+  }
+
+  private releasePointer(event: PointerEvent, cancelled: boolean): void {
+    if (this.stickId === event.pointerId) this.resetStick()
+    if (this.lookId === event.pointerId) this.releaseLook(event, cancelled)
+    this.releaseButton(event.pointerId, cancelled)
+  }
+
+  private resetStick(): void {
+    this.stickId = null
+    this.move.x = 0
+    this.move.y = 0
+    this.knob.style.transform = 'translate(0, 0)'
+  }
+
+  private releaseLook(event: PointerEvent, cancelled: boolean): void {
+    if (this.lookId !== event.pointerId) return
+    event.preventDefault()
+    this.lookId = null
+    if (cancelled) {
+      this.look.x = 0
+      this.look.y = 0
+    }
+  }
+
+  private updateButtonAppearance(button: HTMLButtonElement): void {
+    const isPressed = [...this.activeButtons.values()].some(item => item.button === button)
+    button.toggleAttribute('data-pressed', isPressed)
   }
 
   private updateHeldAppearance(action: TouchAction): void {
@@ -119,10 +180,19 @@ export class TouchControls {
     })
   }
 
-  private releaseButton(pointerId: number): void {
+  private releaseButton(pointerId: number, cancelled: boolean): void {
     const active = this.activeButtons.get(pointerId)
     if (!active) return
     this.activeButtons.delete(pointerId)
+    this.updateButtonAppearance(active.button)
+
+    if (cancelled && active.tapPending) {
+      const pending = this.pendingPresses.get(active.action)
+      pending?.delete(active.token)
+      if (pending?.size === 0) this.pendingPresses.delete(active.action)
+      if (!this.pendingPresses.has(active.action)) this.pressed.delete(active.action)
+    }
+
     if (HELD_ACTIONS.has(active.action) && ![...this.activeButtons.values()].some(item => item.action === active.action)) {
       this.heldActions.delete(active.action)
       this.updateHeldAppearance(active.action)
@@ -131,16 +201,17 @@ export class TouchControls {
 
   private clearActiveControls(): void {
     this.activeButtons.clear()
+    this.pendingPresses.clear()
     this.heldActions.clear()
     this.pressed.clear()
-    this.root.querySelectorAll<HTMLButtonElement>('[data-held]').forEach(button => button.removeAttribute('data-held'))
-    this.stickId = null
+    this.root.querySelectorAll<HTMLButtonElement>('[data-pressed], [data-held]').forEach(button => {
+      button.removeAttribute('data-pressed')
+      button.removeAttribute('data-held')
+    })
+    this.resetStick()
     this.lookId = null
-    this.move.x = 0
-    this.move.y = 0
     this.look.x = 0
     this.look.y = 0
-    this.knob.style.transform = 'translate(0, 0)'
   }
 
   private updateStick(clientX: number, clientY: number, radius: number): void {
@@ -151,8 +222,15 @@ export class TouchControls {
     const x = dx * scale
     const y = dy * scale
     this.knob.style.transform = `translate(${x}px, ${y}px)`
-    this.move.x = x / radius
-    this.move.y = y / radius
+
+    if (radius <= 0 || length / radius <= STICK_DEAD_ZONE) {
+      this.move.x = 0
+      this.move.y = 0
+      return
+    }
+    const magnitude = Math.min(1, (length / radius - STICK_DEAD_ZONE) / (1 - STICK_DEAD_ZONE))
+    this.move.x = (dx / length) * magnitude
+    this.move.y = (dy / length) * magnitude
   }
 
   show(visible: boolean): void {
@@ -163,6 +241,10 @@ export class TouchControls {
   consume(action: TouchAction): boolean {
     if (!this.pressed.has(action)) return false
     this.pressed.delete(action)
+    this.pendingPresses.delete(action)
+    this.activeButtons.forEach(active => {
+      if (active.action === action) active.tapPending = false
+    })
     return true
   }
 

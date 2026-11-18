@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { SaveStore } from '../src/engine/save'
+import { parseSave, SAVE_KEY, SaveStore } from '../src/engine/save'
 import { NPCS } from '../src/game/data/npcData'
 import { QUESTS, questById } from '../src/game/data/questData'
 import { DialogueRunner } from '../src/game/systems/dialogue'
+import { Inventory } from '../src/game/systems/inventory'
 import { QuestLog } from '../src/game/systems/quests'
+import { SkillTree } from '../src/game/systems/skills'
 import { Terrain } from '../src/game/world/terrain'
 
 const samplePoints = [
@@ -35,7 +37,7 @@ describe('salvamento local', () => {
       removeItem: (key: string) => { values.delete(key) },
     }
     const store = new SaveStore(storage)
-    const seed = 73_102_991
+    const seed = 4_000_000_000
 
     store.saveGame({
       seed,
@@ -59,6 +61,84 @@ describe('salvamento local', () => {
     const restored = new SaveStore(storage)
     restored.clearGame()
     expect(restored.data.game).toBeNull()
+  })
+  it('normaliza posição com componentes Infinity, NaN e fora de limites, sem lançar', () => {
+    const stored = JSON.stringify({ version: 2, game: { position: [Infinity, NaN, 1e999] } })
+    const parsed = parseSave(stored)
+    expect(parsed.game?.position).toEqual([0, 40, 800])
+
+    const overflow = parseSave('{"version":2,"game":{"position":[1e999,-1e999,120000]}}')
+    expect(overflow.game?.position).toEqual([0, 40, 100000])
+    expect(() => parseSave('{"version":2,"game":{"position":[NaN,0,0]}}')).not.toThrow()
+  })
+  it('filtra pilhas e equipamento inválidos antes de SaveStore e Inventory.load', () => {
+    const values = new Map<string, string>()
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value) },
+      removeItem: (key: string) => { values.delete(key) },
+    }
+    values.set(SAVE_KEY, JSON.stringify({ version: 2, game: {
+      inventory: {
+        stacks: [null, [], { id: 'id-inexistente', count: 3, plus: 0 },
+          { id: 'pocao-vida-1', count: -4, plus: 99 },
+          { id: 'mat-ferro', count: Infinity, plus: NaN },
+          { id: 'comida-pao', count: 500, plus: -7 }],
+        equipment: { arma: { id: 'mat-ferro', count: 4, plus: 9 }, anel1: { id: 'anel-safira', count: 8, plus: 9 }, desconhecido: { id: 'arma-espada-1', count: 1, plus: 0 } },
+        gold: Infinity,
+      },
+      skills: { 'lamina-forca': Infinity, 'skill-desconhecida': 3 },
+    } }))
+    const store = new SaveStore(storage)
+    const game = store.data.game!
+    expect(game.inventory.stacks).toEqual([
+      { id: 'pocao-vida-1', count: 1, plus: 5 },
+      { id: 'mat-ferro', count: 1, plus: 0 },
+      { id: 'comida-pao', count: 99, plus: 0 },
+    ])
+    expect(game.inventory.equipment).toMatchObject({ arma: null, anel1: { id: 'anel-safira', count: 1, plus: 5 } })
+    expect(Object.keys(game.inventory.equipment).sort()).toEqual(['anel1', 'anel2', 'arma', 'armadura', 'botas', 'capacete', 'reliquia'].sort())
+    expect(game.inventory.gold).toBe(0)
+    expect(game.skills).toEqual({})
+
+    const inventory = new Inventory()
+    const skills = new SkillTree()
+    expect(() => inventory.load(game.inventory)).not.toThrow()
+    expect(() => skills.load(game.skills)).not.toThrow()
+    expect(inventory.stacks).toHaveLength(3)
+    expect(inventory.totalItems()).toBe(101)
+    expect(inventory.equipment.anel1).toEqual({ id: 'anel-safira', count: 1, plus: 5 })
+  })
+  it('preserva pilhas válidas após entradas inválidas no início da lista', () => {
+    const invalidPrefix = Array.from({ length: 42 }, () => null)
+    const parsed = parseSave(JSON.stringify({ version: 2, game: { inventory: {
+      stacks: [...invalidPrefix, { id: 'comida-pao', count: 2, plus: 0 }],
+    } } }))
+    expect(parsed.game?.inventory.stacks).toEqual([{ id: 'comida-pao', count: 2, plus: 0 }])
+  })
+  it('descarta estados de quest malformados e restringe progress aos objetivos conhecidos', () => {
+    const objectiveId = questById('principal-01')!.objectives[0].id
+    const stored = JSON.stringify({ version: 2, game: { quests: {
+      tracked: 'quest-inexistente',
+      states: {
+        'principal-01': { status: 'ativa', progress: { [objectiveId]: 999, notified: 1, 'objetivo-inexistente': 4 } },
+        'principal-02': { status: 'pronta', progress: { 'obj-p02-1': 2 } },
+        'principal-03': null,
+        'principal-04': [],
+        'quest-inexistente': { status: 'concluida', progress: {} },
+        'principal-05': { status: 'concluida', progress: { notified: 2 } },
+      },
+    } } })
+    const parsed = parseSave(stored)
+    expect(parsed.game?.quests).toEqual({
+      tracked: 'principal-01',
+      states: { 'principal-01': { status: 'ativa', progress: { [objectiveId]: 3, notified: 1 } }, 'principal-05': { status: 'concluida', progress: {} } },
+    })
+    const quests = new QuestLog()
+    expect(() => quests.load(parsed.game!.quests)).not.toThrow()
+    expect(quests.state('principal-01')).toEqual({ status: 'ativa', progress: { [objectiveId]: 3, notified: 1 } })
+    expect(quests.state('principal-05')).toEqual({ status: 'concluida', progress: {} })
+    expect(quests.states.has('principal-02')).toBe(false)
   })
 })
 

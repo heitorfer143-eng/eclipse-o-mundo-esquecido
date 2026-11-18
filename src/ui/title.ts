@@ -23,7 +23,8 @@ export class TitleScreen {
       </div>
       <div class="title__menu"></div>
       <div class="title__foot">
-        <div><kbd>WASD</kbd> mover · <kbd>Espaço</kbd> pular · <kbd>Clique</kbd> atacar · <kbd>E</kbd> interagir</div>
+        <div class="title__controls--keyboard"><kbd>WASD</kbd> mover · <kbd>Espaço</kbd> pular · <kbd>Clique</kbd> atacar · <kbd>E</kbd> interagir</div>
+        <div class="title__controls--touch">Joystick à esquerda para mover · arraste à direita para olhar · botões para atacar, esquivar e pausar.</div>
         <div class="title__meta"></div>
       </div>`
     const menu = this.root.querySelector<HTMLElement>('.title__menu')!

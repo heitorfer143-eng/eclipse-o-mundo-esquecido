@@ -1213,6 +1213,7 @@ export class Game {
         this.ui.refreshPanels()
       },
       close: () => {
+        this.ui.closePanels()
         this.mode = 'playing'
         this.onModeChange?.(this.mode)
         this.deps.onResumeRequest()
