@@ -46,6 +46,8 @@ jobs:
           cat /tmp/eclipse-preview.log
           exit 1
       - name: Testar jogo no navegador
+        env:
+          SMOKE_URL: http://127.0.0.1:4173/
         run: pnpm smoke
       - name: Guardar capturas de teste
         if: always()
