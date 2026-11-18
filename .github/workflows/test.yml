@@ -1,0 +1,56 @@
+name: Eclipse - Build e testes
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eclipse-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar projeto
+        uses: actions/checkout@v4
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Ativar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.0
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+      - name: Verificar TypeScript e compilar
+        run: pnpm build
+      - name: Executar testes automatizados
+        run: pnpm test
+      - name: Instalar Chromium para teste visual
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Iniciar prévia de produção
+        run: |
+          pnpm preview --host 127.0.0.1 > /tmp/eclipse-preview.log 2>&1 &
+          echo $! > /tmp/eclipse-preview.pid
+          for i in {1..30}; do
+            if curl --fail http://127.0.0.1:4173/ > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat /tmp/eclipse-preview.log
+          exit 1
+      - name: Testar jogo no navegador
+        run: pnpm smoke
+      - name: Guardar capturas de teste
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eclipse-test-screenshots
+          path: shots/
+          if-no-files-found: ignore
