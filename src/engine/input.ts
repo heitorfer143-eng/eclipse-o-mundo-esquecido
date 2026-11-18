@@ -62,10 +62,6 @@ export class Input {
     on(window, 'gamepaddisconnected', e => {
       if (e.gamepad.index === this.padIndex) this.resetPad()
     })
-    on(window, 'mousedown', e => {
-      // Left click dashes while the mouse is captured for camera look.
-      if (document.pointerLockElement === canvas && e.button === 0) this.pressed_.add('dash')
-    })
     on(window, 'mousemove', e => {
       if (document.pointerLockElement !== canvas) return
       this.look.x += e.movementX * 0.0022

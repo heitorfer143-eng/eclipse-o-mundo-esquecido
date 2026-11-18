@@ -201,7 +201,6 @@ async function boot(): Promise<void> {
     input.invertY = save.data.settings.invertY
     input.update(raw)
     const look = input.takeLook()
-    const sensitivity = save.data.settings.sensitivity * 0.0024
 
     if (!started) {
       camera.orbit(now / 1000, world.spawn, 14)
@@ -225,8 +224,10 @@ async function boot(): Promise<void> {
           attackPressed: attackPressed || touchAttackPressed,
           attackHeld: mouseAttack || ui.heldTouch('attack'),
           blockHeld: mouseBlock || ui.heldTouch('block'),
-          lookX: (look.x + touchLook.x * 1.6) * sensitivity,
-          lookY: (look.y + touchLook.y * 1.6) * sensitivity * (save.data.settings.invertY ? -1 : 1),
+          // Mouse deltas are already converted to radians; takeLook applies
+          // sensitivity and vertical inversion once. Touch deltas are pixels.
+          lookX: look.x + touchLook.x * 0.006 * save.data.settings.sensitivity,
+          lookY: look.y + touchLook.y * 0.006 * save.data.settings.sensitivity,
           interact: input.consume('interact') || touchInteractPressed,
         }
         game.update(fixed, intent)
