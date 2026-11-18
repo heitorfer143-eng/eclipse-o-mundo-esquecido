@@ -3,6 +3,7 @@ import type { WeaponKind } from '../data/types'
 import { RARITY_COLOR } from '../data/itemData'
 import type { Rarity } from '../data/types'
 import { clamp, damp } from '../core/math'
+import { ExternalCharacter, EXTERNAL_CHARACTER_URLS, type ExternalAnimation } from './externalModels'
 
 export type AnimMode =
   | 'idle'
@@ -176,8 +177,10 @@ export class CharacterModel {
   private readonly clothMaterial: THREE.MeshStandardMaterial
   private readonly leatherMaterial: THREE.MeshStandardMaterial
   private readonly metalMaterial: THREE.MeshStandardMaterial
+  private external?: ExternalCharacter
+  private externalMode: ExternalAnimation = 'idle'
 
-  constructor(appearance: Partial<Appearance> = {}) {
+  constructor(appearance: Partial<Appearance> = {}, externalUrl: string = EXTERNAL_CHARACTER_URLS.player) {
     this.appearance = { ...DEFAULT_APPEARANCE, ...appearance }
     const skin = mat(this.appearance.skin, { roughness: 0.85 })
     this.clothMaterial = mat(this.appearance.cloth, { roughness: 0.9 })
@@ -301,6 +304,13 @@ export class CharacterModel {
         mesh.receiveShadow = true
       }
     })
+    void ExternalCharacter.load(externalUrl, 1.85).then(model => {
+      this.external = model
+      this.body.visible = false
+      this.aura.visible = true
+      this.root.add(model.root)
+      model.update(0, this.externalMode)
+    }).catch(error => console.warn('Não foi possível carregar personagem 3D externo:', error))
   }
 
   get hands(): THREE.Object3D {
@@ -348,6 +358,13 @@ export class CharacterModel {
 
   /** Pose the rig for the current animation state. Called once per rendered frame. */
   animate(dt: number, state: AnimState): void {
+    const externalMode: ExternalAnimation = state.mode === 'walk' ? 'walk'
+      : state.mode === 'run' ? 'run'
+      : state.mode === 'attack' || state.mode === 'cast' ? 'attack'
+      : state.mode === 'hurt' ? 'hit'
+      : state.mode === 'dead' ? 'death' : 'idle'
+    this.externalMode = externalMode
+    this.external?.update(dt, externalMode)
     const speed = state.speed
     const move = clamp(speed / 7, 0, 1)
     if (state.mode === 'walk' || state.mode === 'run') this.walkCycle += dt * (4 + speed * 1.15)
@@ -573,6 +590,7 @@ export class CharacterModel {
   }
 
   dispose(): void {
+    this.external?.dispose()
     this.root.traverse(obj => {
       const mesh = obj as THREE.Mesh
       if (mesh.isMesh) {

@@ -4,6 +4,7 @@ import { clamp, damp, dampAngle } from '../core/math'
 import type { Collider } from '../world/collision'
 import { resolveCircle } from '../world/collision'
 import { buildEnemyVisual, disposeEnemyVisual, type EnemyVisual } from './enemyModels'
+import { ExternalCharacter, EXTERNAL_CHARACTER_URLS, type ExternalAnimation } from './externalModels'
 import { damageAfterDefense, elementalMultiplier, type StatusKind } from '../combat/damage'
 
 export type EnemyEvent =
@@ -58,6 +59,8 @@ export class Enemy {
   /** Set by the game once kill rewards were granted. */
   counted = false
   private readonly visual: EnemyVisual
+  private external?: ExternalCharacter
+  private externalMode: ExternalAnimation = 'idle'
   private readonly statuses = new Map<StatusKind, { seconds: number; power: number }>()
   private stateTimer = 0
   private attackCooldown = 0
@@ -88,6 +91,21 @@ export class Enemy {
     const scale = this.def.scale * (this.elite ? 1.35 : 1)
     this.visual = buildEnemyVisual(this.def.model, this.def.colors, scale)
     this.root.add(this.visual.root)
+    const externalEnemyUrl = this.def.model === 'cavaleiro' ? EXTERNAL_CHARACTER_URLS.knight
+      : this.def.model === 'esqueleto' || this.def.model === 'mumia' ? EXTERNAL_CHARACTER_URLS.mummy
+      : this.def.model === 'goblin' || this.def.model === 'diabrete' ? EXTERNAL_CHARACTER_URLS.orc
+      : this.def.model === 'golem' || this.def.model === 'gigante' || this.def.model === 'troll' ? EXTERNAL_CHARACTER_URLS.brute
+      : this.def.model === 'espectro' ? EXTERNAL_CHARACTER_URLS.ghost
+      : this.def.model === 'yeti' ? EXTERNAL_CHARACTER_URLS.werewolf
+      : this.def.model === 'elemental' ? EXTERNAL_CHARACTER_URLS.witch : undefined
+    if (externalEnemyUrl) {
+      void ExternalCharacter.load(externalEnemyUrl, this.visual.height * scale).then(model => {
+        if (this.finished) { model.dispose(); return }
+        this.external = model
+        this.visual.root.visible = false
+        this.root.add(model.root)
+      }).catch(error => console.warn('Não foi possível carregar inimigo 3D externo:', error))
+    }
     this.root.position.copy(this.position)
 
     const barWidth = Math.max(0.9, this.visual.radius * 1.9)
@@ -380,6 +398,12 @@ export class Enemy {
   render(dt: number, camera: THREE.Camera): void {
     const visual = this.visual
     const speed = Math.hypot(this.velocity.x, this.velocity.z)
+    const nextMode: ExternalAnimation = this.dead ? 'death'
+      : this.state === 'attack' || this.state === 'windup' ? 'attack'
+      : this.state === 'stagger' ? 'hit'
+      : speed > 3 ? 'run' : speed > 0.4 ? 'walk' : 'idle'
+    this.externalMode = nextMode
+    this.external?.update(dt, nextMode)
     const moving = speed > 0.4 && !this.dead
     if (moving) {
       const swing = Math.sin(this.animPhase * 2.2) * Math.min(0.9, speed * 0.22)
@@ -430,6 +454,7 @@ export class Enemy {
   }
 
   dispose(): void {
+    this.external?.dispose()
     this.root.removeFromParent()
     disposeEnemyVisual(this.visual)
     this.barBg.geometry.dispose()

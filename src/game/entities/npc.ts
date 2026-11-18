@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import type { NpcDef } from '../data/types'
 import { clamp, dampAngle } from '../core/math'
 import { CharacterModel, type Appearance } from './character'
+import { EXTERNAL_CHARACTER_URLS } from './externalModels'
 
 const ROLE_COLORS: Record<string, { cloth: string; accent: string; leather: string; skin: string; hair: string }> = {
   ferreiro: { cloth: '#5a4030', accent: '#8a6a45', leather: '#3a2a20', skin: '#c98f63', hair: '#3a2a24' },
@@ -42,7 +43,14 @@ export class Npc {
       leather: palette.leather,
       hair: palette.hair,
     }
-    this.model = new CharacterModel(appearance)
+    const modelUrl = def.role === 'guarda' ? EXTERNAL_CHARACTER_URLS.guard
+      : def.role === 'ferreiro' ? EXTERNAL_CHARACTER_URLS.blacksmith
+      : def.role === 'mercador' || def.role === 'taverneiro' ? EXTERNAL_CHARACTER_URLS.merchant
+      : def.role === 'mago' || def.role === 'alquimista' || def.role === 'sacerdote' ? EXTERNAL_CHARACTER_URLS.mage
+      : def.role === 'anciao' ? EXTERNAL_CHARACTER_URLS.king
+      : def.role === 'cacador' ? EXTERNAL_CHARACTER_URLS.archer
+      : EXTERNAL_CHARACTER_URLS.villager
+    this.model = new CharacterModel(appearance, modelUrl)
     this.model.setEquipment({ weapon: def.role === 'guarda' ? 'lanca' : def.role === 'cacador' ? 'arco' : undefined, armor: def.role === 'guarda', helmet: def.role === 'guarda' })
     const scale = def.role === 'crianca' ? 0.72 : 1
     this.model.root.scale.setScalar(scale)
