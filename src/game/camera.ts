@@ -51,10 +51,12 @@ export class CameraRig {
 
   update(dt: number, target: THREE.Vector3, look: { x: number; y: number }, world: CameraWorld, sprinting: boolean, gliding: boolean): void {
     this.yaw -= look.x
-    this.pitch = clamp(this.pitch + look.y, -0.75, 1.15)
+    // Keep the orbit camera above the player's eye line. Negative pitch put the camera
+    // below the character on touch devices after a large vertical drag.
+    this.pitch = clamp(this.pitch + look.y, 0.08, 1.05)
 
-    this.target.lerp(new THREE.Vector3(target.x, target.y + 1.55, target.z), this.initialized ? 1 - Math.exp(-14 * dt) : 1)
-    this.initialized = true
+    const wasInitialized = this.initialized
+    this.target.lerp(new THREE.Vector3(target.x, target.y + 1.55, target.z), wasInitialized ? 1 - Math.exp(-14 * dt) : 1)
 
     const horizontal = Math.cos(this.pitch) * this.distance
     const vertical = Math.sin(this.pitch) * this.distance
@@ -82,7 +84,10 @@ export class CameraRig {
       }
     }
 
-    this.camera.position.lerp(this.desired, this.initialized ? 1 - Math.exp(-18 * dt) : 1)
+    // Snap to a valid third-person position on the first frame after reset; smoothing
+    // from the world origin made the camera sweep through/under the player.
+    this.camera.position.lerp(this.desired, wasInitialized ? 1 - Math.exp(-18 * dt) : 1)
+    this.initialized = true
     this.lookAt.copy(this.target)
 
     // Trauma shake decays quickly and never fights the player's aim.
