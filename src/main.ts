@@ -18,6 +18,13 @@ const TIPS = [
   'Cada arma tem um ritmo. A adaga pune pelas costas, o espadão pune a paciência.',
 ]
 
+function createWorldSeed(): number {
+  const values = new Uint32Array(1)
+  if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(values)
+  else values[0] = Math.floor(Math.random() * 0x1_0000_0000) >>> 0
+  return values[0] || 1
+}
+
 const ELEMENT_KEYS: Record<string, ElementId> = {
   Digit1: 'fogo', Digit2: 'gelo', Digit3: 'raio', Digit4: 'terra', Digit5: 'vento', Digit6: 'sombra',
 }
@@ -50,20 +57,25 @@ async function boot(): Promise<void> {
   applyQuality(renderer, save.data.settings.quality)
   await nextFrame()
 
-  setProgress(0.2, 'Esculpindo Aetherion')
-  const world = new World(20271117, save.data.settings.quality)
+  setProgress(0.2, 'Semeando um novo Aetherion')
+  const world = new World(save.data.game?.seed ?? createWorldSeed(), save.data.settings.quality)
   await nextFrame()
 
   setProgress(0.62, 'Plantando florestas e ruínas')
   await nextFrame()
 
+  let game!: Game
   const ui = new Ui(uiRoot, save, {
     onNewGame: () => startGame(true),
     onContinue: () => startGame(false),
+    onSettingsChanged: settings => {
+      applyQuality(renderer, settings.quality)
+      game.applySettings(settings)
+    },
   })
 
   setProgress(0.84, 'Acordando os habitantes')
-  const game = new Game({
+  game = new Game({
     world,
     camera,
     ui,
@@ -199,19 +211,23 @@ async function boot(): Promise<void> {
       while (accumulator >= fixed && steps < 4) {
         const touchMove = ui.touch.move
         const touchLook = ui.consumeTouchLook()
+        const touchJumpPressed = ui.consumeTouch('jump')
+        const touchRollPressed = ui.consumeTouch('roll')
+        const touchAttackPressed = ui.consumeTouch('attack')
+        const touchInteractPressed = ui.consumeTouch('interact')
         const intent: GameInput = {
           moveX: clamp(input.move.x + touchMove.x, -1, 1),
           moveY: clamp(input.move.y - touchMove.y, -1, 1),
           sprint: input.held('sprint'),
-          jumpPressed: jumpPressed || input.pressed('jump') || ui.consumeTouch('jump'),
-          jumpHeld: jumpHeld || input.held('jump'),
-          rollPressed: input.pressed('dash') || ui.consumeTouch('roll'),
-          attackPressed: attackPressed || ui.consumeTouch('attack'),
+          jumpPressed: jumpPressed || input.pressed('jump') || touchJumpPressed,
+          jumpHeld: jumpHeld || input.held('jump') || ui.heldTouch('jump'),
+          rollPressed: input.pressed('dash') || touchRollPressed,
+          attackPressed: attackPressed || touchAttackPressed,
           attackHeld: mouseAttack || ui.heldTouch('attack'),
           blockHeld: mouseBlock || ui.heldTouch('block'),
           lookX: (look.x + touchLook.x * 1.6) * sensitivity,
           lookY: (look.y + touchLook.y * 1.6) * sensitivity * (save.data.settings.invertY ? -1 : 1),
-          interact: input.consume('interact') || ui.consumeTouch('interact'),
+          interact: input.consume('interact') || touchInteractPressed,
         }
         game.update(fixed, intent)
         attackPressed = false
@@ -224,8 +240,12 @@ async function boot(): Promise<void> {
       if (started && game.mode === 'paused') camera.orbit(now / 1000, game.position, 10)
     }
 
+    if (ui.consumeTouch('ability0') && game.mode === 'playing' && !ui.blocking) game.castAbility(0)
+    if (ui.consumeTouch('ability1') && game.mode === 'playing' && !ui.blocking) game.castAbility(1)
+    if (ui.consumeTouch('ability2') && game.mode === 'playing' && !ui.blocking) game.castAbility(2)
+    if (ui.consumeTouch('potion') && game.mode === 'playing' && !ui.blocking) game.usePotion()
     if (input.consume('pause') && game.mode === 'playing' && !ui.blocking) game.pause()
-    if (ui.consumeTouch('pause') && game.mode === 'playing') game.pause()
+    if (ui.consumeTouch('pause') && game.mode === 'playing' && !ui.blocking) game.pause()
 
     renderer.render(world.scene, camera.camera)
     input.endFrame()
@@ -234,7 +254,9 @@ async function boot(): Promise<void> {
   requestAnimationFrame(loop)
 
   ui.showTitle()
-  ;(window as unknown as { __eclipse: unknown }).__eclipse = { game, ui, save, world, input, renderer, camera }
+  if (import.meta.env.DEV) {
+    ;(window as unknown as { __eclipse: unknown }).__eclipse = { game, ui, save, world, input, renderer, camera }
+  }
 }
 
 function clamp(value: number, min: number, max: number): number {

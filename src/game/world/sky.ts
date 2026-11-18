@@ -2,10 +2,11 @@ import * as THREE from 'three'
 import { clamp, smoothstep } from '../core/math'
 
 const SKY_VERTEX = /* glsl */ `
-varying vec3 vWorldPosition;
-void main() {
-  vec4 world = modelMatrix * vec4(position, 1.0);
-  vWorldPosition = world.xyz;
+  varying vec3 vSkyDirection;
+  void main() {
+    vec4 world = modelMatrix * vec4(position, 1.0);
+    // Keep the sky direction independent of the dome's camera-following translation.
+    vSkyDirection = mat3(modelMatrix) * position;
   gl_Position = projectionMatrix * viewMatrix * world;
 }`
 
@@ -15,9 +16,9 @@ uniform vec3 uHorizon;
 uniform vec3 uSunColor;
 uniform vec3 uSunDirection;
 uniform float uNight;
-varying vec3 vWorldPosition;
+varying vec3 vSkyDirection;
 void main() {
-  vec3 dir = normalize(vWorldPosition);
+  vec3 dir = normalize(vSkyDirection);
   float h = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
   vec3 color = mix(uHorizon, uTop, pow(h, 0.85));
   float sun = max(dot(dir, normalize(uSunDirection)), 0.0);
@@ -26,6 +27,11 @@ void main() {
   // Horizon glow at dawn and dusk.
   float glow = pow(1.0 - abs(dir.y), 6.0) * (1.0 - uNight);
   color += uSunColor * glow * 0.22;
+  // A faint, stationary veil in the upper night sky; inexpensive layered bands.
+  float auroraWave = 0.5 + 0.5 * sin(dir.x * 9.0 + dir.z * 4.0 + sin(dir.z * 7.0));
+  float auroraBand = smoothstep(0.16, 0.32, dir.y) * (1.0 - smoothstep(0.62, 0.82, dir.y));
+  vec3 auroraColor = mix(vec3(0.025, 0.11, 0.18), vec3(0.12, 0.16, 0.25), auroraWave);
+  color += auroraColor * auroraBand * uNight * 0.28;
   gl_FragColor = vec4(color, 1.0);
 }`
 
@@ -47,6 +53,26 @@ export class Sky {
   private readonly moon: THREE.Mesh
   private readonly clouds: THREE.Group
   private readonly fogColor = new THREE.Color()
+  private readonly cloudTint = new THREE.Color()
+  private readonly topDay = new THREE.Color('#3d7fc6')
+  private readonly topNight = new THREE.Color('#07101f')
+  private readonly horizonDay = new THREE.Color('#c9e3f5')
+  private readonly horizonNight = new THREE.Color('#18243b')
+  private readonly duskColor = new THREE.Color('#ff8a5a')
+  private readonly duskTop = new THREE.Color('#5a3a72')
+  private readonly warmSun = new THREE.Color('#fff2cc')
+  private readonly lowSun = new THREE.Color('#8fa6ff')
+  private readonly sunDay = new THREE.Color('#ffe9b8')
+  private readonly sunHorizon = new THREE.Color('#ff9d6b')
+  private readonly sunNight = new THREE.Color('#9fb6ff')
+  private readonly hemiDay = new THREE.Color('#9ec4ff')
+  private readonly hemiNight = new THREE.Color('#0d1424')
+  private readonly groundDay = new THREE.Color('#40502f')
+  private readonly groundNight = new THREE.Color('#0a0d12')
+  private readonly ambientDay = new THREE.Color('#93a8c9')
+  private readonly ambientNight = new THREE.Color('#26304a')
+  private readonly white = new THREE.Color('#ffffff')
+  private readonly fogNight = new THREE.Color('#050810')
   private readonly fog: THREE.FogExp2
   private weatherFog = 0
   private weatherTint: THREE.Color | null = null
@@ -101,7 +127,7 @@ export class Sky {
     }
     const starGeometry = new THREE.BufferGeometry()
     starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3))
-    this.starMaterial = new THREE.PointsMaterial({ color: '#e8f0ff', size: 2.6, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, fog: false })
+    this.starMaterial = new THREE.PointsMaterial({ color: '#e8f0ff', size: 1.9, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, fog: false })
     this.stars = new THREE.Points(starGeometry, this.starMaterial)
     this.stars.frustumCulled = false
     this.group.add(this.stars)
@@ -166,16 +192,9 @@ export class Sky {
     const night = 1 - day
 
     // Palette
-    const topDay = new THREE.Color('#3d7fc6')
-    const topNight = new THREE.Color('#05070f')
-    const horizonDay = new THREE.Color('#c9e3f5')
-    const horizonNight = new THREE.Color('#101a30')
-    const duskColor = new THREE.Color('#ff8a5a')
-    const top = topDay.clone().lerp(topNight, night).lerp(new THREE.Color('#5a3a72'), dusk * 0.35)
-    const horizon = horizonDay.clone().lerp(horizonNight, night).lerp(duskColor, dusk * 0.55)
-    this.uniforms.uTop.value.copy(top)
-    this.uniforms.uHorizon.value.copy(horizon)
-    this.uniforms.uSunColor.value.set(elevation > 0 ? '#fff2cc' : '#8fa6ff').lerp(duskColor, dusk * 0.5)
+    this.uniforms.uTop.value.copy(this.topDay).lerp(this.topNight, night).lerp(this.duskTop, dusk * 0.35)
+    const horizon = this.uniforms.uHorizon.value.copy(this.horizonDay).lerp(this.horizonNight, night).lerp(this.duskColor, dusk * 0.55)
+    this.uniforms.uSunColor.value.copy(elevation > 0 ? this.warmSun : this.lowSun).lerp(this.duskColor, dusk * 0.5)
     this.uniforms.uSunDirection.value.copy(this.sunDirection)
     this.uniforms.uNight.value = night
 
@@ -184,15 +203,15 @@ export class Sky {
     this.sun.target.position.copy(focus)
     this.sun.target.updateMatrixWorld()
     this.sun.intensity = 0.15 + day * 2.5
-    this.sun.color.set(day > 0.2 ? '#ffe9b8' : '#ff9d6b').lerp(new THREE.Color('#9fb6ff'), night * 0.9)
+    this.sun.color.copy(day > 0.2 ? this.sunDay : this.sunHorizon).lerp(this.sunNight, night * 0.9)
     this.hemi.intensity = 0.18 + day * 0.55
-    this.hemi.color.set('#9ec4ff').lerp(new THREE.Color('#0d1424'), night)
-    this.hemi.groundColor.set('#40502f').lerp(new THREE.Color('#0a0d12'), night)
+    this.hemi.color.copy(this.hemiDay).lerp(this.hemiNight, night)
+    this.hemi.groundColor.copy(this.groundDay).lerp(this.groundNight, night)
     this.ambient.intensity = 0.12 + day * 0.22
-    this.ambient.color.set('#93a8c9').lerp(new THREE.Color('#26304a'), night)
+    this.ambient.color.copy(this.ambientDay).lerp(this.ambientNight, night)
 
-    this.starMaterial.opacity = clamp(night * 1.2 - 0.1, 0, 0.95)
-    this.moon.position.copy(camera.position).addScaledVector(this.sunDirection.clone().negate(), 800)
+    this.starMaterial.opacity = clamp(night * 1.1 - 0.12, 0, 0.78)
+    this.moon.position.copy(camera.position).addScaledVector(this.sunDirection, -800)
     this.moon.visible = night > 0.05
 
     this.dome.position.copy(camera.position)
@@ -200,14 +219,15 @@ export class Sky {
 
     // Clouds drift and tint with the sky.
     this.clouds.position.x = (this.clouds.position.x + dt * 1.6) % 900
+    this.cloudTint.copy(this.white).lerp(this.horizonNight, night * 0.85).lerp(this.duskColor, dusk * 0.25)
     for (const cloud of this.clouds.children) {
       const material = (cloud as THREE.Sprite).material as THREE.SpriteMaterial
-      material.color.copy(new THREE.Color('#ffffff')).lerp(new THREE.Color('#243050'), night * 0.85).lerp(duskColor, dusk * 0.25)
+      material.color.copy(this.cloudTint)
       material.opacity = 0.18 + day * 0.32
     }
 
     // Fog: palette horizon colour, pushed by weather.
-    this.fogColor.copy(horizon).lerp(new THREE.Color('#ffffff'), 0.08).lerp(new THREE.Color('#050810'), night * 0.55)
+    this.fogColor.copy(horizon).lerp(this.white, 0.08).lerp(this.fogNight, night * 0.55)
     if (this.weatherTint) this.fogColor.lerp(this.weatherTint, 0.55)
     this.fog.color.copy(this.fogColor)
     this.fog.density = 0.0022 + this.weatherFog + night * 0.0012

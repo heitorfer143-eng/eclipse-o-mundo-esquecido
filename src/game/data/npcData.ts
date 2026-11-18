@@ -27,6 +27,7 @@ export const NPCS: NpcDef[] = [
         choices: [
           { text: 'Quem sou eu?', next: 'marca' },
           { text: 'O que foi o Eclipse?', next: 'eclipse' },
+          { text: 'O que a marca está tentando lembrar?', next: 'memoria' },
           { text: 'Tem algo que eu possa fazer?', next: 'trabalho' },
           { text: 'Agora não, anciã.' },
         ],
@@ -54,6 +55,15 @@ export const NPCS: NpcDef[] = [
         choices: [
           { text: 'Vou lembrar disso, custe o que custar.' },
           { text: 'Quero voltar a falar com você.', next: 'raiz' },
+        ],
+      },
+      memoria: {
+        id: 'memoria',
+        text: 'O eco do gelo aponta para o templo. Vekh guarda a parte que falta; desta vez, ele precisa dizer em voz alta o que fez e o que você escolheu.',
+        choices: [
+          { text: 'Vou ao templo ouvir Vekh.', action: 'aceitar', quest: 'secundaria-14' },
+          { text: 'Vekh contou a verdade. Agora ela é de todos.', action: 'concluir', quest: 'secundaria-14' },
+          { text: 'Vou pensar antes de voltar ao templo.', next: 'raiz' },
         ],
       },
       trabalho: {
@@ -837,6 +847,8 @@ export const NPCS: NpcDef[] = [
           { text: 'O que você guarda aqui?', next: 'fragmento' },
           { text: 'Por que vive no gelo?', next: 'gelo' },
           { text: 'Você conheceu as entidades?', next: 'sete' },
+          { text: 'A marca devolveu um eco.', next: 'eco' },
+          { text: 'O que sua prece fez comigo?', next: 'confissao' },
           { text: 'Vim só perguntar o caminho.' },
         ],
       },
@@ -862,8 +874,35 @@ export const NPCS: NpcDef[] = [
         text: 'Conheci seis. A sétima eu vi de longe, e ela me viu de perto. Quando o Eclipse caiu, eu estava no templo e rezei para a entidade errada. Foi a única vez que uma prece minha foi atendida na hora.',
         choices: [
           { text: 'Então você sabe como derrotá-lo.', next: 'fragmento' },
+          { text: 'O que sua prece fez comigo?', next: 'confissao' },
           { text: 'Me dê sua bênção, velho.', next: 'bencao' },
           { text: 'Sinto muito, Vekh.' },
+        ],
+      },
+      eco: {
+        id: 'eco',
+        text: 'A marca respondeu ao gelo. Três elementais ainda guardam esse som. Dissipe-os, conte a Iara o que ouviu e volte: não quero completar sua lembrança por você.',
+        choices: [
+          { text: 'Vou buscar o eco.', action: 'aceitar', quest: 'secundaria-13' },
+          { text: 'O eco voltou. Podemos conversar.', action: 'concluir', quest: 'secundaria-13' },
+          { text: 'Preciso pensar.', next: 'raiz' },
+        ],
+      },
+      confissao: {
+        id: 'confissao',
+        text: 'Na véspera do Eclipse, você era o guardião mortal dos nomes das seis entidades. Ofereceu suas lembranças para escondê-los de Nyxharion. Eu rezei à sombra pedindo proteção; aceitei o preço sem contar a você. Minha prece abriu a porta, sua escolha salvou os nomes. Chamei meu silêncio de vigilância por sete séculos.',
+        choices: [
+          { text: 'Eu precisava ouvir isso de você.', next: 'divida' },
+          { text: 'Ainda não posso perdoar.', next: 'raiz' },
+        ],
+      },
+      divida: {
+        id: 'divida',
+        text: 'Não peço absolvição. Os cavaleiros do vazio farejam os nomes que você protegeu. Detenha três, conte tudo a Iara e volte. Desta vez, não esconderei minha parte.',
+        choices: [
+          { text: 'Vou impedir que isso se repita.', action: 'aceitar', quest: 'secundaria-15' },
+          { text: 'A dívida está paga. Siga em frente.', action: 'concluir', quest: 'secundaria-15' },
+          { text: 'Falaremos quando eu estiver pronto.', next: 'raiz' },
         ],
       },
       bencao: {

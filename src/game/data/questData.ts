@@ -4,7 +4,7 @@ import type { QuestDef } from './types'
  * Every quest in Eclipse: O Mundo Esquecido.
  *
  * `principal-01` .. `principal-10` form the main chain (one per chapter, each ending in a boss),
- * `secundaria-01` .. `secundaria-12` are optional stories spread over the world, and
+ * `secundaria-01` .. `secundaria-15` are optional stories spread over the world, and
  * `cacada-01` .. `cacada-08` are repeatable-feeling bounty hunts offered by hunters and guards.
  */
 export const QUESTS: QuestDef[] = [
@@ -576,6 +576,59 @@ export const QUESTS: QuestDef[] = [
       ],
     },
     requires: ['principal-09'],
+  },
+
+  // Optional memory arc — Vekh's guilt, the protagonist's lost past, and a chosen duty.
+  {
+    id: 'secundaria-13',
+    name: 'A Primeira Lembrança',
+    type: 'secundaria',
+    giver: 'eremita-vekh',
+    minLevel: 18,
+    marker: 'geleira-skadi',
+    summary: 'O gelo devolve um eco à marca. Vekh pede que você o escute sem forçar a memória.',
+    description:
+      'Elementais de Skadi retêm ressonâncias do antigo selo. Dissipe três e leve o eco a Iara; depois, volte a Vekh. Uma lembrança pode ser só um começo.',
+    objectives: [
+      { id: 'obj-s13-1', kind: 'matar', target: 'elemental-de-gelo', count: 3, label: 'Dissipar elementais que guardam o eco (3)' },
+      { id: 'obj-s13-2', kind: 'falar', target: 'iara', count: 1, label: 'Contar a Iara o que a marca revelou' },
+    ],
+    rewards: { xp: 500, gold: 220 },
+    requires: ['principal-05'],
+  },
+  {
+    id: 'secundaria-14',
+    name: 'O Nome que Você Guardou',
+    type: 'secundaria',
+    giver: 'iara',
+    minLevel: 30,
+    marker: 'templo-esquecido',
+    summary: 'Iara pede que Vekh conte o que a marca ainda esconde.',
+    description:
+      'Os ecos apontam para o templo e para a noite do Eclipse. Afaste os sacerdotes que rondam o selo e obrigue Vekh a dizer a verdade, não apenas metade dela.',
+    objectives: [
+      { id: 'obj-s14-1', kind: 'matar', target: 'sacerdote-corrompido', count: 2, label: 'Interromper os sacerdotes junto ao selo (2)' },
+      { id: 'obj-s14-2', kind: 'falar', target: 'eremita-vekh', count: 1, label: 'Ouvir a confissão de Vekh' },
+    ],
+    rewards: { xp: 1500, gold: 700 },
+    requires: ['secundaria-13', 'principal-08'],
+  },
+  {
+    id: 'secundaria-15',
+    name: 'A Dívida dos Nomes',
+    type: 'secundaria',
+    giver: 'eremita-vekh',
+    minLevel: 34,
+    marker: 'cratera-eclipse',
+    summary: 'Vekh não pede perdão: pede ajuda para impedir que a velha culpa fira outros.',
+    description:
+      'Cavaleiros do vazio seguem os nomes que você protegeu. Derrote três, conte a Iara o que Vekh fez e retorne a ele. A escolha de como seguir pertence a você.',
+    objectives: [
+      { id: 'obj-s15-1', kind: 'matar', target: 'cavaleiro-do-vazio', count: 3, label: 'Deter os cavaleiros que farejam o selo (3)' },
+      { id: 'obj-s15-2', kind: 'falar', target: 'iara', count: 1, label: 'Deixar Iara conhecer toda a verdade' },
+    ],
+    rewards: { xp: 3000, gold: 1500 },
+    requires: ['secundaria-14', 'principal-09'],
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

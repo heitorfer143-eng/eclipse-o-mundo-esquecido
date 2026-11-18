@@ -9,6 +9,7 @@ import { TouchControls, type TouchAction } from './touch'
 export type UiCallbacks = {
   onNewGame: () => void
   onContinue: () => void
+  onSettingsChanged?: (settings: Settings) => void
 }
 
 /** Single entry point for every screen: HUD, modal panels, dialogue, title and touch. */
@@ -19,11 +20,13 @@ export class Ui {
   readonly touch: TouchControls
   private readonly settingsOverlay = document.createElement('div')
   private readonly save: SaveStore
+  private readonly onSettingsChanged?: (settings: Settings) => void
 
   constructor(root: HTMLElement, save: SaveStore, callbacks: UiCallbacks) {
     this.save = save
     this.hud = new Hud(root)
     this.panels = new Panels(root)
+    this.onSettingsChanged = callbacks.onSettingsChanged
     this.touch = new TouchControls(root)
     this.title = new TitleScreen(root, save, {
       onNew: () => callbacks.onNewGame(),
@@ -122,6 +125,7 @@ export class Ui {
         const key = input.dataset.setting as keyof Settings
         const value = input.type === 'checkbox' ? input.checked : input.type === 'range' ? Number(input.value) : input.value
         this.save.updateSettings({ [key]: value } as Partial<Settings>)
+        this.onSettingsChanged?.(this.save.data.settings)
       })
     })
   }

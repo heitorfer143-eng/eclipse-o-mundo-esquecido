@@ -144,6 +144,7 @@ export class Game {
     this.inventory.reset()
     this.progression.reset()
     this.skills.reset()
+    if (fresh) this.save.clearGame()
     this.quests.states.clear()
     this.quests.tracked = 'principal-01'
     this.discovered.clear()
@@ -174,6 +175,7 @@ export class Game {
     this.ui.closePanels()
     this.onModeChange?.(this.mode)
     this.ui.toast(saved ? 'Aventura retomada' : 'Uma nova jornada começa', 'quest')
+    this.saveGame(true)
   }
 
   pause(): void {

@@ -19,7 +19,7 @@ export class TitleScreen {
       <div>
         <div class="title__eyebrow">Um ARPG de mundo aberto</div>
         <h1 class="title__name">Eclipse<br><span class="gold">O Mundo Esquecido</span></h1>
-        <p class="title__tag">O sol não nasce há trezentos anos. Aetherion sobrevive sob a luz de cristais antigos — e algo no coração da Cicatriz está acordando. Você carrega a marca que pode fechá-la.</p>
+        <p class="title__tag">Há setecentos anos, o Eclipse partiu Aetherion e apagou o sol. Cristais antigos mantêm as regiões vivas; algo no coração da Cicatriz está acordando. Você carrega a marca que pode fechá-la.</p>
       </div>
       <div class="title__menu"></div>
       <div class="title__foot">

@@ -420,6 +420,21 @@ kbd {
   .map-wrap { flex-direction: column; }
   .poi-list { width: auto; border-left: none; border-top: 1px solid rgba(214, 180, 110, 0.12); }
   .hud__topcenter { display: none; }
+  .title { padding: max(26px, env(safe-area-inset-top)) 22px max(20px, env(safe-area-inset-bottom)); gap: 16px; overflow-y: auto; }
+  .title__eyebrow { font-size: 10px; letter-spacing: 0.3em; }
+  .title__name { font-size: clamp(38px, 12vw, 54px); line-height: 0.98; margin: 10px 0 8px; }
+  .title__tag { max-width: 42ch; font-size: 13px; line-height: 1.6; }
+  .title__menu { width: 100%; max-width: 420px; gap: 8px; }
+  .title__menu .btn { min-height: 44px; }
+  .title__foot { flex-direction: column; align-items: flex-start; gap: 8px; font-size: 10px; line-height: 1.6; }
+  .hud__topleft { left: 12px; top: max(12px, env(safe-area-inset-top)); width: min(178px, 46vw); }
+  .hud__topright { right: 12px; top: max(12px, env(safe-area-inset-top)); width: min(156px, 40vw); }
+  .hud__bottomleft { left: 12px; bottom: max(12px, env(safe-area-inset-bottom)); }
+  .minimap { width: 78px; height: 78px; }
+  .hud__bottomcenter { bottom: max(12px, env(safe-area-inset-bottom)); gap: 5px; }
+  .abilities { gap: 6px; }
+  .ability { width: 42px; height: 42px; }
+  .ability--potion { width: 40px; height: 40px; }
   .hud__bottomright { display: none; }
   .elements { display: none; }
 }

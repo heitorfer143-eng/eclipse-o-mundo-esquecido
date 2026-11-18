@@ -1,12 +1,12 @@
 # Eclipse: O Mundo Esquecido
 
 Um ARPG de mundo aberto em 3D, jogável no navegador, feito com **Three.js**, **TypeScript** e **Vite**.
-O sol não nasce há trezentos anos: Aetherion sobrevive sob a luz de cristais antigos, e algo no coração
-da Cicatriz está acordando. Você carrega a marca que pode fechá-la.
+Há setecentos anos, o Eclipse partiu Aetherion e apagou o sol. Cristais antigos mantêm as regiões vivas;
+algo no coração da Cicatriz está acordando. Você carrega a marca que pode fechá-la.
 
 ## O que o jogo tem
 
-- **Mundo aberto procedural e determinístico** (seed fixa): continente de ~4 km, biomas de floresta,
+- **Mundo aberto procedural e determinístico** (seed aleatória por save, preservada ao continuar): continente de ~4 km, biomas de floresta,
   floresta densa, planície, pântano, deserto, neve, montanha, vulcão, cinzas, praia, ilha e oceano,
   com chunks em streaming, água animada, ciclo dia/noite, estrelas, nuvens e clima dinâmico
   (chuva, tempestade com raios, neblina, neve, tempestade de areia, chuva de cinzas).
@@ -24,8 +24,8 @@ da Cicatriz está acordando. Você carrega a marca que pode fechá-la.
 - **Progressão completa**: níveis até 50, atributos, pontos de habilidade, inventário com 7
   equipamentos, 6 raridades, conjuntos com bônus, aprimoramento no ferreiro, lojas, coleta e
   crafting (forja, alquimia, cozinha, bancada).
-- **Campanha em 8 capítulos**, missões secundárias, caçadas, diálogos ramificados com 16 NPCs e
-  lojas por especialidade.
+- **Campanha principal em 10 capítulos, 15 missões secundárias e 8 caçadas**, com diálogos ramificados
+  sobre as entidades, a memória perdida e o passado de Aetherion, além de 16 NPCs e lojas por especialidade.
 - **Interface em português**: HUD com vida/mana/stamina, bússola, minimapa, rastreador de missões,
   barra de chefe, números de dano; painéis de inventário, habilidades, mapa, diário, crafting,
   loja, diálogo, pausa e configurações; controles por teclado/mouse e por toque.
@@ -33,6 +33,10 @@ da Cicatriz está acordando. Você carrega a marca que pode fechá-la.
   hora do mundo) com um único slot versionado.
 
 ## Como jogar
+
+Versão pública para teste: [jogar Eclipse no GitHub Pages](https://heitorfer143-eng.github.io/eclipse-o-mundo-esquecido/). O site é atualizado automaticamente quando uma alteração chega ao branch `main`.
+
+O Preview interno do Manus continua disponível na aba **Preview** do projeto **Eclipse**.
 
 ```bash
 pnpm install
@@ -85,9 +89,9 @@ docs/            # arquitetura e capturas
 
 ## Estado
 
-O jogo está jogável de ponta a ponta: criar personagem, explorar, lutar, aceitar missões, comprar,
-craftar, enfrentar chefes e salvar. O balanceamento e a otimização continuam em ajuste — veja
-`TODO.md` para o que falta.
+O jogo está em desenvolvimento iterativo, com mundo explorável, combate, progressão, missões,
+inventário, diálogos e salvamento. Narrativa, controles móveis, desempenho e balanceamento seguem em
+polimento; consulte `TODO.md` para o estado de cada parte.
 
-Todo o conteúdo (modelos, texturas, sons, música) é gerado proceduralmente no navegador: não há
-assets externos, então o jogo carrega rápido e funciona offline depois do primeiro acesso.
+Terreno, estruturas, personagens e efeitos visuais são gerados proceduralmente; música e efeitos sonoros
+são sintetizados no navegador. Fontes e ícone da interface acompanham o projeto em `public/`.
