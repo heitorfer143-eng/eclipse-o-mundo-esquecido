@@ -47,7 +47,8 @@ async function boot(): Promise<void> {
   const nextFrame = (): Promise<void> => new Promise(resolve => requestAnimationFrame(() => resolve()))
 
   setProgress(0.06, 'Acendendo o renderizador')
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' })
+  const touchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !touchDevice, powerPreference: 'high-performance' })
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.shadowMap.enabled = true
   renderer.shadowMap.type = THREE.PCFSoftShadowMap
@@ -170,10 +171,24 @@ async function boot(): Promise<void> {
     if (game.mode === 'playing' && !ui.blocking && started) game.pause()
   })
 
-  window.addEventListener('resize', () => {
-    renderer.setSize(window.innerWidth, window.innerHeight)
-    camera.resize(window.innerWidth, window.innerHeight)
-  })
+  const resizeViewport = (): void => {
+    const width = window.visualViewport?.width ?? window.innerWidth
+    const height = window.visualViewport?.height ?? window.innerHeight
+    renderer.setSize(width, height)
+    camera.resize(width, height)
+  }
+  window.addEventListener('resize', resizeViewport)
+  window.visualViewport?.addEventListener('resize', resizeViewport)
+  window.visualViewport?.addEventListener('scroll', resizeViewport)
+
+  // iOS Safari can still start browser gestures outside individual controls.
+  // Keep ordinary one-finger gameplay input intact; block only pinch/double-tap gestures.
+  document.addEventListener('touchmove', event => {
+    if (event.touches.length > 1) event.preventDefault()
+  }, { passive: false })
+  for (const gesture of ['gesturestart', 'gesturechange', 'gestureend']) {
+    document.addEventListener(gesture, event => event.preventDefault(), { passive: false })
+  }
 
   document.addEventListener('visibilitychange', () => {
     if (document.hidden && game.mode === 'playing') game.pause()
@@ -266,9 +281,15 @@ function clamp(value: number, min: number, max: number): number {
 
 function applyQuality(renderer: THREE.WebGLRenderer, quality: 'low' | 'medium' | 'high'): void {
   const ratio = window.devicePixelRatio || 1
-  renderer.setPixelRatio(quality === 'low' ? 1 : quality === 'medium' ? Math.min(ratio, 1.35) : Math.min(ratio, 2))
+  const touchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+  // Retina phones render many more pixels than desktop displays; cap the internal
+  // resolution to keep frame times and battery use under control.
+  const pixelRatio = quality === 'low' ? 1 : touchDevice
+    ? Math.min(ratio, quality === 'medium' ? 1.15 : 1.35)
+    : quality === 'medium' ? Math.min(ratio, 1.35) : Math.min(ratio, 2)
+  renderer.setPixelRatio(pixelRatio)
   renderer.shadowMap.enabled = quality !== 'low'
-  renderer.setSize(window.innerWidth, window.innerHeight)
+  renderer.setSize(window.visualViewport?.width ?? window.innerWidth, window.visualViewport?.height ?? window.innerHeight)
 }
 
 function buildLoading(): { root: HTMLDivElement; fill: HTMLDivElement; label: HTMLDivElement; tip: HTMLDivElement } {
