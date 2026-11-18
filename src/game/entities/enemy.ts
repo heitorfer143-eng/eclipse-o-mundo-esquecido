@@ -60,7 +60,6 @@ export class Enemy {
   counted = false
   private readonly visual: EnemyVisual
   private external?: ExternalCharacter
-  private externalMode: ExternalAnimation = 'idle'
   private readonly statuses = new Map<StatusKind, { seconds: number; power: number }>()
   private stateTimer = 0
   private attackCooldown = 0
@@ -402,7 +401,6 @@ export class Enemy {
       : this.state === 'attack' || this.state === 'windup' ? 'attack'
       : this.state === 'stagger' ? 'hit'
       : speed > 3 ? 'run' : speed > 0.4 ? 'walk' : 'idle'
-    this.externalMode = nextMode
     this.external?.update(dt, nextMode)
     const moving = speed > 0.4 && !this.dead
     if (moving) {
