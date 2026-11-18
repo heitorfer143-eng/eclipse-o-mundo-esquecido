@@ -46,7 +46,7 @@ export class CameraRig {
     this.yaw = yaw
     this.pitch = 0.32
     this.initialized = false
-    this.target.set(target.x, target.y + 1.55, target.z)
+    this.target.set(target.x, target.y + 1.2, target.z)
   }
 
   update(dt: number, target: THREE.Vector3, look: { x: number; y: number }, world: CameraWorld, sprinting: boolean, gliding: boolean): void {
@@ -110,7 +110,7 @@ export class CameraRig {
   orbit(time: number, center: THREE.Vector3, radius = 9): void {
     const angle = time * 0.12
     this.camera.position.set(center.x + Math.sin(angle) * radius, center.y + 3.2, center.z + Math.cos(angle) * radius)
-    this.camera.lookAt(center.x, center.y + 1.2, center.z)
+    this.camera.lookAt(center.x, center.y + 0.95, center.z)
   }
 
   get forward(): THREE.Vector3 {
