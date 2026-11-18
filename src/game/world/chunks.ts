@@ -123,7 +123,7 @@ export class Chunk {
     geometry.computeVertexNormals()
     geometry.computeBoundingSphere()
     const mesh = new THREE.Mesh(geometry, terrainMaterial)
-    mesh.receiveShadow = true
+    mesh.receiveShadow = false
     mesh.castShadow = false
     mesh.matrixAutoUpdate = false
     mesh.updateMatrix()
@@ -183,7 +183,7 @@ export class Chunk {
           if (p.s > 0.85) this.colliders.push({ kind: 'circle', x: p.x, z: p.z, radius: 0.42 * p.s })
         })
         mesh.castShadow = true
-        mesh.receiveShadow = true
+        mesh.receiveShadow = false
         mesh.computeBoundingSphere()
         group.add(mesh)
       }
@@ -216,7 +216,7 @@ export class Chunk {
         const mesh = new THREE.InstancedMesh(variants[index], propsMaterial, list.length)
         list.forEach((m, i) => mesh.setMatrixAt(i, m))
         mesh.castShadow = true
-        mesh.receiveShadow = true
+        mesh.receiveShadow = false
         mesh.computeBoundingSphere()
         group.add(mesh)
       })
@@ -245,7 +245,7 @@ export class Chunk {
         filled += 1
       }
       mesh.count = filled
-      mesh.receiveShadow = true
+      mesh.receiveShadow = false
       mesh.computeBoundingSphere()
       group.add(mesh)
     }
@@ -282,7 +282,7 @@ export class Chunk {
         animal.rotation.y = random() * Math.PI * 2
         animal.traverse(object => {
           const mesh = object as THREE.Mesh
-          if (mesh.isMesh) { mesh.castShadow = true; mesh.receiveShadow = true }
+          if (mesh.isMesh) { mesh.castShadow = true; mesh.receiveShadow = false }
         })
         group.add(animal)
       }).catch(() => undefined)
