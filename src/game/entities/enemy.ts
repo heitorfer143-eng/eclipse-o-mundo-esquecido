@@ -98,7 +98,9 @@ export class Enemy {
       : this.def.model === 'yeti' ? EXTERNAL_CHARACTER_URLS.werewolf
       : this.def.model === 'elemental' ? EXTERNAL_CHARACTER_URLS.witch : undefined
     if (externalEnemyUrl) {
-      void ExternalCharacter.load(externalEnemyUrl, this.visual.height * scale).then(model => {
+      // visual.height já inclui a escala do tipo e o bônus de elite.
+      // Multiplicar por scale novamente aplicava a escala duas vezes.
+      void ExternalCharacter.load(externalEnemyUrl, this.visual.height).then(model => {
         if (this.finished) { model.dispose(); return }
         this.external = model
         this.visual.root.visible = false
