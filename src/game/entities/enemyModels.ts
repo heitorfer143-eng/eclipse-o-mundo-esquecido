@@ -45,7 +45,7 @@ function add(ctx: Ctx, geometry: THREE.BufferGeometry, material: THREE.Material,
   mesh.rotation.set(rx, ry, rz)
   if (scale) mesh.scale.set(scale[0], scale[1], scale[2])
   mesh.castShadow = true
-  mesh.receiveShadow = true
+  mesh.receiveShadow = false
   ctx.body.add(mesh)
   return mesh
 }
