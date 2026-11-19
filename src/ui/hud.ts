@@ -4,7 +4,7 @@ import { ELEMENTS } from '../game/combat/damage'
 import { abilityGlyph, elementIcon } from './icons'
 
 export type HudAbility = { id: string; name: string; element: ElementId; tier: number; cooldown: number; total: number; mana: number; locked: boolean; key: string }
-export type HudQuest = { name: string; progress: string; objective: string; reward: string; ready: boolean }
+export type HudQuest = { name: string; progress: string; objective: string; reward: string; ready: boolean; locator?: string }
 export type HudBoss = { name: string; title: string; healthRatio: number; phase: string; phases: number }
 export type HudTarget = { name: string; level: number; healthRatio: number; status: string; elite: boolean }
 export type HudPoi = { x: number; z: number; kind: string; name: string; discovered: boolean; boss: boolean; quest?: boolean }
@@ -79,7 +79,9 @@ export class Hud {
   private readonly questNameEl = document.createElement('div')
   private readonly questProgressEl = document.createElement('div')
   private readonly questObjectiveEl = document.createElement('div')
+  private readonly questLocatorEl = document.createElement('div')
   private readonly questRewardEl = document.createElement('div')
+  private readonly questOpenButton = document.createElement('button')
   private readonly bossEl = document.createElement('div')
   private readonly bossName = document.createElement('div')
   private readonly bossTitle = document.createElement('div')
@@ -108,6 +110,7 @@ export class Hud {
   private onElement?: (element: ElementId) => void
   private onAbility?: (index: number) => void
   private onPotion?: () => void
+  private onOpenQuests?: () => void
 
   constructor(parent: HTMLElement) {
     this.root.className = 'hud'
@@ -157,9 +160,17 @@ export class Hud {
     this.questNameEl.className = 'quest__name'
     this.questProgressEl.className = 'quest__progress'
     this.questObjectiveEl.className = 'quest__objective'
+    this.questLocatorEl.className = 'quest__locator hidden'
     this.questRewardEl.className = 'quest__reward'
-    this.questEl.append(this.questNameEl, this.questProgressEl, this.questObjectiveEl, this.questRewardEl)
-    topRight.append(gold, this.questEl)
+    this.questEl.append(this.questNameEl, this.questProgressEl, this.questObjectiveEl, this.questLocatorEl, this.questRewardEl)
+    this.questOpenButton.className = 'hud__quest-open'
+    this.questOpenButton.type = 'button'
+    this.questOpenButton.dataset.openQuests = 'true'
+    this.questOpenButton.setAttribute('aria-label', 'Abrir diário de missões; tecla L no computador')
+    this.questOpenButton.title = 'Abrir diário de missões (L no computador)'
+    this.questOpenButton.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M5 4.5h10.5A3.5 3.5 0 0 1 19 8v11H8a3 3 0 0 1-3-3z"/><path d="M5 4.5v12a3 3 0 0 0 3 3M9 9h6M9 12h6"/></svg><span>Missões</span><kbd class="hud__quest-key">L</kbd>'
+    this.questOpenButton.addEventListener('click', () => this.onOpenQuests?.())
+    topRight.append(gold, this.questEl, this.questOpenButton)
 
     this.bossEl.className = 'bossbar hidden'
     this.bossName.className = 'bossbar__name'
@@ -262,10 +273,11 @@ export class Hud {
     }
   }
 
-  bind(onElement: (element: ElementId) => void, onAbility: (index: number) => void, onPotion: () => void): void {
+  bind(onElement: (element: ElementId) => void, onAbility: (index: number) => void, onPotion: () => void, onOpenQuests?: () => void): void {
     this.onElement = onElement
     this.onAbility = onAbility
     this.onPotion = onPotion
+    this.onOpenQuests = onOpenQuests
   }
 
   show(visible: boolean): void {
@@ -299,14 +311,16 @@ export class Hud {
     // Quest tracker
     if (snapshot.quest) {
       const quest = snapshot.quest
-      const signature = `${quest.name}\u0000${quest.progress}\u0000${quest.objective}\u0000${quest.reward}\u0000${quest.ready}`
+      const signature = `${quest.name}\u0000${quest.progress}\u0000${quest.objective}\u0000${quest.reward}\u0000${quest.ready}\u0000${quest.locator ?? ''}`
       if (signature !== this.lastQuestSignature) {
         this.lastQuestSignature = signature
         this.questNameEl.textContent = quest.name
         this.questProgressEl.textContent = quest.progress
         this.questObjectiveEl.textContent = quest.objective
+        this.questLocatorEl.textContent = quest.locator ?? ''
         this.questRewardEl.textContent = quest.reward
       }
+      this.questLocatorEl.classList.toggle('hidden', !quest.locator)
       this.questEl.classList.toggle('ready', quest.ready)
       this.questEl.classList.remove('hidden')
     } else {

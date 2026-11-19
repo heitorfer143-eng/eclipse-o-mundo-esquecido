@@ -149,7 +149,7 @@ export class Ui {
   popDamage(position: THREE.Vector3, text: string, kind?: 'hit' | 'crit' | 'heal' | 'hurt' | 'magic'): void { this.hud.popDamage(position, text, kind) }
   setVignette(on: boolean): void { this.hud.setVignette(on) }
   flashAbility(index: number): void { this.hud.flashAbility(index) }
-  bindHud(element: (element: ElementId) => void, ability: (index: number) => void, potion: () => void): void { this.hud.bind(element, ability, potion) }
+  bindHud(element: (element: ElementId) => void, ability: (index: number) => void, potion: () => void, openQuests: () => void): void { this.hud.bind(element, ability, potion, openQuests) }
 
   consumeTouch(action: TouchAction): boolean { return this.touch.consume(action) }
   heldTouch(action: TouchAction): boolean { return this.touch.held(action) }

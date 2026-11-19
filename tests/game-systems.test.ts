@@ -37,6 +37,20 @@ describe('mundo procedural', () => {
     expect(heights(repeated)).toEqual(heights(first))
     expect(heights(other)).not.toEqual(heights(first))
   })
+
+  it('encontra um ponto de caça caminhável dentro dos biomas permitidos', () => {
+    const terrain = new Terrain(731_029)
+    const allowed = ['floresta', 'floresta-densa', 'planicie'] as const
+    const point = terrain.nearestWalkableBiome(6, 806, allowed, 900)
+    const repeated = terrain.nearestWalkableBiome(6, 806, allowed, 900)
+
+    expect(point).not.toBeNull()
+    expect(repeated).toEqual(point)
+    expect(allowed).toContain(point!.biome)
+    expect(terrain.heightAt(point!.x, point!.z)).toBeGreaterThan(2.6)
+    expect(terrain.slopeAt(point!.x, point!.z)).toBeLessThanOrEqual(0.62)
+    expect(point!.distance).toBeGreaterThanOrEqual(47.99)
+  })
 })
 
 describe('salvamento local', () => {

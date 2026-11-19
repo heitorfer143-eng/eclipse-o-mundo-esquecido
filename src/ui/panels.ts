@@ -8,7 +8,9 @@ import type { QuestLog } from '../game/systems/quests'
 import { RECIPES } from '../game/data/recipeData'
 import { STATION_LABEL, canCraft, shopFor, type Shop } from '../game/systems/economy'
 import type { Poi } from '../game/world/poi'
+import { BIOMES } from '../game/world/biomes'
 import type { Settings } from '../engine/save'
+import { enemyById } from '../game/data/enemyData'
 import { itemIcon } from './icons'
 
 export type PanelActions = {
@@ -305,8 +307,10 @@ export class Panels {
     const right = document.createElement('div')
     right.className = 'col col--mid scroll'
     const quest = this.selectedQuest ? [...active, ...available, ...completed].find(entry => entry.id === this.selectedQuest) : undefined
+    const isActiveQuest = Boolean(quest && ctx.quests.state(quest.id)?.status === 'ativa')
+    const currentObjective = isActiveQuest && quest ? quest.objectives.find(objective => ctx.quests.objectiveProgress(quest.id, objective.id) < objective.count) : undefined
+    const huntDef = currentObjective?.kind === 'matar' ? enemyById(currentObjective.target) : undefined
     if (quest) {
-      const isActive = ctx.quests.state(quest.id)?.status === 'ativa'
       const ready = ctx.quests.ready(quest.id)
       right.innerHTML = `<div class="quest-detail">
         <div class="quest-item__type">${quest.type}${quest.chapter ? ` · capítulo ${quest.chapter}` : ''}</div>
@@ -319,15 +323,16 @@ export class Panels {
           const done = current >= objective.count
           return `<div class="quest-detail__obj${done ? ' done' : ''}"><span class="check">${done ? '✓' : ''}</span><span>${objective.label}${objective.count > 1 ? ` — ${current}/${objective.count}` : ''}</span></div>`
         }).join('')}
+        ${huntDef ? `<div class="quest-hunt"><div class="quest-hunt__copy"><strong>Localizador de criatura · ${huntDef.name}</strong><span>Procure em: ${huntDef.biomes.map(biome => BIOMES[biome].name).join(' · ')}${huntDef.nocturnal ? ' · mais ativo à noite' : ''}.</span><span>Ao rastrear, o minimapa aponta a área de caça ou o mob vivo mais próximo.</span></div></div>` : ''}
         <div class="reward-row"><span>✦ ${quest.rewards.xp} XP</span><span>◈ ${quest.rewards.gold} de ouro</span>${(quest.rewards.items ?? []).map(item => `<span>${itemById(item.itemId)?.name ?? item.itemId} ×${item.count}</span>`).join('')}</div>
         ${ready ? '<div class="small gold" style="margin-top:10px">Pronta para entregar. Procure quem a ofereceu.</div>' : ''}
-        ${!isActive && !ready ? '<div class="small muted" style="margin-top:10px">Fale com quem ofereceu esta missão para aceitá-la.</div>' : ''}
+        ${!isActiveQuest && !ready ? '<div class="small muted" style="margin-top:10px">Fale com quem ofereceu esta missão para aceitá-la.</div>' : ''}
       </div>`
     } else {
       right.innerHTML = '<div class="muted">Nenhuma missão selecionada.</div>'
     }
     body.append(left, right)
-    foot.innerHTML = `<span>${active.length} ativas · ${completed.length} concluídas</span>${quest && ctx.quests.state(quest.id)?.status === 'ativa' ? `<button class="btn btn--sm" data-track type="button">${ctx.quests.tracked === quest.id ? 'Rastreando' : 'Rastrear no HUD'}</button>` : ''}`
+    foot.innerHTML = `<span>${active.length} ativas · ${completed.length} concluídas</span>${quest && isActiveQuest ? `<button class="btn btn--sm ${huntDef ? 'btn--primary' : ''}" data-${huntDef ? 'hunt-locate' : 'track'} type="button">${huntDef ? 'Localizar no jogo' : ctx.quests.tracked === quest.id ? 'Rastreando' : 'Rastrear no HUD'}</button>` : ''}`
     left.querySelectorAll<HTMLElement>('[data-quest]').forEach(element => element.addEventListener('click', () => {
       this.selectedQuest = element.dataset.quest!
       this.openQuests(ctx)
@@ -335,6 +340,12 @@ export class Panels {
     foot.querySelector('[data-track]')?.addEventListener('click', () => {
       if (quest) ctx.actions.trackQuest(quest.id)
     })
+    if (quest && huntDef) {
+      foot.querySelector('[data-hunt-locate]')?.addEventListener('click', () => {
+        ctx.actions.trackQuest(quest.id)
+        ctx.actions.close()
+      })
+    }
     this.mount(panel, 'missoes', ctx)
   }
 

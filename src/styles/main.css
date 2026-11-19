@@ -179,11 +179,17 @@ kbd {
 
 .hud__topright { position: absolute; right: 22px; top: 20px; width: 260px; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
 .hud__gold { display: flex; align-items: center; gap: 6px; font-family: var(--serif); font-size: 16px; color: var(--gold); }
+.hud__quest-open { position: relative; z-index: 5; pointer-events: auto; align-self: stretch; display: none; align-items: center; gap: 8px; min-height: 40px; padding: 7px 10px; border: 1px solid rgba(214, 180, 110, 0.42); border-radius: 8px; background: rgba(12, 10, 16, 0.82); color: var(--parchment); font: inherit; font-size: 12px; text-align: left; cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.24); }
+.touch-capable .hud__quest-open { position: fixed; left: max(8px, env(safe-area-inset-left, 0px)); top: max(112px, calc(env(safe-area-inset-top, 0px) + 104px)); right: auto; z-index: 10; display: flex; align-self: auto; width: min(160px, 28vw); }
+.hud__quest-open:hover, .hud__quest-open:focus-visible { border-color: var(--gold); background: rgba(55, 42, 28, 0.92); outline: none; }
+.hud__quest-open svg { width: 17px; height: 17px; flex: none; color: var(--gold); }
+.hud__quest-key { margin-left: auto; padding: 1px 5px; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 4px; color: #b7aa94; font: 10px var(--sans); }
 .quest { pointer-events: none; text-align: right; border-right: 2px solid rgba(214, 180, 110, 0.5); padding: 6px 9px 6px 0; max-width: 260px; background: linear-gradient(270deg, rgba(10, 8, 14, 0.36), transparent); }
 .quest.ready { border-right-color: #ff9a78; background: linear-gradient(270deg, rgba(85, 33, 26, 0.52), transparent); }
 .quest__name { font-family: var(--serif); font-size: 13px; color: var(--parchment); letter-spacing: 0.05em; }
 .quest__progress { margin-top: 2px; color: var(--gold); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; }
 .quest__objective { margin-top: 4px; color: #e3d5ba; font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
+.quest__locator { margin-top: 4px; color: #ffbd84; font-size: 10px; font-weight: 600; line-height: 1.3; text-shadow: 0 1px 3px #000; }
 .quest__reward { margin-top: 3px; color: #a99c88; font-size: 9.5px; line-height: 1.3; }
 
 .hud__bottomleft { position: absolute; left: 22px; bottom: 20px; display: flex; align-items: flex-end; gap: 14px; }
@@ -360,6 +366,11 @@ kbd {
 .quest-detail__obj { display: flex; gap: 8px; align-items: flex-start; padding: 7px 0; border-bottom: 1px dashed rgba(255, 255, 255, 0.07); font-size: 12.5px; }
 .quest-detail__obj .check { width: 16px; height: 16px; border: 1px solid rgba(214, 180, 110, 0.5); border-radius: 4px; display: grid; place-items: center; font-size: 10px; color: var(--gold); flex: none; }
 .quest-detail__obj.done { color: #86b87f; }
+.quest-hunt { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 0; padding: 10px; border: 1px solid rgba(255, 154, 120, 0.3); border-radius: 8px; background: rgba(255, 120, 107, 0.06); }
+.quest-hunt__copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.quest-hunt__copy strong { color: #ffbd84; font-size: 12px; }
+.quest-hunt__copy span { color: #c3b7a2; font-size: 11px; line-height: 1.45; }
+.quest-hunt .btn { flex: none; min-height: 40px; }
 .reward-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: var(--gold); }
 
 .recipe { display: flex; align-items: center; gap: 12px; padding: 10px; border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; margin-bottom: 7px; background: rgba(255, 255, 255, 0.02); }
@@ -419,7 +430,7 @@ kbd {
 .touch__look-hint { position: absolute; left: 69%; top: 54%; transform: translate(-50%, -50%); padding: 6px 9px; border: 1px solid rgba(214, 180, 110, 0.15); border-radius: 20px; background: rgba(10, 8, 14, 0.3); color: rgba(239, 227, 200, 0.58); font-size: 10px; letter-spacing: 0.04em; pointer-events: none; transition: opacity 0.3s ease; }
 .touch.look-used .touch__look-hint { opacity: 0; }
 
-.hud { z-index: 3; }
+.hud { z-index: 4; }
 #ui > .overlay, #ui > .dialogue { pointer-events: auto; }
 .overlay { z-index: 20; }
 .ability[data-pressed], .ability[data-held] { border-color: var(--gold); box-shadow: 0 0 16px rgba(214, 180, 110, 0.6), inset 0 0 12px rgba(214, 180, 110, 0.2); transform: scale(0.95); }
@@ -442,6 +453,10 @@ kbd {
   .panel__body { flex-direction: column; overflow-y: auto; }
   .panel__close { width: 44px; height: 44px; border-radius: 10px; }
   .col--left, .col--right { width: auto; border: none; border-bottom: 1px solid rgba(214, 180, 110, 0.12); }
+  .quest-hunt { flex-direction: column; align-items: stretch; }
+  .quest-hunt .btn { width: 100%; min-height: 44px; }
+  .touch-capable .hud__quest-open { display: flex; min-height: 44px; }
+  .touch-capable .hud__quest-key { display: none; }
   .map-wrap { flex-direction: column; }
   .poi-list { width: auto; border-left: none; border-top: 1px solid rgba(214, 180, 110, 0.12); }
   .hud__topcenter { display: none; }
@@ -516,7 +531,9 @@ kbd {
   .quest__name { font-size: 11px; }
   .quest__progress { font-size: 9px; }
   .quest__objective { font-size: 10px; line-height: 1.25; }
+  .quest__locator { font-size: 9px; }
   .quest__reward { font-size: 9px; }
+  .hud__quest-open { min-height: 36px; padding: 5px 8px; font-size: 10px; }
   .hud__bottomleft { left: max(8px, env(safe-area-inset-left, 0px)); bottom: max(8px, env(safe-area-inset-bottom, 0px)); }
   .minimap { width: 62px; height: 62px; }
   .hud__bottomcenter { bottom: max(8px, env(safe-area-inset-bottom, 0px)); gap: 2px; }

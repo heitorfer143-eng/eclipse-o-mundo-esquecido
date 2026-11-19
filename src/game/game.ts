@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import type { Audio } from '../engine/audio'
 import type { GameSave, SaveStore, Settings } from '../engine/save'
 import { clamp, damp } from './core/math'
-import type { BossType, ElementId, QuestDef, ShopId } from './data/types'
+import type { BiomeId, BossType, ElementId, QuestDef, ShopId } from './data/types'
 import { bossById } from './data/bossData'
 import { enemyById } from './data/enemyData'
 import { itemById } from './data/itemData'
@@ -30,6 +30,7 @@ import { Shop, buyPrice, craft as craftRecipe, sellPrice, shopFor } from './syst
 import { bossLoot, rollLoot, type LootDrop } from './systems/loot'
 import { BIOMES } from './world/biomes'
 import type { Poi } from './world/poi'
+import type { BiomeWaypoint } from './world/terrain'
 import type { World } from './world/world'
 import type { Ui } from '../ui/ui'
 import type { HudAbility, HudPoi, HudSnapshot } from '../ui/hud'
@@ -107,6 +108,7 @@ export class Game {
   private spawnPoint = new THREE.Vector3()
   private frameEnemies: CombatTarget[] = []
   private compassTimer = 0
+  private huntWaypointCache: { targetId: string; originX: number; originZ: number; waypoint: BiomeWaypoint | null } | null = null
 
   constructor(deps: GameDeps) {
     this.deps = deps
@@ -1270,7 +1272,24 @@ export class Game {
       element => this.selectElement(element),
       index => this.castAbility(index),
       () => this.usePotion(),
+      () => this.openPanel('missoes'),
     )
+  }
+
+  private findHuntWaypoint(targetId: string, biomes: readonly BiomeId[]): BiomeWaypoint | null {
+    const position = this.player.position
+    const cached = this.huntWaypointCache
+    if (!cached || cached.targetId !== targetId || Math.hypot(position.x - cached.originX, position.z - cached.originZ) > 120) {
+      const waypoint = this.world.terrain.nearestWalkableBiome(
+        position.x,
+        position.z,
+        biomes,
+        900,
+        (x, z) => this.world.pois.isBlocked(x, z),
+      )
+      this.huntWaypointCache = { targetId, originX: position.x, originZ: position.z, waypoint }
+    }
+    return this.huntWaypointCache?.waypoint ?? null
   }
 
   // ── stats and save ───────────────────────────────────────────────────────
@@ -1400,13 +1419,24 @@ export class Game {
         return enemyDistance < nearestDistance ? enemy : nearest
       }, undefined)
       : undefined
+    const objectiveEnemyType = trackedObjective?.kind === 'matar' ? enemyById(trackedObjective.target) : undefined
+    const huntWaypoint = objectiveEnemyType && !objectiveEnemy
+      ? this.findHuntWaypoint(objectiveEnemyType.id, objectiveEnemyType.biomes)
+      : null
+    const huntLocator = objectiveEnemyType
+      ? objectiveEnemy
+        ? `${objectiveEnemy.displayName} mais próximo · ${Math.round(Math.hypot(objectiveEnemy.position.x - this.player.position.x, objectiveEnemy.position.z - this.player.position.z))} m`
+        : huntWaypoint
+          ? `Zona de caça · ${BIOMES[huntWaypoint.biome].name} · ${Math.round(Math.hypot(huntWaypoint.x - this.player.position.x, huntWaypoint.z - this.player.position.z))} m${objectiveEnemyType.nocturnal && this.world.sky.night < 0.45 ? ' · aparece à noite' : ''}`
+          : `Habitat: ${objectiveEnemyType.biomes.map(biomeId => BIOMES[biomeId].name).join(' ou ')}`
+      : undefined
     const objectivePoiId = trackedObjective && ['interagir', 'chegar'].includes(trackedObjective.kind)
       ? trackedObjective.target
       : tracked?.marker
     const objectivePoi = trackedObjective?.kind === 'chefe'
       ? this.world.pois.list().find(poi => poi.bossId === trackedObjective.target)
       : objectivePoiId ? this.world.pois.list().find(poi => poi.id === objectivePoiId) : undefined
-    const questPoiId = questReady ? undefined : objectivePoi?.id ?? (!objectiveNpc && !objectiveEnemy ? tracked?.marker : undefined)
+    const questPoiId = questReady ? undefined : objectivePoi?.id ?? (!objectiveNpc && !objectiveEnemy && !huntWaypoint ? tracked?.marker : undefined)
     const quest = tracked
       ? {
         name: tracked.name,
@@ -1420,6 +1450,7 @@ export class Game {
           ? ` · ${tracked.rewards.items.map(item => `${item.count}× ${itemById(item.itemId)?.name ?? 'item'}`).join(' · ')}`
           : ''}`,
         ready: questReady,
+        locator: huntLocator,
       }
       : undefined
     const questPois: HudPoi[] = this.world.pois.list().map(poi => ({
@@ -1448,6 +1479,16 @@ export class Game {
         z: objectiveEnemy.position.z,
         kind: 'quest-enemy',
         name: objectiveEnemy.displayName,
+        discovered: true,
+        boss: false,
+        quest: true,
+      })
+    } else if (tracked && objectiveEnemyType && huntWaypoint) {
+      questPois.push({
+        x: huntWaypoint.x,
+        z: huntWaypoint.z,
+        kind: 'quest-hunt',
+        name: objectiveEnemyType.name,
         discovered: true,
         boss: false,
         quest: true,

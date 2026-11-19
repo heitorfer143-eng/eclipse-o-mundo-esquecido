@@ -95,6 +95,24 @@ if (hasGame) {
   if (state.iaraDistance > 3.4) throw new Error('Iara não está acessível no ponto de início.')
   if (state.iaraCameraSide >= 0) throw new Error('Iara está entre a câmera e o jogador no ponto de início.')
   if (state.maxEnemyHeight > 2.45) throw new Error(`Mob maior que o limite: ${state.maxEnemyHeight} m.`)
+  await page.keyboard.press('KeyL')
+  const huntCard = page.locator('.quest-hunt')
+  await huntCard.waitFor({ state: 'visible' })
+  const huntGuide = await huntCard.textContent()
+  const locateAction = await page.locator('.panel__foot [data-hunt-locate]').textContent()
+  if (!huntGuide?.includes('Lobo Sombrio') || !huntGuide.includes('Mata Sombria') || !locateAction?.includes('Localizar no jogo')) {
+    throw new Error(`O diário não mostrou o localizador do objetivo atual: ${huntGuide}`)
+  }
+  await page.locator('.panel__close').evaluate(button => button.click())
+  await page.waitForFunction(() => window.__eclipse.game.mode === 'playing' && window.__eclipse.game.quests.tracked === 'principal-01')
+  await page.waitForFunction(() => {
+    const locator = document.querySelector('.quest__locator')
+    return locator && !locator.classList.contains('hidden') && locator.textContent?.trim()
+  })
+  const liveLocator = await page.locator('.quest__locator').textContent()
+  if (!liveLocator?.includes('Lobo Sombrio') && !liveLocator?.includes('Zona de caça')) {
+    throw new Error(`A HUD não exibiu a pista de localização do mob: ${liveLocator}`)
+  }
   await page.evaluate(() => window.__eclipse.game.pause())
   await page.locator('.pause-card').waitFor()
   if (await page.locator('[data-customize]').count()) throw new Error('A pausa ainda permite editar a identidade do personagem.')
@@ -230,6 +248,33 @@ mobilePage.on('console', message => { if (message.type() === 'error') errors.pus
 mobilePage.on('pageerror', error => errors.push(`mobile pageerror: ${error.message}`))
 await mobilePage.goto(mobileUrl.toString(), { waitUntil: 'domcontentloaded' })
 await mobilePage.waitForFunction(() => window.__eclipse?.game, { timeout: 30000 })
+await mobilePage.getByRole('button', { name: 'Nova campanha' }).waitFor({ timeout: 20000 })
+await mobilePage.getByRole('button', { name: 'Nova campanha' }).click()
+await mobilePage.getByRole('button', { name: 'Iniciar campanha' }).click()
+await mobilePage.locator('[data-player-name]').fill('Mobile Eclipse')
+await mobilePage.getByRole('button', { name: 'Confirmar e começar' }).click()
+await mobilePage.locator('.dialogue').waitFor({ state: 'visible' })
+await mobilePage.getByRole('button', { name: 'Aceitar missão: O Despertar' }).click()
+await mobilePage.getByRole('button', { name: 'Encerrar conversa' }).click()
+await mobilePage.waitForFunction(() => window.__eclipse.game.mode === 'playing' && window.__eclipse.game.quests.tracked === 'principal-01')
+const mobileQuestButton = mobilePage.locator('[data-open-quests]')
+await mobileQuestButton.waitFor({ state: 'visible' })
+const mobileQuestButtonBox = await mobileQuestButton.boundingBox()
+if (!mobileQuestButtonBox) throw new Error('Botão de missões mobile sem área clicável.')
+await mobilePage.touchscreen.tap(
+  mobileQuestButtonBox.x + mobileQuestButtonBox.width / 2,
+  mobileQuestButtonBox.y + mobileQuestButtonBox.height / 2,
+)
+await mobilePage.locator('.quest-hunt').waitFor({ state: 'visible' })
+const mobileLocateButton = mobilePage.locator('[data-hunt-locate]')
+const mobileLocateButtonBox = await mobileLocateButton.boundingBox()
+if (!mobileLocateButtonBox) throw new Error('Ação Localizar sem área clicável no diário mobile.')
+await mobilePage.touchscreen.tap(
+  mobileLocateButtonBox.x + mobileLocateButtonBox.width / 2,
+  mobileLocateButtonBox.y + mobileLocateButtonBox.height / 2,
+)
+await mobilePage.waitForFunction(() => window.__eclipse.game.mode === 'playing')
+await mobilePage.locator('.quest__locator:not(.hidden)').waitFor({ state: 'visible' })
 await mobilePage.evaluate(() => window.__eclipse.ui.touch.show(true))
 await captureScreenshot(mobilePage, '11-mobile-portrait.png')
 const portrait = await mobilePage.evaluate(() => ({

@@ -17,6 +17,8 @@ export type TerrainSample = {
   water: boolean
 }
 
+export type BiomeWaypoint = { x: number; z: number; biome: BiomeId; distance: number }
+
 /**
  * Seeded height field. Everything derives from `seed`, so two players with different seeds get
  * different continents, while a save always rebuilds the same one.
@@ -121,6 +123,36 @@ export class Terrain {
   sample(x: number, z: number): TerrainSample {
     const height = this.heightAt(x, z)
     return { height, biome: this.biomeAt(x, z, height), slope: this.slopeAt(x, z), water: height < SEA_LEVEL }
+  }
+
+  /** Find a nearby dry, walkable point in one of the requested creature habitats. */
+  nearestWalkableBiome(
+    x: number,
+    z: number,
+    biomes: readonly BiomeId[],
+    maxDistance = 900,
+    isBlocked?: (x: number, z: number) => boolean,
+  ): BiomeWaypoint | null {
+    const allowed = new Set(biomes)
+    if (!allowed.size) return null
+    const spokes = 20
+    const step = 30
+    const angleOffset = (this.seed % 6283) / 1000
+    for (let distance = 48; distance <= maxDistance; distance += step) {
+      for (let i = 0; i < spokes; i += 1) {
+        const angle = angleOffset + (i / spokes) * Math.PI * 2
+        const px = x + Math.cos(angle) * distance
+        const pz = z + Math.sin(angle) * distance
+        if (isBlocked?.(px, pz)) continue
+        const height = this.heightAt(px, pz)
+        if (height < 2.6) continue
+        const slope = this.slopeAt(px, pz)
+        if (slope > 0.62) continue
+        const biome = this.biomeFrom(px, pz, height, slope)
+        if (allowed.has(biome)) return { x: px, z: pz, biome, distance: Math.hypot(px - x, pz - z) }
+      }
+    }
+    return null
   }
 
   /** Blended ground colour for a vertex, mixing biome grass/rock by slope and height. */
