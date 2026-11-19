@@ -6,7 +6,10 @@ import { DEFAULT_CHARACTER_PROFILE, isCharacterNameValid } from '../src/game/dat
 import { BOSSES } from '../src/game/data/bossData'
 import { ENEMIES } from '../src/game/data/enemyData'
 import { Boss } from '../src/game/entities/boss'
-import { Enemy } from '../src/game/entities/enemy'
+import { ENEMY_VISUAL_LIMITS, Enemy } from '../src/game/entities/enemy'
+import { pickEnemyFor } from '../src/game/entities/spawner'
+import { externalAnimationFor, type AnimState } from '../src/game/entities/character'
+import { resolveExternalClipName, type ExternalAnimation } from '../src/game/entities/externalModels'
 import { NPCS } from '../src/game/data/npcData'
 import { QUESTS, questById } from '../src/game/data/questData'
 import { DialogueRunner } from '../src/game/systems/dialogue'
@@ -14,6 +17,7 @@ import { Inventory } from '../src/game/systems/inventory'
 import { QuestLog } from '../src/game/systems/quests'
 import { SkillTree } from '../src/game/systems/skills'
 import { Terrain } from '../src/game/world/terrain'
+import { buildVillage } from '../src/game/world/structures'
 
 const samplePoints = [
   [-1420, -930],
@@ -287,6 +291,33 @@ describe('abertura da campanha', () => {
     expect(quests.state(openingQuest.id)?.status).toBe('ativa')
   })
 
+  it('leva O Despertar por quatro etapas até a recompensa que o jogo deve entregar', () => {
+    const quests = new QuestLog()
+    const inventory = new Inventory()
+    const quest = questById('principal-01')!
+    expect(quests.accept(quest.id, 1)).toBeNull()
+
+    quest.objectives.forEach((objective, index) => {
+      if (objective.kind === 'coletar') {
+        inventory.add(objective.target, objective.count)
+        quests.syncInventory(inventory)
+      } else {
+        quests.progress(objective.kind, objective.target, objective.count)
+      }
+      expect(quests.ready(quest.id)).toBe(index === quest.objectives.length - 1)
+    })
+
+    expect(quests.forNpc('iara', 1).turnIn.map(item => item.id)).toContain(quest.id)
+    expect(quests.complete(quest.id)).toEqual({
+      xp: 120,
+      gold: 60,
+      items: [
+        { itemId: 'pocao-vida-1', count: 2 },
+        { itemId: 'comida-pao', count: 3 },
+      ],
+    })
+  })
+
   it('remove o rastreador fantasma de save antigo sem descartar missão já aceita', () => {
     const quests = new QuestLog()
     quests.load({ tracked: 'principal-01', states: {} })
@@ -294,6 +325,18 @@ describe('abertura da campanha', () => {
 
     quests.load({ tracked: 'principal-01', states: { 'principal-01': { status: 'ativa', progress: {} } } })
     expect(quests.tracked).toBe('principal-01')
+  })
+
+  it('mantém os três lobos e três ervas da primeira etapa disponíveis também de dia', () => {
+    const village = buildVillage(new Terrain(731_029), 0, 0, 11, 'Brumal')
+    const wolf = pickEnemyFor('floresta', 2, 0.1, 'lobo-sombrio')
+    const quest = questById('principal-01')!
+
+    expect(wolf?.id).toBe('lobo-sombrio')
+    expect(village.spots.enemies).toHaveLength(3)
+    expect(village.spots.resources.filter(resource => resource.kind === 'erva')).toHaveLength(3)
+    expect(quest.objectives.find(objective => objective.target === 'lobo-sombrio')?.count).toBe(3)
+    expect(quest.objectives.find(objective => objective.target === 'mat-erva')?.count).toBe(3)
   })
 })
 
@@ -330,19 +373,75 @@ describe('escala dos chefes', () => {
       boss.dispose()
     }
   })
+
+  it('mantém o Guardião da primeira missão no nível e na vida de abertura', () => {
+    const firstBoss = BOSSES.find(boss => boss.id === 'guardiao-floresta-corrompido')!
+    expect(firstBoss.level).toBe(2)
+    expect(firstBoss.health).toBe(320)
+  })
 })
 
 describe('escala de mobs', () => {
-  it('mantém a Aranha Tecelã pequena também na largura das patas', () => {
-    const definition = ENEMIES.find(enemy => enemy.id === 'aranha-tecela')!
-    const spider = new Enemy({ def: definition, level: 2, x: 0, z: 0 })
-    try {
-      const visual = (spider as unknown as { visual: { root: THREE.Group } }).visual.root
-      const size = new THREE.Box3().setFromObject(visual).getSize(new THREE.Vector3())
-      expect(spider.height).toBeLessThanOrEqual(0.35)
-      expect(Math.max(size.x, size.z)).toBeLessThanOrEqual(0.6)
-    } finally {
-      spider.dispose()
+  it('mantém todos os mobs comuns e elites dentro dos limites de altura e pegada', () => {
+    for (const definition of ENEMIES) {
+      for (const elite of [false, true]) {
+        const enemy = new Enemy({ def: definition, level: 2, x: 0, z: 0, elite })
+        try {
+          const visual = (enemy as unknown as { visual: { root: THREE.Group } }).visual.root
+          const size = new THREE.Box3().setFromObject(visual).getSize(new THREE.Vector3())
+          const heightLimit = elite ? ENEMY_VISUAL_LIMITS.eliteHeight : ENEMY_VISUAL_LIMITS.commonHeight
+          const footprintLimit = elite ? ENEMY_VISUAL_LIMITS.eliteFootprint : ENEMY_VISUAL_LIMITS.commonFootprint
+          expect(size.y, `${definition.id} elite=${elite} height`).toBeLessThanOrEqual(heightLimit + 0.01)
+          expect(Math.max(size.x, size.z), `${definition.id} elite=${elite} footprint`).toBeLessThanOrEqual(footprintLimit + 0.01)
+        } finally {
+          enemy.dispose()
+        }
+      }
     }
+  })
+})
+
+describe('animações do protagonista', () => {
+  const base: AnimState = {
+    mode: 'idle', speed: 0, actionTime: 0, actionDuration: 0.5, combo: 0, weapon: 'espada', charging: false,
+  }
+
+  it('seleciona clips reais de locomoção, esquiva, bloqueio, dano e morte', () => {
+    expect(externalAnimationFor({ ...base, mode: 'walk' })).toBe('walk')
+    expect(externalAnimationFor({ ...base, mode: 'run' })).toBe('run')
+    expect(externalAnimationFor({ ...base, mode: 'roll', rollDirection: 'left' })).toBe('dodge-left')
+    expect(externalAnimationFor({ ...base, mode: 'roll', rollDirection: 'backward' })).toBe('dodge-backward')
+    expect(externalAnimationFor({ ...base, mode: 'jump' })).toBe('jump')
+    expect(externalAnimationFor({ ...base, mode: 'block' })).toBe('block')
+    expect(externalAnimationFor({ ...base, mode: 'cast' })).toBe('cast')
+    expect(externalAnimationFor({ ...base, mode: 'hurt' })).toBe('hit')
+    expect(externalAnimationFor({ ...base, mode: 'dead' })).toBe('death')
+  })
+
+  it('escolhe ataque compatível com o tipo de arma equipado', () => {
+    expect(externalAnimationFor({ ...base, mode: 'attack', weapon: 'espada' })).toBe('attack')
+    expect(externalAnimationFor({ ...base, mode: 'attack', weapon: 'machado' })).toBe('attack-heavy')
+    expect(externalAnimationFor({ ...base, mode: 'attack', weapon: 'lanca' })).toBe('attack-thrust')
+    expect(externalAnimationFor({ ...base, mode: 'attack', weapon: 'adaga' })).toBe('attack-fast')
+    expect(externalAnimationFor({ ...base, mode: 'attack', weapon: 'arco' })).toBe('attack-ranged')
+  })
+
+  it('resolve os nomes normalizados para os clips que realmente existem nos modelos KayKit', () => {
+    const actualClips = [
+      'Idle', 'Walking_A', 'Running_A',
+      '1H_Melee_Attack_Slice_Horizontal', '1H_Melee_Attack_Stab', '2H_Melee_Attack_Chop',
+      'Dualwield_Melee_Attack_Slice', '1H_Ranged_Shoot', 'Spellcast_Shoot',
+      'Hit_A', 'Death_A', 'Dodge_Forward', 'Dodge_Backward', 'Dodge_Left', 'Dodge_Right',
+      'Jump_Full_Short', 'Jump_Idle', 'Blocking',
+    ]
+    const expectations: [ExternalAnimation, string][] = [
+      ['idle', 'Idle'], ['walk', 'Walking_A'], ['run', 'Running_A'], ['attack', '1H_Melee_Attack_Slice_Horizontal'],
+      ['attack-heavy', '2H_Melee_Attack_Chop'], ['attack-thrust', '1H_Melee_Attack_Stab'],
+      ['attack-fast', 'Dualwield_Melee_Attack_Slice'], ['attack-ranged', '1H_Ranged_Shoot'], ['cast', 'Spellcast_Shoot'],
+      ['hit', 'Hit_A'], ['death', 'Death_A'], ['dodge-forward', 'Dodge_Forward'], ['dodge-backward', 'Dodge_Backward'],
+      ['dodge-left', 'Dodge_Left'], ['dodge-right', 'Dodge_Right'], ['jump', 'Jump_Full_Short'],
+      ['fall', 'Jump_Idle'], ['block', 'Blocking'],
+    ]
+    for (const [mode, clip] of expectations) expect(resolveExternalClipName(mode, actualClips)).toBe(clip)
   })
 })

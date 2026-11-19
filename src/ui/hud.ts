@@ -4,10 +4,10 @@ import { ELEMENTS } from '../game/combat/damage'
 import { abilityGlyph, elementIcon } from './icons'
 
 export type HudAbility = { id: string; name: string; element: ElementId; tier: number; cooldown: number; total: number; mana: number; locked: boolean; key: string }
-export type HudQuest = { name: string; objectives: { label: string; current: number; count: number; done: boolean }[] }
+export type HudQuest = { name: string; progress: string; objective: string; reward: string; ready: boolean }
 export type HudBoss = { name: string; title: string; healthRatio: number; phase: string; phases: number }
 export type HudTarget = { name: string; level: number; healthRatio: number; status: string; elite: boolean }
-export type HudPoi = { x: number; z: number; kind: string; name: string; discovered: boolean; boss: boolean }
+export type HudPoi = { x: number; z: number; kind: string; name: string; discovered: boolean; boss: boolean; quest?: boolean }
 export type HudSnapshot = {
   health: number
   maxHealth: number
@@ -76,6 +76,10 @@ export class Hud {
   private readonly locationEl = document.createElement('div')
   private readonly metaEl = document.createElement('div')
   private readonly questEl = document.createElement('div')
+  private readonly questNameEl = document.createElement('div')
+  private readonly questProgressEl = document.createElement('div')
+  private readonly questObjectiveEl = document.createElement('div')
+  private readonly questRewardEl = document.createElement('div')
   private readonly bossEl = document.createElement('div')
   private readonly bossName = document.createElement('div')
   private readonly bossTitle = document.createElement('div')
@@ -100,6 +104,7 @@ export class Hud {
   private subtitleTimer = 0
   private minimapTimer = 0
   private lastSignature = ''
+  private lastQuestSignature = ''
   private onElement?: (element: ElementId) => void
   private onAbility?: (index: number) => void
   private onPotion?: () => void
@@ -149,6 +154,11 @@ export class Hud {
     gold.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9.5 10h5M9.5 14h5"/></svg>'
     gold.appendChild(this.goldEl)
     this.questEl.className = 'quest'
+    this.questNameEl.className = 'quest__name'
+    this.questProgressEl.className = 'quest__progress'
+    this.questObjectiveEl.className = 'quest__objective'
+    this.questRewardEl.className = 'quest__reward'
+    this.questEl.append(this.questNameEl, this.questProgressEl, this.questObjectiveEl, this.questRewardEl)
     topRight.append(gold, this.questEl)
 
     this.bossEl.className = 'bossbar hidden'
@@ -288,11 +298,21 @@ export class Hud {
 
     // Quest tracker
     if (snapshot.quest) {
-      const objectives = snapshot.quest.objectives.map(objective => `<div class="quest__obj${objective.done ? ' done' : ''}">${objective.label} ${objective.count > 1 ? `(${objective.current}/${objective.count})` : ''}</div>`).join('')
-      this.questEl.innerHTML = `<div class="quest__name">${snapshot.quest.name}</div>${objectives}`
+      const quest = snapshot.quest
+      const signature = `${quest.name}\u0000${quest.progress}\u0000${quest.objective}\u0000${quest.reward}\u0000${quest.ready}`
+      if (signature !== this.lastQuestSignature) {
+        this.lastQuestSignature = signature
+        this.questNameEl.textContent = quest.name
+        this.questProgressEl.textContent = quest.progress
+        this.questObjectiveEl.textContent = quest.objective
+        this.questRewardEl.textContent = quest.reward
+      }
+      this.questEl.classList.toggle('ready', quest.ready)
       this.questEl.classList.remove('hidden')
     } else {
       this.questEl.classList.add('hidden')
+      this.questEl.classList.remove('ready')
+      this.lastQuestSignature = ''
     }
 
     // Boss bar
@@ -347,11 +367,11 @@ export class Hud {
       const x = delta * pxPerRad
       if (Math.abs(x) > 250) continue
       const el = document.createElement('div')
-      el.className = 'compass__mark compass__mark--poi'
+      el.className = `compass__mark compass__mark--poi${poi.quest ? ' compass__mark--quest' : ''}`
       el.style.position = 'absolute'
       el.style.left = '50%'
       el.style.transform = `translateX(${x}px)`
-      el.textContent = poi.boss ? `◆ ${poi.name}` : poi.name
+      el.textContent = poi.quest ? `! ${poi.name}` : poi.boss ? `◆ ${poi.name}` : poi.name
       this.compassEl.appendChild(el)
       window.setTimeout(() => el.remove(), 90)
     }
@@ -448,9 +468,9 @@ export class Hud {
       if (!poi.discovered) continue
       const [px, py] = toMap(poi.x, poi.z)
       if (px < 0 || py < 0 || px > size || py > size) continue
-      ctx.fillStyle = poi.boss ? '#ffb347' : poi.kind === 'cidade' ? '#ffe9b8' : '#d6b46e'
+      ctx.fillStyle = poi.quest ? '#ff786b' : poi.boss ? '#ffb347' : poi.kind === 'cidade' ? '#ffe9b8' : '#d6b46e'
       ctx.beginPath()
-      ctx.arc(px, py, poi.boss ? 5 : 3.5, 0, Math.PI * 2)
+      ctx.arc(px, py, poi.quest ? 5.5 : poi.boss ? 5 : 3.5, 0, Math.PI * 2)
       ctx.fill()
       ctx.strokeStyle = 'rgba(10,8,12,0.8)'
       ctx.lineWidth = 1.5

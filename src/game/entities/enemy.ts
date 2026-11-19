@@ -3,7 +3,7 @@ import type { ElementId, EnemyType } from '../data/types'
 import { clamp, damp, dampAngle } from '../core/math'
 import type { Collider } from '../world/collision'
 import { resolveCircle } from '../world/collision'
-import { buildEnemyVisual, disposeEnemyVisual, type EnemyVisual } from './enemyModels'
+import { buildEnemyVisual, disposeEnemyVisual, fitEnemyVisual, type EnemyVisual, type EnemyVisualBounds } from './enemyModels'
 import { ExternalCharacter, EXTERNAL_CHARACTER_URLS, HUMANOID_VISUAL_SCALE, type ExternalAnimation } from './externalModels'
 import { damageAfterDefense, elementalMultiplier, type StatusKind } from '../combat/damage'
 
@@ -36,10 +36,17 @@ const STATE_LABEL: Record<string, string> = {
   dead: 'Morto',
 }
 
-// Ajuste visual global dos inimigos comuns; chefes mantêm as escalas próprias dos dados.
-const COMMON_ENEMY_SIZE_FACTOR = 0.7
-const MAX_COMMON_ENEMY_HEIGHT = 2.05
-const MAX_ELITE_ENEMY_HEIGHT = 2.45
+export const ENEMY_VISUAL_LIMITS = {
+  commonScale: 0.7,
+  commonHeight: 1.8,
+  commonFootprint: 2.3,
+  eliteScale: 1.35,
+  eliteHeight: 2.15,
+  eliteFootprint: 2.8,
+} as const
+
+const ATTACK_TELEGRAPH_GEO = new THREE.RingGeometry(0.84, 1, 28, 1, -1, 2)
+const ATTACK_WARNING_GEO = new THREE.OctahedronGeometry(0.16, 0)
 
 /** A single living creature with a small but readable state-machine AI. */
 export class Enemy {
@@ -64,6 +71,7 @@ export class Enemy {
   /** Set by the game once kill rewards were granted. */
   counted = false
   private readonly visual: EnemyVisual
+  private readonly visualBounds: EnemyVisualBounds
   private external?: ExternalCharacter
   private readonly statuses = new Map<StatusKind, { seconds: number; power: number }>()
   private stateTimer = 0
@@ -76,6 +84,10 @@ export class Enemy {
   private readonly bar: THREE.Group
   private readonly barFill: THREE.Mesh
   private readonly barBg: THREE.Mesh
+  private readonly attackWarning: THREE.Mesh
+  private readonly attackArea: THREE.Mesh
+  private readonly attackWarningMaterial: THREE.MeshBasicMaterial
+  private readonly attackAreaMaterial: THREE.MeshBasicMaterial
   private animPhase = Math.random() * Math.PI * 2
   private summonTimer = 12
 
@@ -92,16 +104,26 @@ export class Enemy {
     this.xp = Math.round(this.def.xp * (1 + (this.level - 1) * 0.14) * (this.elite ? 2.4 : 1))
     this.position.set(spawn.x, 0, spawn.z)
     this.home = new THREE.Vector3(spawn.homeX ?? spawn.x, 0, spawn.homeZ ?? spawn.z)
-    const scale = this.def.scale * COMMON_ENEMY_SIZE_FACTOR * (this.elite ? 1.35 : 1)
+    const scale = this.def.scale * ENEMY_VISUAL_LIMITS.commonScale * (this.elite ? ENEMY_VISUAL_LIMITS.eliteScale : 1)
     this.visual = buildEnemyVisual(this.def.model, this.def.colors, scale)
-    const maxHeight = this.elite ? MAX_ELITE_ENEMY_HEIGHT : MAX_COMMON_ENEMY_HEIGHT
-    if (this.visual.height > maxHeight) {
-      const fit = maxHeight / this.visual.height
-      this.visual.root.scale.multiplyScalar(fit)
-      this.visual.height = maxHeight
-      this.visual.radius *= fit
-    }
+    this.visualBounds = fitEnemyVisual(
+      this.visual,
+      this.elite ? ENEMY_VISUAL_LIMITS.eliteHeight : ENEMY_VISUAL_LIMITS.commonHeight,
+      this.elite ? ENEMY_VISUAL_LIMITS.eliteFootprint : ENEMY_VISUAL_LIMITS.commonFootprint,
+    )
     this.root.add(this.visual.root)
+    this.attackWarningMaterial = new THREE.MeshBasicMaterial({ color: '#ff5c50', transparent: true, opacity: 0.9, depthWrite: false, depthTest: false })
+    this.attackWarning = new THREE.Mesh(ATTACK_WARNING_GEO, this.attackWarningMaterial)
+    this.attackWarning.position.y = this.visual.height + 0.55
+    this.attackWarning.renderOrder = 12
+    this.attackWarning.visible = false
+    this.attackAreaMaterial = new THREE.MeshBasicMaterial({ color: '#ff5c50', transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false })
+    this.attackArea = new THREE.Mesh(ATTACK_TELEGRAPH_GEO, this.attackAreaMaterial)
+    this.attackArea.rotation.x = -Math.PI / 2
+    this.attackArea.scale.set(this.def.attackRange + 0.6, this.def.attackRange + 0.6, 1)
+    this.attackArea.position.y = 0.055
+    this.attackArea.visible = false
+    this.root.add(this.attackArea, this.attackWarning)
     const externalEnemyUrl = this.def.model === 'cavaleiro' ? EXTERNAL_CHARACTER_URLS.knight
       : this.def.model === 'esqueleto' || this.def.model === 'mumia' ? EXTERNAL_CHARACTER_URLS.mummy
       : this.def.model === 'goblin' || this.def.model === 'diabrete' ? EXTERNAL_CHARACTER_URLS.orc
@@ -140,6 +162,18 @@ export class Enemy {
 
   get radius(): number {
     return this.visual.radius
+  }
+
+  get footprint(): number {
+    return Math.max(this.visualBounds.width, this.visualBounds.depth)
+  }
+
+  get attackWarningVisible(): boolean {
+    return this.attackWarning.visible
+  }
+
+  get attackAreaVisible(): boolean {
+    return this.attackArea.visible
   }
 
   get height(): number {
@@ -410,6 +444,17 @@ export class Enemy {
   /** Visual update: billboard health bar, limb swings, hit flash and death fade. */
   render(dt: number, camera: THREE.Camera): void {
     const visual = this.visual
+    const warning = this.state === 'windup' && !this.dead
+    this.attackWarning.visible = warning
+    const ranged = this.def.behavior === 'distancia' || this.def.behavior === 'conjurador'
+    this.attackArea.visible = warning && !ranged
+    if (warning) {
+      const pulse = 0.5 + 0.5 * Math.sin(this.animPhase * 7)
+      this.attackWarning.scale.setScalar(0.82 + pulse * 0.42)
+      this.attackWarning.position.y = this.visual.height + 0.5 + pulse * 0.12
+      this.attackWarningMaterial.opacity = 0.55 + pulse * 0.4
+      this.attackAreaMaterial.opacity = 0.1 + pulse * 0.12
+    }
     const speed = Math.hypot(this.velocity.x, this.velocity.z)
     const nextMode: ExternalAnimation = this.dead ? 'death'
       : this.state === 'attack' || this.state === 'windup' ? 'attack'
@@ -473,5 +518,7 @@ export class Enemy {
     this.barFill.geometry.dispose()
     ;(this.barBg.material as THREE.Material).dispose()
     ;(this.barFill.material as THREE.Material).dispose()
+    this.attackWarningMaterial.dispose()
+    this.attackAreaMaterial.dispose()
   }
 }

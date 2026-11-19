@@ -114,4 +114,11 @@ H poção · Tab inventário · K habilidades · M mapa · L missões · Esc pau
 - [x] Permitir criar até oito campanhas sem sobrescrever as anteriores; cada slot mantém nome, aparência, seed e progresso próprios, oferece retomada por seleção e migra o save antigo de campanha única sem apagá-lo.
 - [x] Validar no smoke a criação de um segundo personagem/campanha, a troca de volta para a campanha original com nível e ouro preservados, além de retrato e paisagem mobile; build e 15 testes unitários passaram.
 - [x] Posicionar a NPC inicial à frente do protagonista, fora do eixo entre câmera e jogador; cobrir distância de conversa e lado da câmera no smoke mobile.
-- [ ] Integrar login Google e sincronizar as campanhas por conta com backend; o repositório é estático (GitHub Pages) e ainda precisa da configuração de um serviço de autenticação/armazenamento.
+- [ ] Integrar login Google real, sem autenticação Manus, e sincronizar campanhas/personagens no backend por UID, preservando os slots locais; depende de configurar projeto/provedor e suas credenciais públicas de app.
+
+## Próxima rodada: fechar e polir o primeiro ciclo (19 nov 2026)
+- [x] Confirmar que o commit `fcd572d` passou build/smoke e deploy do Pages; o bundle público `assets/index-fE5_OR4S.js` responde HTTP 200.
+- [ ] Fechar o primeiro ciclo de `O Despertar`: deixar claro o próximo alvo/local e como interagir; permitir progredir matando 3 lobos sombrios, coletando 3 ervas, falando com Velho Thom e derrotando o Guardião; entregar a missão a Iara e mostrar recompensa de 120 XP, 60 ouro, 2 poções e 3 pães, com progresso salvo.
+- [ ] Melhorar controles touch em celular: joystick/câmera distinguíveis e responsivos, botões sem sobrepor outras zonas ou cortar safe areas, multi-toque sem perder ações e layout legível em retrato/paisagem curtos, mantendo desempenho leve.
+- [ ] Tornar legíveis as animações do protagonista ao andar, correr, atacar, esquivar/rolar, receber dano e morrer; manter poses coerentes no modelo selecionado e sem root motion que desloque colisões.
+- [ ] Conferir proporções dos 30 mobs e 10 chefes contra o protagonista e ajustar escala quando necessário; deixar windups/áreas de ataque dos inimigos visíveis a tempo de esquivar e sem discrepância entre aviso e acerto.

@@ -19,7 +19,11 @@ export type SpawnContext = {
 import type * as THREE from 'three'
 
 /** Chooses a creature whose biome and level window match the location. */
-export function pickEnemyFor(biome: BiomeId, level: number, night: number): EnemyType | undefined {
+export function pickEnemyFor(biome: BiomeId, level: number, night: number, requiredId?: EnemyType['id']): EnemyType | undefined {
+  if (requiredId) {
+    const required = ENEMIES.find(enemy => enemy.id === requiredId)
+    if (required) return required
+  }
   const candidates = ENEMIES.filter(enemy => {
     if (!enemy.biomes.includes(biome)) return false
     if (level < enemy.minLevel - 1 || level > enemy.maxLevel + 2) return false

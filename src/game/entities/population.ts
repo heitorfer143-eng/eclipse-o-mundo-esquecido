@@ -115,7 +115,8 @@ export class Population {
     if (spots.portal) this.portals.push({ id: `${poi.id}-portal`, poiId: poi.id, position: new THREE.Vector3(spots.portal.x, spots.portal.y, spots.portal.z), name: poi.name })
     // POI guards: creatures appropriate to the region, tied to the site.
     for (const spot of spots.enemies) {
-      const def = pickEnemyFor(this.world.biomeAt(spot.x, spot.z), poi.level, this.world.sky.night)
+      const def = pickEnemyFor(this.world.biomeAt(spot.x, spot.z), poi.level, this.world.sky.night,
+        poi.id === 'vila-brumal' ? 'lobo-sombrio' : undefined)
       if (!def) continue
       this.spawner.add({ def, level: poi.level, x: spot.x, z: spot.z, homeX: spot.x, homeZ: spot.z })
     }

@@ -22,6 +22,7 @@ export class TouchControls {
   private nextPressToken = 0
   private readonly knob: HTMLDivElement
   private stickId: number | null = null
+  private stickRadius = 0
   private lookId: number | null = null
   private stickOrigin = { x: 0, y: 0 }
   private lookLast = { x: 0, y: 0 }
@@ -55,13 +56,8 @@ export class TouchControls {
         this.capturePointer(stick, event.pointerId)
         const rect = stick.getBoundingClientRect()
         this.stickOrigin = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
-        this.updateStick(event.clientX, event.clientY, rect.width / 2)
-    })
-    stick.addEventListener('pointermove', event => {
-      if (this.stickId !== event.pointerId) return
-      event.preventDefault()
-      const rect = stick.getBoundingClientRect()
-      this.updateStick(event.clientX, event.clientY, rect.width / 2)
+      this.stickRadius = Math.min(rect.width, rect.height) / 2
+      this.updateStick(event.clientX, event.clientY)
     })
     const releaseStick = (event: PointerEvent): void => {
       if (this.stickId !== event.pointerId) return
@@ -79,14 +75,6 @@ export class TouchControls {
       this.lookId = event.pointerId
       this.capturePointer(look, event.pointerId)
       this.lookLast = { x: event.clientX, y: event.clientY }
-    })
-    look.addEventListener('pointermove', event => {
-      if (this.lookId !== event.pointerId) return
-      event.preventDefault()
-      this.look.x += event.clientX - this.lookLast.x
-      this.look.y += event.clientY - this.lookLast.y
-      this.lookLast = { x: event.clientX, y: event.clientY }
-      this.root.classList.add('look-used')
     })
     look.addEventListener('pointerup', event => this.releaseLook(event, false))
     look.addEventListener('pointercancel', event => this.releaseLook(event, true))
@@ -131,10 +119,12 @@ export class TouchControls {
       })
     })
 
+    window.addEventListener('pointermove', event => this.movePointer(event), { passive: false })
     window.addEventListener('pointerup', event => this.releasePointer(event, false))
     window.addEventListener('pointercancel', event => this.releasePointer(event, true))
     window.addEventListener('blur', () => this.clearActiveControls())
     window.addEventListener('pagehide', () => this.clearActiveControls())
+    window.addEventListener('orientationchange', () => this.clearActiveControls())
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.clearActiveControls()
     })
@@ -154,8 +144,23 @@ export class TouchControls {
     this.releaseButton(event.pointerId, cancelled)
   }
 
+  private movePointer(event: PointerEvent): void {
+    if (this.stickId === event.pointerId) {
+      event.preventDefault()
+      this.updateStick(event.clientX, event.clientY)
+    }
+    if (this.lookId === event.pointerId) {
+      event.preventDefault()
+      this.look.x += event.clientX - this.lookLast.x
+      this.look.y += event.clientY - this.lookLast.y
+      this.lookLast = { x: event.clientX, y: event.clientY }
+      this.root.classList.add('look-used')
+    }
+  }
+
   private resetStick(): void {
     this.stickId = null
+    this.stickRadius = 0
     this.move.x = 0
     this.move.y = 0
     this.knob.style.transform = 'translate(0, 0)'
@@ -216,7 +221,8 @@ export class TouchControls {
     this.look.y = 0
   }
 
-  private updateStick(clientX: number, clientY: number, radius: number): void {
+  private updateStick(clientX: number, clientY: number): void {
+    const radius = this.stickRadius
     const dx = clientX - this.stickOrigin.x
     const dy = clientY - this.stickOrigin.y
     const length = Math.hypot(dx, dy)

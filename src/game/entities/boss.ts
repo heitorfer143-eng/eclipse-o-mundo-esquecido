@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import type { BossAttack, BossType, ElementId } from '../data/types'
 import { clamp, damp, dampAngle } from '../core/math'
 import { ELEMENTS, damageAfterDefense, elementalMultiplier } from '../combat/damage'
-import { buildEnemyVisual, disposeEnemyVisual, type EnemyVisual } from './enemyModels'
+import { buildEnemyVisual, disposeEnemyVisual, fitEnemyVisual, type EnemyVisual, type EnemyVisualBounds } from './enemyModels'
 import type { EnemyContext } from './enemy'
 
 export type BossEvent =
@@ -26,6 +26,7 @@ type ActiveTelegraph = {
 
 const TELEGRAPH_GEO = new THREE.RingGeometry(0.86, 1, 40)
 const MAX_BOSS_HEIGHT = 2.45
+const MAX_BOSS_FOOTPRINT = 3.4
 
 /** A story boss: three-phase patterns, telegraphed area attacks and unique rewards. */
 export class Boss {
@@ -42,6 +43,7 @@ export class Boss {
   aggro = false
   state: 'idle' | 'chase' | 'windup' | 'recover' | 'stagger' | 'dead' = 'idle'
   private readonly visual: EnemyVisual
+  private readonly visualBounds: EnemyVisualBounds
   private readonly telegraphs: ActiveTelegraph[] = []
   private stateTimer = 0
   private cooldowns = new Map<string, number>()
@@ -62,12 +64,7 @@ export class Boss {
     this.health = this.maxHealth
     this.position.set(x, 0, z)
     this.visual = buildEnemyVisual(def.model, def.colors, def.scale)
-    if (this.visual.height > MAX_BOSS_HEIGHT) {
-      const fit = MAX_BOSS_HEIGHT / this.visual.height
-      this.visual.root.scale.multiplyScalar(fit)
-      this.visual.height = MAX_BOSS_HEIGHT
-      this.visual.radius *= fit
-    }
+    this.visualBounds = fitEnemyVisual(this.visual, MAX_BOSS_HEIGHT, MAX_BOSS_FOOTPRINT)
     this.root.add(this.visual.root)
     this.root.position.copy(this.position)
     for (const attack of def.attacks) this.cooldowns.set(attack.id, 2 + Math.random() * 2)
@@ -113,6 +110,10 @@ export class Boss {
 
   get height(): number {
     return this.visual.height
+  }
+
+  get footprint(): number {
+    return Math.max(this.visualBounds.width, this.visualBounds.depth)
   }
 
   takeDamage(raw: number, options: { element?: ElementId; crit?: boolean; from?: THREE.Vector3 } = {}): { amount: number; crit: boolean; killed: boolean } {

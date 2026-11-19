@@ -223,6 +223,27 @@ const portrait = await mobilePage.evaluate(() => ({
 if (portrait.touchAction !== 'none' || portrait.touchButtons < 6 || portrait.cameraFov !== 72) {
   throw new Error(`Controles mobile em retrato não estão prontos: ${JSON.stringify(portrait)}`)
 }
+const touchProbe = await mobilePage.evaluate(() => {
+  const touch = window.__eclipse.ui.touch
+  const stick = document.querySelector('.touch__stick')
+  const look = document.querySelector('.touch__look')
+  if (!(stick instanceof HTMLElement) || !(look instanceof HTMLElement)) throw new Error('Pads touch ausentes.')
+  const rect = stick.getBoundingClientRect()
+  const startX = rect.left + rect.width / 2
+  const startY = rect.top + rect.height / 2
+  stick.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 71, pointerType: 'touch', clientX: startX, clientY: startY, bubbles: true, cancelable: true }))
+  window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 71, pointerType: 'touch', clientX: startX + rect.width * 0.6, clientY: startY, bubbles: true, cancelable: true }))
+  const moveX = touch.move.x
+  window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 71, pointerType: 'touch', bubbles: true, cancelable: true }))
+  look.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 72, pointerType: 'touch', clientX: 300, clientY: 300, bubbles: true, cancelable: true }))
+  window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 72, pointerType: 'touch', clientX: 328, clientY: 284, bubbles: true, cancelable: true }))
+  const lookDelta = touch.consumeLook()
+  window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 72, pointerType: 'touch', bubbles: true, cancelable: true }))
+  return { moveX, lookDelta }
+})
+if (touchProbe.moveX < 0.4 || Math.abs(touchProbe.lookDelta.x) < 20 || Math.abs(touchProbe.lookDelta.y) < 10) {
+  throw new Error(`Arraste touch não chegou aos controles: ${JSON.stringify(touchProbe)}`)
+}
 await mobilePage.setViewportSize({ width: 844, height: 390 })
 await mobilePage.waitForTimeout(350)
 const landscape = await mobilePage.evaluate(() => ({

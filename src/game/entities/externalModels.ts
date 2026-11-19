@@ -20,7 +20,46 @@ function stripRootMotion(clip: THREE.AnimationClip): THREE.AnimationClip {
 // Shared visual scale: current humanoid assets are oversized relative to the game's world units.
 export const HUMANOID_VISUAL_SCALE = 0.78
 
-export type ExternalAnimation = 'idle' | 'walk' | 'run' | 'attack' | 'hit' | 'death'
+export type ExternalAnimation =
+  | 'idle' | 'walk' | 'run' | 'attack' | 'attack-heavy' | 'attack-thrust' | 'attack-fast' | 'attack-ranged'
+  | 'cast' | 'hit' | 'death' | 'dodge-forward' | 'dodge-backward' | 'dodge-left' | 'dodge-right'
+  | 'jump' | 'fall' | 'block'
+
+const ANIMATION_CANDIDATES: Record<ExternalAnimation, string[]> = {
+  idle: ['idle', 'stand', 'standing'],
+  walk: ['walk', 'walking'],
+  run: ['run', 'running', 'sprint', 'walk', 'walking'],
+  attack: ['1h_melee_attack_slice_horizontal', '1h_melee_attack_slice_diagonal', '1h_melee_attack_chop'],
+  'attack-heavy': ['2h_melee_attack_chop', '2h_melee_attack_slice', '2h_melee_attack_spin'],
+  'attack-thrust': ['1h_melee_attack_stab', '2h_melee_attack_stab'],
+  'attack-fast': ['dualwield_melee_attack_slice', 'dualwield_melee_attack_stab', '1h_melee_attack_slice_horizontal'],
+  'attack-ranged': ['1h_ranged_shoot', '1h_ranged_shooting', '2h_ranged_shoot'],
+  cast: ['spellcast_shoot', 'spellcast_raise', 'spellcasting', 'spellcast_long'],
+  hit: ['hit_a', 'hit_b'],
+  death: ['death_a', 'death_b'],
+  'dodge-forward': ['dodge_forward'],
+  'dodge-backward': ['dodge_backward'],
+  'dodge-left': ['dodge_left'],
+  'dodge-right': ['dodge_right'],
+  jump: ['jump_full_short', 'jump_start', 'jump_full_long'],
+  fall: ['jump_idle'],
+  block: ['blocking', 'block'],
+}
+
+/** Resolve against normalized real clip names; exposed so every mapping can be covered by tests. */
+export function resolveExternalClipName(mode: ExternalAnimation, clipNames: readonly string[]): string | undefined {
+  const normalized = clipNames.map(name => name.toLowerCase())
+  const candidates = ANIMATION_CANDIDATES[mode]
+  for (const candidate of candidates) {
+    const exact = normalized.findIndex(name => name === candidate)
+    if (exact >= 0) return clipNames[exact]
+  }
+  for (const candidate of candidates) {
+    const partial = normalized.findIndex(name => name.includes(candidate))
+    if (partial >= 0) return clipNames[partial]
+  }
+  return undefined
+}
 
 export class ExternalCharacter {
   readonly root = new THREE.Group()
@@ -72,26 +111,29 @@ export class ExternalCharacter {
     return new ExternalCharacter(scene, asset.animations, targetHeight)
   }
 
-  play(mode: ExternalAnimation): void {
-    const candidates: Record<ExternalAnimation, string[]> = {
-      idle: ['idle', 'stand', 'standing'], walk: ['walk', 'walking'], run: ['run', 'running', 'sprint', 'walk', 'walking'],
-      attack: ['attack', 'special', 'slash', 'sword'], hit: ['hit', 'hurt', 'hit_receive', 'hitrecieve'], death: ['dead', 'death', 'dying'],
-    }
-    const next = candidates[mode].map(name => this.actions.get(name)).find(Boolean)
-      ?? [...this.actions.entries()].find(([name]) => candidates[mode].some(candidate => name.includes(candidate)))?.[1]
+  play(mode: ExternalAnimation, force = false, actionDuration?: number): void {
+    const clipName = resolveExternalClipName(mode, [...this.actions.keys()])
+    const next = (clipName ? this.actions.get(clipName) : undefined)
       ?? this.actions.get('idle') ?? this.actions.values().next().value
-    if (!next || this.active === next) return
+    if (!next || (this.active === next && !force)) return
     this.active?.fadeOut(0.12)
     this.active = next
     this.active.reset().fadeIn(0.12)
-    this.active.setLoop(mode === 'death' || mode === 'hit' || mode === 'attack' ? THREE.LoopOnce : THREE.LoopRepeat, mode === 'death' ? 1 : Infinity)
-    this.active.clampWhenFinished = mode === 'death'
+    const oneShot = mode === 'death' || mode === 'hit' || mode === 'cast' || mode === 'jump'
+      || mode.startsWith('attack') || mode.startsWith('dodge-')
+    this.active.setLoop(oneShot ? THREE.LoopOnce : THREE.LoopRepeat, oneShot ? 1 : Infinity)
+    this.active.clampWhenFinished = oneShot
+    const duration = Number.isFinite(actionDuration) ? Math.max(0.1, actionDuration!) : 0
+    const rateSync = oneShot && mode !== 'death' && mode !== 'jump' && duration > 0
+      ? this.active.getClip().duration / duration
+      : 1
+    this.active.timeScale = Math.max(0.65, Math.min(4, rateSync))
     this.active.play()
     this.mode = mode
   }
 
-  update(dt: number, mode?: ExternalAnimation): void {
-    if (mode && mode !== this.mode) this.play(mode)
+  update(dt: number, mode?: ExternalAnimation, restart = false, actionDuration?: number): void {
+    if (mode && (mode !== this.mode || restart)) this.play(mode, restart, actionDuration)
     this.mixer.update(dt)
   }
 

@@ -34,6 +34,30 @@ export type AnimState = {
   /** Weapon used for the swing pose. */
   weapon: WeaponKind
   charging: boolean
+  rollDirection?: 'forward' | 'backward' | 'left' | 'right'
+}
+
+/** Select real KayKit clips where available; keep one central mapping for tests and rendering. */
+export function externalAnimationFor(state: AnimState): ExternalAnimation {
+  if (state.mode === 'attack') {
+    if (state.weapon === 'arco') return 'attack-ranged'
+    if (state.weapon === 'lanca') return 'attack-thrust'
+    if (state.weapon === 'machado' || state.weapon === 'espadao' || state.weapon === 'cajado') return 'attack-heavy'
+    if (state.weapon === 'adaga') return 'attack-fast'
+    return 'attack'
+  }
+  if (state.mode === 'roll') return `dodge-${state.rollDirection ?? 'forward'}` as ExternalAnimation
+  switch (state.mode) {
+    case 'walk': return 'walk'
+    case 'run': return 'run'
+    case 'jump': return 'jump'
+    case 'fall': return 'fall'
+    case 'block': return 'block'
+    case 'cast': return 'cast'
+    case 'hurt': return 'hit'
+    case 'dead': return 'death'
+    default: return 'idle'
+  }
 }
 
 export type Appearance = {
@@ -180,6 +204,7 @@ export class CharacterModel {
   private readonly metalMaterial: THREE.MeshStandardMaterial
   private external?: ExternalCharacter
   private externalMode: ExternalAnimation = 'idle'
+  private externalActionTime = 0
   private externalUrl = ''
   private externalRequest = 0
   private disposed = false
@@ -391,13 +416,13 @@ export class CharacterModel {
 
   /** Pose the rig for the current animation state. Called once per rendered frame. */
   animate(dt: number, state: AnimState): void {
-    const externalMode: ExternalAnimation = state.mode === 'walk' ? 'walk'
-      : state.mode === 'run' ? 'run'
-      : state.mode === 'attack' || state.mode === 'cast' ? 'attack'
-      : state.mode === 'hurt' ? 'hit'
-      : state.mode === 'dead' ? 'death' : 'idle'
+    const externalMode = externalAnimationFor(state)
+    const oneShot = state.mode === 'attack' || state.mode === 'cast' || state.mode === 'roll'
+      || state.mode === 'jump' || state.mode === 'hurt' || state.mode === 'dead'
+    const restartAction = oneShot && this.externalMode === externalMode && state.actionTime < this.externalActionTime - 0.001
+    this.external?.update(dt, externalMode, restartAction, state.actionDuration)
     this.externalMode = externalMode
-    this.external?.update(dt, externalMode)
+    this.externalActionTime = state.actionTime
     const speed = state.speed
     const move = clamp(speed / 7, 0, 1)
     if (state.mode === 'walk' || state.mode === 'run') this.walkCycle += dt * (4 + speed * 1.15)

@@ -24,10 +24,10 @@ export const QUESTS: QuestDef[] = [
     description:
       'A chuva ainda escorre das folhas quando você abre os olhos, e a única coisa que lembra é o próprio nome. A marca no seu braço pulsa como um segundo coração, e cada lobo sombrio da clareira parece sentir o cheiro dela. Iara diz que sobreviver ao primeiro dia já é um sinal, mas sobreviver ao guardião da floresta seria uma resposta.',
     objectives: [
-      { id: 'obj-p01-1', kind: 'matar', target: 'lobo-sombrio', count: 3, label: 'Expulsar os lobos sombrios da clareira (3)' },
-      { id: 'obj-p01-2', kind: 'coletar', target: 'mat-erva', count: 3, label: 'Colher erva curativa para os feridos da vila (3)' },
-      { id: 'obj-p01-3', kind: 'falar', target: 'velho-thom', count: 1, label: 'Ouvir o que Velho Thom sabe sobre a marca' },
-      { id: 'obj-p01-4', kind: 'chefe', target: 'guardiao-floresta-corrompido', count: 1, label: 'Enfrentar o Guardião da Floresta Corrompido' },
+      { id: 'obj-p01-1', kind: 'matar', target: 'lobo-sombrio', count: 3, label: 'Clareira de Brumal: derrote 3 lobos sombrios' },
+      { id: 'obj-p01-2', kind: 'coletar', target: 'mat-erva', count: 3, label: 'Bosque de Brumal: colha 3 ervas curativas para a vila' },
+      { id: 'obj-p01-3', kind: 'falar', target: 'velho-thom', count: 1, label: 'Vila de Brumal: fale com Velho Thom sobre a marca' },
+      { id: 'obj-p01-4', kind: 'chefe', target: 'guardiao-floresta-corrompido', count: 1, label: 'Clareira profunda: derrote o Guardião corrompido' },
     ],
     rewards: {
       xp: 120,

@@ -4,7 +4,7 @@ import { clamp, damp, dampAngle } from '../core/math'
 import type { Collider } from '../world/collision'
 import { resolveCircle } from '../world/collision'
 import type { DerivedStats } from '../systems/stats'
-import { CharacterModel, type AnimMode, type Appearance } from './character'
+import { CharacterModel, type AnimMode, type AnimState, type Appearance } from './character'
 import { characterModelUrlFor } from './characterAssets'
 import { DEFAULT_CHARACTER_PROFILE, parseCharacterProfile, type CharacterProfile } from '../data/characterProfile'
 import { attackDuration, comboMultiplier, weaponProfile, type WeaponProfile } from '../combat/weapons'
@@ -675,9 +675,10 @@ export class Player {
   render(dt: number): void {
     const speed = Math.hypot(this.velocity.x, this.velocity.z)
     let mode: AnimMode = 'idle'
+    let rollDirection: NonNullable<AnimState['rollDirection']> = 'forward'
     if (this.mode === 'dead') mode = 'dead'
     else if (this.mode === 'roll') mode = 'roll'
-    else if (this.mode === 'attack') mode = this.chargeTime > 0.4 && this.actionTimer <= 0 ? 'attack' : 'attack'
+    else if (this.mode === 'attack') mode = 'attack'
     else if (this.mode === 'cast') mode = 'cast'
     else if (this.mode === 'hurt') mode = 'hurt'
     else if (this.climbing) mode = 'climb'
@@ -686,6 +687,14 @@ export class Player {
     else if (!this.grounded) mode = this.velocity.y > 0 ? 'jump' : 'fall'
     else if (this.blocking) mode = 'block'
     else if (speed > 0.6) mode = this.sprinting ? 'run' : 'walk'
+    if (this.mode === 'roll') {
+      const cosine = Math.cos(this.facing)
+      const sine = Math.sin(this.facing)
+      const localX = cosine * this.rollDirection.x - sine * this.rollDirection.z
+      const localZ = sine * this.rollDirection.x + cosine * this.rollDirection.z
+      if (Math.abs(localX) > Math.abs(localZ)) rollDirection = localX > 0 ? 'right' : 'left'
+      else rollDirection = localZ > 0 ? 'backward' : 'forward'
+    }
     this.model.animate(dt, {
       mode,
       speed,
@@ -694,6 +703,7 @@ export class Player {
       combo: this.comboIndex,
       weapon: this.weapon,
       charging: this.chargeTime > 0.4,
+      rollDirection,
     })
     // Model sits on the feet pivot; lean the whole root while swimming.
     this.model.root.position.y = 0

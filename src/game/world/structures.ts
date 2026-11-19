@@ -258,6 +258,8 @@ export function buildVillage(terrain: Terrain, x: number, z: number, seed: numbe
   b.spots.chests.push({ x: x + 9, z: z + 13, y: terrain.heightAt(x + 9, z + 13), tier: 1 })
   b.spots.resources.push({ x: x - 20, z: z + 4, y: terrain.heightAt(x - 20, z + 4), kind: 'erva' })
   for (let i = 0; i < 3; i += 1) b.spots.enemies.push({ x: x + 26 + rng() * 10, z: z + 8 + rng() * 14, y: terrain.heightAt(x + 26, z + 8) })
+  b.spots.resources.push({ x: x - 24, z: z + 8, y: terrain.heightAt(x - 24, z + 8), kind: 'erva' })
+  b.spots.resources.push({ x: x - 16, z: z + 8, y: terrain.heightAt(x - 16, z + 8), kind: 'erva' })
   b.spots.resources.push({ x: x + 18, z: z + 16, y: terrain.heightAt(x + 18, z + 16), kind: 'madeira' })
   b.spots.resources.push({ x: x - 16, z: z - 16, y: terrain.heightAt(x - 16, z - 16), kind: 'ferro' })
   b.spots.npcs.push({ x: sx + 2.5, z: sz + 1, y: sy })

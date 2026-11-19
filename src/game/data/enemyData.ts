@@ -17,7 +17,7 @@ export const ENEMIES: EnemyType[] = [
     attackRange: 1.9,
     attackCooldown: 1.1,
     aggroRange: 18,
-    xp: 14,
+    xp: 20,
     scale: 0.9,
     colors: { body: '#3b3f4a', accent: '#7b8394' },
     nocturnal: true,

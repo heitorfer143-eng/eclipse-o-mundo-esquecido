@@ -70,9 +70,6 @@ export const NPCS: NpcDef[] = [
         id: 'trabalho',
         text: 'Sempre há. Os lobos estão descendo e a clareira já não é nossa. Depois, quando você estiver inteiro, existe uma ilha no horizonte que ninguém deveria enxergar.',
         choices: [
-          { text: 'Aceito cuidar da floresta.', action: 'aceitar', quest: 'principal-01' },
-          { text: 'A clareira está limpa, anciã.', action: 'concluir', quest: 'principal-01' },
-          { text: 'Estou pronto para a ilha.', action: 'aceitar', quest: 'principal-10' },
           { text: 'Volto depois.' },
         ],
       },

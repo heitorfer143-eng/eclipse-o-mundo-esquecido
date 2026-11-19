@@ -52,7 +52,7 @@ export const SPAWN_POINT = { x: 6, z: 806 }
 const FIXED_POIS: FixedPoi[] = [
   { id: 'vila-brumal', kind: 'vila', name: 'Brumal', anchor: [-10, 760], biomes: ['planicie', 'floresta'], level: 2, radius: 34 },
   { id: 'cidade-aster', kind: 'cidade', name: 'Aster, a Cidade Eterna', anchor: [170, 690], biomes: ['planicie', 'floresta'], level: 5, radius: 62 },
-  { id: 'clareira-corrompida', kind: 'ruinas', name: 'Clareira Corrompida', anchor: [-210, 880], biomes: ['floresta', 'floresta-densa'], level: 8, radius: 40, bossId: 'guardiao-floresta-corrompido' },
+  { id: 'clareira-corrompida', kind: 'ruinas', name: 'Clareira Corrompida', anchor: [-210, 880], biomes: ['floresta', 'floresta-densa'], level: 2, radius: 40, bossId: 'guardiao-floresta-corrompido' },
   { id: 'pantano-grakk', kind: 'acampamento', name: 'Acampamento de Grakk', anchor: [-420, 380], biomes: ['pantano'], level: 12, radius: 38, bossId: 'senhor-da-guerra-goblin' },
   { id: 'masmorra-ossos', kind: 'masmorra', name: 'Cripta dos Ossos', anchor: [-260, 1180], biomes: ['floresta-densa', 'floresta'], level: 16, radius: 34, bossId: 'rei-dos-ossos' },
   { id: 'ruinas-kharun', kind: 'ruinas', name: 'Ruínas de Kharun', anchor: [1040, -220], biomes: ['deserto'], level: 20, radius: 42, bossId: 'verme-das-areias' },

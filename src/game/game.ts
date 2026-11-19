@@ -32,7 +32,7 @@ import { BIOMES } from './world/biomes'
 import type { Poi } from './world/poi'
 import type { World } from './world/world'
 import type { Ui } from '../ui/ui'
-import type { HudAbility, HudSnapshot } from '../ui/hud'
+import type { HudAbility, HudPoi, HudSnapshot } from '../ui/hud'
 import type { PanelActions, PanelContext } from '../ui/panels'
 import { generateWorldMap } from '../ui/map'
 
@@ -1092,7 +1092,7 @@ export class Game {
       this.ui.toast(`+ ${def?.name ?? item.itemId} ×${item.count}`, 'item')
     }
     this.audio.play('win')
-    this.ui.toast(`Missão concluída: ${quest.name}`, 'level')
+    this.ui.toast(`Missão concluída: ${quest.name} · +${reward.xp} XP · +${reward.gold} ouro`, 'level')
     this.saveGame(true)
   }
 
@@ -1380,15 +1380,90 @@ export class Game {
     }))
     const trackedId = this.quests.tracked
     const tracked = trackedId && this.quests.state(trackedId)?.status === 'ativa' ? questById(trackedId) : undefined
+    const questReady = tracked ? this.quests.ready(tracked.id) : false
+    const questGiver = tracked ? this.population.npcs.find(npc => npc.def.id === tracked.giver) : undefined
+    const trackedObjectiveIndex = tracked
+      ? tracked.objectives.findIndex(objective => this.quests.objectiveProgress(tracked.id, objective.id) < objective.count)
+      : -1
+    const trackedObjective = tracked && trackedObjectiveIndex >= 0 ? tracked.objectives[trackedObjectiveIndex] : undefined
+    const trackedObjectiveProgress = tracked && trackedObjective
+      ? Math.min(trackedObjective.count, this.quests.objectiveProgress(tracked.id, trackedObjective.id))
+      : 0
+    const objectiveNpc = trackedObjective?.kind === 'falar'
+      ? this.population.npcs.find(npc => npc.def.id === trackedObjective.target)
+      : undefined
+    const objectiveEnemy = trackedObjective?.kind === 'matar'
+      ? this.spawner.enemies.reduce<Enemy | undefined>((nearest, enemy) => {
+        if (!enemy.alive || enemy.def.id !== trackedObjective.target) return nearest
+        if (!nearest) return enemy
+        const enemyDistance = enemy.position.distanceToSquared(this.player.position)
+        const nearestDistance = nearest.position.distanceToSquared(this.player.position)
+        return enemyDistance < nearestDistance ? enemy : nearest
+      }, undefined)
+      : undefined
+    const objectivePoiId = trackedObjective && ['interagir', 'chegar'].includes(trackedObjective.kind)
+      ? trackedObjective.target
+      : tracked?.marker
+    const objectivePoi = trackedObjective?.kind === 'chefe'
+      ? this.world.pois.list().find(poi => poi.bossId === trackedObjective.target)
+      : objectivePoiId ? this.world.pois.list().find(poi => poi.id === objectivePoiId) : undefined
+    const questPoiId = questReady ? undefined : objectivePoi?.id ?? (!objectiveNpc && !objectiveEnemy ? tracked?.marker : undefined)
     const quest = tracked
       ? {
         name: tracked.name,
-        objectives: tracked.objectives.map(objective => {
-          const current = Math.min(objective.count, this.quests.objectiveProgress(tracked.id, objective.id))
-          return { label: objective.label, current, count: objective.count, done: current >= objective.count }
-        }),
+        progress: questReady
+          ? `Entrega pendente · ${tracked.objectives.length}/${tracked.objectives.length} etapas`
+          : `Etapa ${trackedObjectiveIndex + 1}/${tracked.objectives.length} · ${trackedObjectiveProgress}/${trackedObjective?.count ?? 0}`,
+        objective: questReady
+          ? `Volte e fale com ${questGiver?.def.name ?? 'quem passou a missão'} para entregar.`
+          : trackedObjective?.label ?? 'Objetivos concluídos. Volte para entregar a missão.',
+        reward: `Recompensa: +${tracked.rewards.xp} XP · +${tracked.rewards.gold} ouro${tracked.rewards.items?.length
+          ? ` · ${tracked.rewards.items.map(item => `${item.count}× ${itemById(item.itemId)?.name ?? 'item'}`).join(' · ')}`
+          : ''}`,
+        ready: questReady,
       }
       : undefined
+    const questPois: HudPoi[] = this.world.pois.list().map(poi => ({
+      x: poi.x,
+      z: poi.z,
+      kind: poi.kind,
+      name: poi.name,
+      discovered: poi.discovered || Boolean(tracked && poi.id === questPoiId),
+      boss: Boolean(poi.bossId),
+      quest: Boolean(tracked && poi.id === questPoiId),
+    }))
+    const waypointNpc = questReady ? questGiver : objectiveNpc
+    if (tracked && waypointNpc) {
+      questPois.push({
+        x: waypointNpc.position.x,
+        z: waypointNpc.position.z,
+        kind: 'quest-npc',
+        name: waypointNpc.def.name,
+        discovered: true,
+        boss: false,
+        quest: true,
+      })
+    } else if (tracked && objectiveEnemy) {
+      questPois.push({
+        x: objectiveEnemy.position.x,
+        z: objectiveEnemy.position.z,
+        kind: 'quest-enemy',
+        name: objectiveEnemy.displayName,
+        discovered: true,
+        boss: false,
+        quest: true,
+      })
+    } else if (tracked && objectivePoi) {
+      questPois.push({
+        x: objectivePoi.x,
+        z: objectivePoi.z,
+        kind: objectivePoi.kind,
+        name: objectivePoi.name,
+        discovered: true,
+        boss: Boolean(objectivePoi.bossId),
+        quest: true,
+      })
+    }
     const biome = this.world.biomeAt(this.player.position.x, this.player.position.z)
     const nearPoi = this.world.pois.nearest(this.player.position.x, this.player.position.z, poi => Math.hypot(poi.x - this.player.position.x, poi.z - this.player.position.z) < poi.radius + 20)
     const time = this.world.sky.timeOfDay
@@ -1427,7 +1502,7 @@ export class Game {
       fps: this.fps,
       yaw: this.camera.yaw,
       player: { x: this.player.position.x, z: this.player.position.z },
-      pois: this.world.pois.list().map(poi => ({ x: poi.x, z: poi.z, kind: poi.kind, name: poi.name, discovered: poi.discovered, boss: Boolean(poi.bossId) })),
+      pois: questPois,
       sample: (x, z) => ({ height: this.world.heightAt(x, z), biome: this.world.biomeAt(x, z) }),
       enemies: this.spawner.enemies.filter(enemy => enemy.aggro && enemy.alive).slice(0, 24).map(enemy => ({ x: enemy.position.x, z: enemy.position.z })),
     }

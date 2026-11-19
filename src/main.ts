@@ -318,8 +318,8 @@ async function boot(): Promise<void> {
           blockHeld: mouseBlock || ui.heldTouch('block'),
           // Mouse deltas are already converted to radians; takeLook applies
           // sensitivity and vertical inversion once. Touch deltas are pixels.
-          lookX: look.x + touchLook.x * 0.006 * save.data.settings.sensitivity,
-          lookY: look.y + touchLook.y * 0.006 * save.data.settings.sensitivity,
+          lookX: look.x + touchLook.x * 0.0045 * save.data.settings.sensitivity,
+          lookY: look.y + touchLook.y * 0.0045 * save.data.settings.sensitivity * (save.data.settings.invertY ? -1 : 1),
           interact: input.consume('interact') || touchInteractPressed,
         }
         game.update(fixed, intent)

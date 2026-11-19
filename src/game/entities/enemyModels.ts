@@ -386,6 +386,22 @@ export function buildEnemyVisual(model: EnemyModel, colors: EnemyColors, scale =
   return { root, body, head, armL, armR, legL, legR, wings, height: height * scale, radius: radius * scale, materials }
 }
 
+export type EnemyVisualBounds = { width: number; height: number; depth: number }
+
+/** Fit the actual generated silhouette to world-unit limits; gameplay radii follow the same scale. */
+export function fitEnemyVisual(visual: EnemyVisual, maxHeight: number, maxFootprint: number): EnemyVisualBounds {
+  const size = new THREE.Box3().setFromObject(visual.root).getSize(new THREE.Vector3())
+  const footprint = Math.max(size.x, size.z)
+  const fit = Math.min(1, maxHeight / Math.max(0.001, size.y), maxFootprint / Math.max(0.001, footprint))
+  if (fit < 1) {
+    visual.root.scale.multiplyScalar(fit)
+    visual.radius *= fit
+    size.multiplyScalar(fit)
+  }
+  visual.height = size.y
+  return { width: size.x, height: size.y, depth: size.z }
+}
+
 export function disposeEnemyVisual(visual: EnemyVisual): void {
   visual.root.removeFromParent()
   // Geometries are cached and shared between enemies; only per-instance materials are disposed.
