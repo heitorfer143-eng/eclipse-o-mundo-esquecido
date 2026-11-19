@@ -5,7 +5,6 @@ export type TitleCallbacks = {
   onNew: () => void
   onContinue: (campaignId: string) => void
   onSettings: () => void
-  onCustomize: () => void
 }
 
 /** Tela inicial com slots independentes de personagem e campanha. */
@@ -13,7 +12,6 @@ export class TitleScreen {
   readonly root = document.createElement('div')
   private readonly continueButton: HTMLButtonElement
   private readonly newButton: HTMLButtonElement
-  private readonly customizeButton: HTMLButtonElement
   private readonly campaigns: HTMLDivElement
   private readonly meta: HTMLDivElement
   private readonly continueCampaign: (campaignId: string) => void
@@ -53,18 +51,12 @@ export class TitleScreen {
     this.newButton.textContent = 'Nova campanha'
     this.newButton.addEventListener('click', () => callbacks.onNew())
 
-    this.customizeButton = document.createElement('button')
-    this.customizeButton.type = 'button'
-    this.customizeButton.className = 'btn btn--ghost'
-    this.customizeButton.textContent = 'Editar aparência'
-    this.customizeButton.addEventListener('click', () => callbacks.onCustomize())
-
     const settingsButton = document.createElement('button')
     settingsButton.type = 'button'
     settingsButton.className = 'btn btn--ghost'
     settingsButton.textContent = 'Configurações'
     settingsButton.addEventListener('click', () => callbacks.onSettings())
-    menu.append(this.campaigns, this.continueButton, this.newButton, this.customizeButton, settingsButton)
+    menu.append(this.campaigns, this.continueButton, this.newButton, settingsButton)
     this.meta = this.root.querySelector<HTMLDivElement>('.title__meta')!
     parent.appendChild(this.root)
   }
@@ -77,7 +69,6 @@ export class TitleScreen {
     this.continueButton.classList.toggle('hidden', !game)
     this.newButton.disabled = this.save.data.campaigns.length >= MAX_CAMPAIGNS
     this.newButton.textContent = this.newButton.disabled ? 'Limite de campanhas alcançado' : 'Nova campanha'
-    this.customizeButton.classList.toggle('hidden', !hasCharacter)
 
     this.campaigns.replaceChildren()
     const otherCampaigns = this.save.data.campaigns.filter(campaign => campaign.game && campaign.id !== activeId)

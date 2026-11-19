@@ -9,11 +9,11 @@ import {
 import { handleModalKeydown } from './modalFocus'
 
 export type CharacterCustomizerOptions = {
-  mode?: 'create' | 'edit'
   onConfirm?: (profile: CharacterProfile) => void
   returnFocus?: HTMLElement
 }
 
+/** One-time character creation dialog; existing campaign identities cannot be edited here. */
 export class CharacterCustomizer {
   readonly root = document.createElement('div')
   private profile!: CharacterProfile
@@ -21,7 +21,6 @@ export class CharacterCustomizer {
   private onChange?: (profile: CharacterProfile) => void
   private onConfirm?: (profile: CharacterProfile) => void
   private returnFocus?: HTMLElement
-  private mode: 'create' | 'edit' = 'edit'
   private completed = false
   private readonly handleKeydown = (event: KeyboardEvent): void => {
     if (this.visible) handleModalKeydown(event, this.root, () => this.close())
@@ -50,22 +49,18 @@ export class CharacterCustomizer {
   ): void {
     this.profile = parseCharacterProfile(profile)
     this.initialProfile = this.profile
-    this.mode = options.mode ?? 'edit'
     this.onChange = onChange
     this.onConfirm = options.onConfirm
     this.completed = false
     this.returnFocus = options.returnFocus ?? (document.activeElement instanceof HTMLElement ? document.activeElement : undefined)
     this.render()
     this.root.classList.remove('hidden')
-    const initialFocus = this.mode === 'create'
-      ? this.root.querySelector<HTMLInputElement>('[data-player-name]')
-      : this.root.querySelector<HTMLElement>('[aria-pressed="true"]')
-    initialFocus?.focus()
+    this.root.querySelector<HTMLInputElement>('[data-player-name]')?.focus()
   }
 
   close(): void {
     if (!this.visible) return
-    if (this.mode === 'create' && !this.completed) this.onChange?.(this.initialProfile)
+    if (!this.completed) this.onChange?.(this.initialProfile)
     this.hide()
   }
 
@@ -79,14 +74,14 @@ export class CharacterCustomizer {
   }
 
   private finish(): void {
-    if (this.mode === 'create' && !isCharacterNameValid(this.profile.name)) {
+    if (!isCharacterNameValid(this.profile.name)) {
       this.root.querySelector<HTMLInputElement>('[data-player-name]')?.focus()
       return
     }
     const profile = parseCharacterProfile(this.profile)
     const onConfirm = this.onConfirm
     this.completed = true
-    this.hide(this.mode !== 'create')
+    this.hide(false)
     onConfirm?.(profile)
   }
 
@@ -103,26 +98,25 @@ export class CharacterCustomizer {
     if (input && input.value !== name) input.value = name
     this.onChange?.(this.profile)
     const finish = this.root.querySelector<HTMLButtonElement>('[data-finish]')
-    if (finish) finish.disabled = this.mode === 'create' && !isCharacterNameValid(name)
+    if (finish) finish.disabled = !isCharacterNameValid(name)
   }
 
   private render(): void {
     const selectedModel = CHARACTER_OPTIONS.find(option => option.id === this.profile.modelId) ?? CHARACTER_OPTIONS[0]
-    const creating = this.mode === 'create'
     this.root.innerHTML = `
       <section class="character-customizer__panel">
         <header class="character-customizer__head">
           <div>
             <div class="character-customizer__eyebrow">Aetherion · personagem da campanha</div>
-            <h2 class="character-customizer__title" id="character-customizer-title">${creating ? 'Criar personagem' : 'Editar aparência'}</h2>
+            <h2 class="character-customizer__title" id="character-customizer-title">Criar personagem</h2>
           </div>
           <button class="character-customizer__close" data-close type="button" aria-label="Fechar personalização">✕</button>
         </header>
         <div class="character-customizer__body scroll">
-          <p class="character-customizer__intro">${creating ? 'Escolha o nome e o visual do protagonista. Esse personagem acompanhará você ao longo da campanha.' : 'Altere o visual e a aura. O nome e o progresso desta campanha permanecem.'}</p>
+          <p class="character-customizer__intro">Escolha o nome e o visual do protagonista. Essa identidade ficará fixa nesta campanha.</p>
           <label class="character-customizer__section-title" for="campaign-player-name">Nome do jogador</label>
-          <input class="character-customizer__name" id="campaign-player-name" data-player-name type="text" maxlength="24" autocomplete="nickname" placeholder="Digite o nome do personagem" ${creating ? 'required' : 'readonly'}>
-          <p class="character-customizer__preview" aria-live="polite">${selectedModel.label} selecionado. ${creating ? 'A aparência pode ser escolhida antes de iniciar.' : 'A mudança é aplicada imediatamente ao aventureiro.'}</p>
+          <input class="character-customizer__name" id="campaign-player-name" data-player-name type="text" maxlength="24" autocomplete="nickname" placeholder="Digite o nome do personagem" required>
+          <p class="character-customizer__preview" aria-live="polite">${selectedModel.label} selecionado. A aparência pode ser escolhida antes de iniciar.</p>
           <h3 class="character-customizer__section-title">Visual</h3>
           <div class="character-customizer__models" role="group" aria-label="Modelos de personagem">
             ${CHARACTER_OPTIONS.map(option => `
@@ -142,8 +136,8 @@ export class CharacterCustomizer {
           </div>
         </div>
         <footer class="character-customizer__footer">
-          <span>${creating ? 'O nome será salvo junto ao personagem.' : 'Identidade e progresso preservados.'}</span>
-          <button class="btn btn--primary" data-finish type="button">${creating ? 'Confirmar e começar' : 'Concluir'}</button>
+          <span>O nome e o visual serão salvos nesta campanha.</span>
+          <button class="btn btn--primary" data-finish type="button">Confirmar e começar</button>
         </footer>
       </section>`
 
@@ -151,7 +145,7 @@ export class CharacterCustomizer {
     nameInput.value = this.profile.name
     nameInput.addEventListener('input', () => this.updateName(nameInput.value))
     const finish = this.root.querySelector<HTMLButtonElement>('[data-finish]')!
-    finish.disabled = creating && !isCharacterNameValid(this.profile.name)
+    finish.disabled = !isCharacterNameValid(this.profile.name)
     finish.addEventListener('click', () => this.finish())
 
     this.root.querySelectorAll<HTMLButtonElement>('[data-model]').forEach(button => {

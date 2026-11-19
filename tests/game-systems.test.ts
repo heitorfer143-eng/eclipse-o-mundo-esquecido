@@ -115,7 +115,11 @@ describe('salvamento local', () => {
     const store = new SaveStore(storage)
     const firstProfile = { name: 'Eira', modelId: 'Rogue_Hooded' as const, auraColor: '#c094ff' as const }
     const secondProfile = { name: 'Tarin', modelId: 'Mage' as const, auraColor: '#ffcc70' as const }
+    const attemptedChange = { name: 'Eira nova', modelId: 'Barbarian' as const, auraColor: '#ff785f' as const }
     const firstId = store.createCampaign(firstProfile, 11)!
+    expect(store.updateProfile(attemptedChange)).toEqual(firstProfile)
+    expect(store.updateCampaignProfile(firstId, attemptedChange)).toBeNull()
+    expect(store.activeCampaign?.profile).toEqual(firstProfile)
     store.saveGame({
       seed: 11, position: [4, 30, -8], facing: 0, playtime: 120, timeOfDay: 0.5,
       progression: { level: 7, xp: 800, attributePoints: 0, skillPoints: 0, attributes: {} },
@@ -142,6 +146,20 @@ describe('salvamento local', () => {
     expect(restored.activeCampaign?.id).toBe(firstId)
     expect(restored.data.profile.name).toBe('Eira')
     expect(restored.data.campaigns.find(slot => slot.id === secondId)?.game?.progression.level).toBe(2)
+  })
+  it('permite completar identidade de save legado incompleto apenas uma vez', () => {
+    const values = new Map<string, string>()
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value) },
+      removeItem: (key: string) => { values.delete(key) },
+    }
+    const store = new SaveStore(storage)
+    const id = store.createCampaign({ name: '', modelId: 'Knight', auraColor: '#7fe3ff' }, 33)!
+    const completed = { name: 'Nara', modelId: 'Rogue' as const, auraColor: '#8ee18a' as const }
+    expect(store.updateCampaignProfile(id, completed)).toEqual(completed)
+    expect(store.updateCampaignProfile(id, { ...completed, name: 'Nara alterada' })).toBeNull()
+    expect(store.activeCampaign?.profile).toEqual(completed)
   })
   it('normaliza posição com componentes Infinity, NaN e fora de limites, sem lançar', () => {
     const stored = JSON.stringify({ version: 2, game: { position: [Infinity, NaN, 1e999] } })

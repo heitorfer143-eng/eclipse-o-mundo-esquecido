@@ -107,6 +107,9 @@ export class ExternalCharacter {
       pending.catch(() => cache.delete(url))
     }
     const asset = await pending
+    // Cache SkinnedMesh bounds on the source before SkeletonUtils.clone rebinds its bones.
+    // Without this, clone-first bounds can collapse to ~0.001 and inflate the model footprint.
+    new THREE.Box3().setFromObject(asset.scene)
     const scene = clone(asset.scene) as THREE.Group
     return new ExternalCharacter(scene, asset.animations, targetHeight)
   }

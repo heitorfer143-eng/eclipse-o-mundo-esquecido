@@ -1149,7 +1149,6 @@ export class Game {
 
   private buildPanelActions(): PanelActions {
     return {
-      customize: () => this.ui.openCharacterCustomization(),
       equip: index => {
         const error = this.inventory.equipIndex(index, this.progression.level)
         if (error) this.ui.toast(error, 'warn')

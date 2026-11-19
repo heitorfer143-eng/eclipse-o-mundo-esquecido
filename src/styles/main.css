@@ -509,6 +509,7 @@ kbd {
   .hud__topleft { left: max(8px, env(safe-area-inset-left, 0px)); top: max(6px, env(safe-area-inset-top, 0px)); width: 190px; }
   .hud__topright { right: max(8px, env(safe-area-inset-right, 0px)); top: max(56px, calc(env(safe-area-inset-top, 0px) + 50px)); width: 176px; gap: 4px; }
   .hud__topcenter { top: max(4px, env(safe-area-inset-top, 0px)); width: min(360px, 42vw); }
+  .compass__mark--poi { display: none; }
   .hud__location { font-size: 14px; margin-top: 2px; }
   .hud__meta { font-size: 9px; }
   .quest { padding-block: 3px; }
@@ -589,7 +590,7 @@ kbd {
   .character-choice__copy small { font-size: 9px; }
   .character-customizer__auras { gap: 6px; }
   .aura-swatch { min-height: 44px; padding: 5px 8px; }
-  .character-customizer__footer .btn, .pause-actions [data-customize] { min-height: 44px; }
+  .character-customizer__footer .btn { min-height: 44px; }
 }
 
 @media (max-height: 480px) and (orientation: landscape) {

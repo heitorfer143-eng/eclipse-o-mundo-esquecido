@@ -5,7 +5,7 @@
 import { ITEMS } from '../game/data/itemData'
 import { QUESTS } from '../game/data/questData'
 import { SKILL_NODES } from '../game/systems/skills'
-import { DEFAULT_CHARACTER_PROFILE, parseCharacterProfile, type CharacterProfile } from '../game/data/characterProfile'
+import { DEFAULT_CHARACTER_PROFILE, isCharacterNameValid, parseCharacterProfile, type CharacterProfile } from '../game/data/characterProfile'
 
 export type Quality = 'low' | 'medium' | 'high'
 export type Settings = {
@@ -298,6 +298,8 @@ export class SaveStore {
     this.persist()
   }
   updateProfile(profile: CharacterProfile): CharacterProfile {
+    const active = this.activeCampaign
+    if (active) return active.profile
     const safeProfile = parseCharacterProfile(profile)
     const campaigns = this.data.campaigns.map(campaign => campaign.id === this.data.activeCampaignId
       ? { ...campaign, profile: safeProfile, updatedAt: Date.now() }
@@ -307,9 +309,9 @@ export class SaveStore {
     return safeProfile
   }
   updateCampaignProfile(id: string, profile: CharacterProfile): CharacterProfile | null {
+    const existing = this.data.campaigns.find(campaign => campaign.id === id)
+    if (!existing || isCharacterNameValid(existing.profile.name)) return null
     const safeProfile = parseCharacterProfile(profile)
-    const exists = this.data.campaigns.some(campaign => campaign.id === id)
-    if (!exists) return null
     const campaigns = this.data.campaigns.map(campaign => campaign.id === id
       ? { ...campaign, profile: safeProfile, updatedAt: Date.now() }
       : campaign)

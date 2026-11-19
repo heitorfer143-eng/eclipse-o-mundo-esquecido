@@ -52,7 +52,6 @@ export class Ui {
       },
       onContinue: campaignId => this.continueCampaign(campaignId, callbacks.onContinue),
       onSettings: () => this.openSettings(),
-      onCustomize: () => this.openCharacterCustomization(),
     })
     this.settingsOverlay.className = 'overlay hidden'
     root.appendChild(this.settingsOverlay)
@@ -96,19 +95,10 @@ export class Ui {
   closePanels(): void { this.panels.close(); this.syncTouch() }
   refreshPanels(): void { this.panels.refresh() }
 
-  openCharacterCustomization(): void {
-    this.characterCustomizer.open(this.save.data.profile, profile => {
-      const saved = this.save.updateProfile(profile)
-      this.onCharacterProfileChanged?.(saved)
-    }, { mode: 'edit' })
-    this.syncTouch()
-  }
-
   private createCharacter(onComplete: (profile: CharacterProfile) => void, returnFocus?: HTMLElement): void {
     this.characterCustomizer.open(DEFAULT_CHARACTER_PROFILE, profile => {
       this.onCharacterProfileChanged?.(profile)
     }, {
-      mode: 'create',
       returnFocus,
       onConfirm: onComplete,
     })
@@ -125,7 +115,6 @@ export class Ui {
     this.characterCustomizer.open(campaign.profile, profile => {
       this.onCharacterProfileChanged?.(profile)
     }, {
-      mode: 'create',
       onConfirm: profile => {
         const saved = this.save.updateCampaignProfile(campaignId, profile)
         if (!saved) return

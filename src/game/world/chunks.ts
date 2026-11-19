@@ -31,7 +31,11 @@ const animalCache = new Map<string, Promise<THREE.Group>>()
 function loadAnimal(url: string): Promise<THREE.Group> {
   let pending = animalCache.get(url)
   if (!pending) {
-    pending = animalLoader.loadAsync(url).then(gltf => gltf.scene)
+    pending = animalLoader.loadAsync(url).then(gltf => {
+      // Initialize skinned bounds before SkeletonUtils.clone rebinds the animal skeleton.
+      new THREE.Box3().setFromObject(gltf.scene)
+      return gltf.scene
+    })
     animalCache.set(url, pending)
     pending.catch(() => animalCache.delete(url))
   }

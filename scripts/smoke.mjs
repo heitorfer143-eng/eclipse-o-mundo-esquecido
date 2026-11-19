@@ -38,6 +38,8 @@ if (hasGame) {
   await captureScreenshot(page, '02-prologue.png')
   await page.getByRole('button', { name: 'Iniciar campanha' }).click()
   await page.locator('[data-player-name]').fill('Teste Eclipse')
+  await page.locator('[data-model="Mage"]').click()
+  await page.locator('[data-aura="arcano"]').click()
   await captureScreenshot(page, '03-character.png')
   await page.getByRole('button', { name: 'Confirmar e começar' }).click()
   await page.locator('.dialogue').waitFor({ state: 'visible' })
@@ -45,6 +47,13 @@ if (hasGame) {
   await page.getByRole('button', { name: 'Aceitar missão: O Despertar' }).click()
   await page.getByRole('button', { name: 'Encerrar conversa' }).click()
   await page.waitForTimeout(4500)
+  await page.waitForFunction(() => window.__eclipse.game.population.npcs.some(npc => npc.model.external), null, { timeout: 15000 })
+  const externalModelScales = await page.evaluate(() => window.__eclipse.game.population.npcs
+    .map(npc => npc.model.external?.root.children[0]?.scale.x)
+    .filter(scale => Number.isFinite(scale)))
+  if (externalModelScales.length && Math.max(...externalModelScales) > 100) {
+    throw new Error(`Bounds inválidos no modelo clonado; fator de escala extremo: ${Math.max(...externalModelScales)}.`)
+  }
   await page.getByText('Teste Eclipse', { exact: true }).waitFor()
   await captureScreenshot(page, '05-game.png')
   const state = await page.evaluate(() => {
@@ -79,9 +88,18 @@ if (hasGame) {
   })
   console.log('state:', state)
   if (state.openingQuest !== 'ativa' || state.trackedQuest !== 'principal-01') throw new Error('O aceite de O Despertar não persistiu.')
+  const createdProfile = await page.evaluate(() => window.__eclipse.save.activeCampaign?.profile)
+  if (createdProfile?.name !== 'Teste Eclipse' || createdProfile.modelId !== 'Mage' || createdProfile.auraColor !== '#c094ff') {
+    throw new Error(`O perfil escolhido na criação não foi salvo na campanha: ${JSON.stringify(createdProfile)}`)
+  }
   if (state.iaraDistance > 3.4) throw new Error('Iara não está acessível no ponto de início.')
   if (state.iaraCameraSide >= 0) throw new Error('Iara está entre a câmera e o jogador no ponto de início.')
   if (state.maxEnemyHeight > 2.45) throw new Error(`Mob maior que o limite: ${state.maxEnemyHeight} m.`)
+  await page.evaluate(() => window.__eclipse.game.pause())
+  await page.locator('.pause-card').waitFor()
+  if (await page.locator('[data-customize]').count()) throw new Error('A pausa ainda permite editar a identidade do personagem.')
+  await page.getByRole('button', { name: 'Continuar', exact: true }).evaluate(button => button.click())
+  await page.waitForFunction(() => window.__eclipse.game.mode === 'playing')
   await page.keyboard.down('KeyW')
   await page.waitForTimeout(1400)
   await page.keyboard.up('KeyW')
@@ -155,6 +173,7 @@ if (hasGame) {
   const firstCampaignId = await page.evaluate(() => window.__eclipse.save.data.activeCampaignId)
   await page.evaluate(() => window.__eclipse.game.pause())
   await page.getByRole('button', { name: 'Sair para o título' }).evaluate(button => button.click())
+  if (await page.getByRole('button', { name: 'Editar aparência' }).count()) throw new Error('O título ainda permite editar o personagem de uma campanha existente.')
   await page.getByRole('button', { name: 'Nova campanha' }).evaluate(button => button.click())
   await page.getByRole('button', { name: 'Iniciar campanha' }).click()
   await page.locator('[data-player-name]').fill('Nara Eclipse')
@@ -251,10 +270,12 @@ const landscape = await mobilePage.evaluate(() => ({
   canvasHeight: getComputedStyle(document.querySelector('#game')).height,
   cameraFov: window.__eclipse.camera.camera.fov,
   isLandscape: matchMedia('(orientation: landscape)').matches,
+  overlappingPoiLabels: [...document.querySelectorAll('.compass__mark--poi')].some(mark => getComputedStyle(mark).display !== 'none'),
 }))
 if (landscape.cameraFov !== 62 || !landscape.isLandscape || landscape.appHeight !== '390px' || landscape.canvasHeight !== '390px') {
   throw new Error(`O jogo não se adaptou ao giro do celular: ${JSON.stringify(landscape)}`)
 }
+if (landscape.overlappingPoiLabels) throw new Error('Rótulos longos de destinos se sobrepõem no compasso mobile landscape.')
 await captureScreenshot(mobilePage, '12-mobile-landscape.png')
 console.log('mobile portrait and landscape:', { portrait, landscape })
 await mobilePage.close()
