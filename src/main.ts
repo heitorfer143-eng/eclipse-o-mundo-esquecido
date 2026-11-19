@@ -36,6 +36,12 @@ async function boot(): Promise<void> {
   const canvas = document.querySelector<HTMLCanvasElement>('#game')!
   const uiRoot = document.querySelector<HTMLElement>('#ui')!
   const save = new SaveStore()
+  const launchUrl = new URL(window.location.href)
+  const resumeCampaignOnBoot = launchUrl.searchParams.get('eclipseResume') === '1'
+  if (resumeCampaignOnBoot) {
+    launchUrl.searchParams.delete('eclipseResume')
+    window.history.replaceState({}, '', launchUrl)
+  }
   const audio = new Audio()
   const input = new Input(canvas)
   const camera = new CameraRig(window.innerWidth / window.innerHeight)
@@ -77,7 +83,7 @@ async function boot(): Promise<void> {
     stopAssetProgress()
   }
   setProgress(0.5, 'Semeando um novo Aetherion')
-  const world = new World(save.data.game?.seed ?? createWorldSeed(), save.data.settings.quality, relicModel)
+  const world = new World(save.data.game?.seed ?? save.activeCampaign?.seed ?? createWorldSeed(), save.data.settings.quality, relicModel)
   await nextFrame()
 
   setProgress(0.62, 'Plantando florestas e ruínas')
@@ -85,8 +91,28 @@ async function boot(): Promise<void> {
 
   let game!: Game
   const ui = new Ui(uiRoot, save, {
-    onNewGame: () => startGame(true),
-    onContinue: () => startGame(false),
+    onNewGame: profile => {
+      const campaignId = save.createCampaign(profile, createWorldSeed())
+      if (!campaignId) {
+        window.alert('Você já tem 8 campanhas salvas. Seus personagens e progressos continuam preservados.')
+        ui.showTitle()
+        return
+      }
+      const next = new URL(window.location.href)
+      next.searchParams.set('eclipseResume', '1')
+      window.location.assign(next.toString())
+    },
+    onContinue: campaignId => {
+      const previousId = save.data.activeCampaignId
+      if (!save.activateCampaign(campaignId)) return
+      if (previousId !== campaignId) {
+        const next = new URL(window.location.href)
+        next.searchParams.set('eclipseResume', '1')
+        window.location.assign(next.toString())
+        return
+      }
+      startGame(false)
+    },
     onSettingsChanged: settings => {
       applyQuality(renderer, settings.quality)
       game.applySettings(settings)
@@ -121,12 +147,14 @@ async function boot(): Promise<void> {
   window.setTimeout(() => loading.root.remove(), 700)
 
   let started = false
-  const startGame = (fresh: boolean): void => {
+  let suppressAutomaticPauseUntil = 0
+  const startGame = (fresh: boolean, requestPointerLock = true): void => {
     audio.unlock()
     audio.startMusic()
     started = true
+    suppressAutomaticPauseUntil = performance.now() + 1800
     game.start(fresh)
-    if (ui.blocking) input.unlockPointer()
+    if (ui.blocking || !requestPointerLock) input.unlockPointer()
     else input.lockPointer()
   }
 
@@ -189,9 +217,13 @@ async function boot(): Promise<void> {
     if (event.code === 'KeyQ') mouseBlock = false
   })
 
+  let userInteractedSinceBoot = false
+  window.addEventListener('pointerdown', () => { userInteractedSinceBoot = true }, { capture: true, passive: true })
+  window.addEventListener('keydown', () => { userInteractedSinceBoot = true }, { capture: true })
   document.addEventListener('pointerlockchange', () => {
     if (document.pointerLockElement === canvas) return
-    if (game.mode === 'playing' && !ui.blocking && started) game.pause()
+    if (performance.now() < suppressAutomaticPauseUntil) return
+    if (game.mode === 'playing' && !ui.blocking && started && userInteractedSinceBoot) game.pause()
   })
 
   const resizeViewport = (): void => {
@@ -225,7 +257,8 @@ async function boot(): Promise<void> {
   }
 
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && game.mode === 'playing') game.pause()
+    if (document.hidden && game.mode === 'playing' && userInteractedSinceBoot
+      && performance.now() >= suppressAutomaticPauseUntil) game.pause()
     else resizeViewport()
   })
 
@@ -316,7 +349,8 @@ async function boot(): Promise<void> {
   }
   requestAnimationFrame(loop)
 
-  ui.showTitle()
+  if (resumeCampaignOnBoot && save.activeCampaign) startGame(false, false)
+  else ui.showTitle()
   const localSmoke = window.location.hostname === '127.0.0.1' && new URLSearchParams(window.location.search).has('smoke')
   if (import.meta.env.DEV || localSmoke) {
     ;(window as unknown as { __eclipse: unknown }).__eclipse = { game, ui, save, world, input, renderer, camera }

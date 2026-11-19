@@ -1,18 +1,17 @@
 import * as THREE from 'three'
 import type { SaveStore, Settings } from '../engine/save'
 import type { ElementId } from '../game/data/types'
-import type { CharacterProfile } from '../game/data/characterProfile'
+import { DEFAULT_CHARACTER_PROFILE, isCharacterNameValid, type CharacterProfile } from '../game/data/characterProfile'
 import { Hud, type HudSnapshot } from './hud'
 import { Panels, type DialogueChoiceView, type PanelContext } from './panels'
 import { TitleScreen } from './title'
 import { CharacterCustomizer } from './characterCustomizer'
 import { CampaignIntro } from './campaignIntro'
-import { isCharacterNameValid } from '../game/data/characterProfile'
 import { TouchControls, type TouchAction } from './touch'
 
 export type UiCallbacks = {
-  onNewGame: () => void
-  onContinue: () => void
+  onNewGame: (profile: CharacterProfile) => void
+  onContinue: (campaignId: string) => void
   onSettingsChanged?: (settings: Settings) => void
   onCharacterProfileChanged?: (profile: CharacterProfile) => void
 }
@@ -42,7 +41,7 @@ export class Ui {
     this.campaignIntro = new CampaignIntro(root, {
       onStart: () => {
         this.campaignIntro.close(false)
-        this.ensureCharacter(callbacks.onNewGame, this.title.newCampaignTrigger)
+        this.createCharacter(callbacks.onNewGame, this.title.newCampaignTrigger)
       },
       onClose: () => this.syncTouch(),
     })
@@ -51,7 +50,7 @@ export class Ui {
         this.campaignIntro.open()
         this.syncTouch()
       },
-      onContinue: () => this.ensureCharacter(callbacks.onContinue),
+      onContinue: campaignId => this.continueCampaign(campaignId, callbacks.onContinue),
       onSettings: () => this.openSettings(),
       onCustomize: () => this.openCharacterCustomization(),
     })
@@ -105,20 +104,33 @@ export class Ui {
     this.syncTouch()
   }
 
-  private ensureCharacter(onComplete: () => void, returnFocus?: HTMLElement): void {
-    if (isCharacterNameValid(this.save.data.profile.name)) {
-      onComplete()
-      return
-    }
-    this.characterCustomizer.open(this.save.data.profile, profile => {
+  private createCharacter(onComplete: (profile: CharacterProfile) => void, returnFocus?: HTMLElement): void {
+    this.characterCustomizer.open(DEFAULT_CHARACTER_PROFILE, profile => {
       this.onCharacterProfileChanged?.(profile)
     }, {
       mode: 'create',
       returnFocus,
+      onConfirm: onComplete,
+    })
+    this.syncTouch()
+  }
+
+  private continueCampaign(campaignId: string, onComplete: (campaignId: string) => void): void {
+    const campaign = this.save.data.campaigns.find(entry => entry.id === campaignId)
+    if (!campaign) return
+    if (isCharacterNameValid(campaign.profile.name)) {
+      onComplete(campaignId)
+      return
+    }
+    this.characterCustomizer.open(campaign.profile, profile => {
+      this.onCharacterProfileChanged?.(profile)
+    }, {
+      mode: 'create',
       onConfirm: profile => {
-        const saved = this.save.updateProfile(profile)
+        const saved = this.save.updateCampaignProfile(campaignId, profile)
+        if (!saved) return
         this.onCharacterProfileChanged?.(saved)
-        onComplete()
+        onComplete(campaignId)
       },
     })
     this.syncTouch()

@@ -36,13 +36,24 @@ export type GameSave = {
   createdAt: number
   updatedAt: number
 }
+export type CampaignSlot = {
+  id: string
+  seed: number
+  profile: CharacterProfile
+  game: GameSave | null
+  createdAt: number
+  updatedAt: number
+}
 export type SaveData = {
-  version: 2
+  version: 3
   settings: Settings
   game: GameSave | null
   profile: CharacterProfile
+  campaigns: CampaignSlot[]
+  activeCampaignId: string | null
 }
 export const SAVE_KEY = 'eclipse.o-mundo-esquecido.v2'
+export const MAX_CAMPAIGNS = 8
 const DEFAULT_POSITION: [number, number, number] = [0, 40, 800]
 const ATTRIBUTE_KEYS = ['forca', 'defesa', 'agilidade', 'inteligencia', 'energia', 'vitalidade'] as const
 const EQUIPMENT_KINDS = {
@@ -78,7 +89,7 @@ export function defaultSettings(): Settings {
   }
 }
 export function defaultSave(): SaveData {
-  return { version: 2, settings: defaultSettings(), game: null, profile: DEFAULT_CHARACTER_PROFILE }
+  return { version: 3, settings: defaultSettings(), game: null, profile: DEFAULT_CHARACTER_PROFILE, campaigns: [], activeCampaignId: null }
 }
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -200,6 +211,18 @@ function parseGame(raw: unknown): GameSave | null {
     updatedAt: clampNumber(raw.updatedAt, Date.now(), 0, MAX_TIMESTAMP),
   }
 }
+function parseCampaign(raw: unknown): CampaignSlot | null {
+  if (!isRecord(raw) || typeof raw.id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(raw.id)) return null
+  const game = parseGame(raw.game)
+  return {
+    id: raw.id,
+    seed: clampInteger(raw.seed, game?.seed ?? 20271117, 0, 4_294_967_295),
+    profile: parseCharacterProfile(raw.profile),
+    game,
+    createdAt: clampNumber(raw.createdAt, game?.createdAt ?? Date.now(), 0, MAX_TIMESTAMP),
+    updatedAt: clampNumber(raw.updatedAt, game?.updatedAt ?? Date.now(), 0, MAX_TIMESTAMP),
+  }
+}
 /** Parse untrusted stored JSON into a valid SaveData. */
 export function parseSave(raw: string | null): SaveData {
   const base = defaultSave()
@@ -212,7 +235,7 @@ export function parseSave(raw: string | null): SaveData {
   } catch {
     return base
   }
-  if (data.version !== 2) return base
+  if (data.version !== 2 && data.version !== 3) return base
   const settingsRaw = isRecord(data.settings) ? data.settings : {}
   const settings: Settings = {
     musicVolume: clamp01(settingsRaw.musicVolume, base.settings.musicVolume),
@@ -224,7 +247,33 @@ export function parseSave(raw: string | null): SaveData {
     reducedMotion: settingsRaw.reducedMotion === true,
     language: 'pt-BR',
   }
-  return { version: 2, settings, game: parseGame(data.game), profile: parseCharacterProfile(data.profile) }
+  const profile = parseCharacterProfile(data.profile)
+  const game = parseGame(data.game)
+  const campaigns: CampaignSlot[] = []
+  const seenCampaignIds = new Set<string>()
+  if (Array.isArray(data.campaigns)) {
+    for (const rawCampaign of data.campaigns.slice(0, MAX_CAMPAIGNS * 2)) {
+      const campaign = parseCampaign(rawCampaign)
+      if (!campaign || seenCampaignIds.has(campaign.id)) continue
+      campaigns.push(campaign)
+      seenCampaignIds.add(campaign.id)
+      if (campaigns.length >= MAX_CAMPAIGNS) break
+    }
+  }
+  // Migrate the old single adventure into a permanent slot; its progress is never discarded.
+  if (campaigns.length === 0 && game) {
+    campaigns.push({ id: `legacy-${game.seed}`, seed: game.seed, profile, game, createdAt: game.createdAt, updatedAt: game.updatedAt })
+  }
+  const requestedActiveId = typeof data.activeCampaignId === 'string' ? data.activeCampaignId : null
+  const active = campaigns.find(campaign => campaign.id === requestedActiveId) ?? campaigns[0] ?? null
+  return {
+    version: 3,
+    settings,
+    game: active ? active.game : game,
+    profile: active ? active.profile : profile,
+    campaigns,
+    activeCampaignId: active?.id ?? null,
+  }
 }
 export class SaveStore {
   data: SaveData
@@ -250,17 +299,68 @@ export class SaveStore {
   }
   updateProfile(profile: CharacterProfile): CharacterProfile {
     const safeProfile = parseCharacterProfile(profile)
-    this.data = { ...this.data, profile: safeProfile }
+    const campaigns = this.data.campaigns.map(campaign => campaign.id === this.data.activeCampaignId
+      ? { ...campaign, profile: safeProfile, updatedAt: Date.now() }
+      : campaign)
+    this.data = { ...this.data, profile: safeProfile, campaigns }
+    this.persist()
+    return safeProfile
+  }
+  updateCampaignProfile(id: string, profile: CharacterProfile): CharacterProfile | null {
+    const safeProfile = parseCharacterProfile(profile)
+    const exists = this.data.campaigns.some(campaign => campaign.id === id)
+    if (!exists) return null
+    const campaigns = this.data.campaigns.map(campaign => campaign.id === id
+      ? { ...campaign, profile: safeProfile, updatedAt: Date.now() }
+      : campaign)
+    this.data = {
+      ...this.data,
+      campaigns,
+      ...(this.data.activeCampaignId === id ? { profile: safeProfile } : {}),
+    }
     this.persist()
     return safeProfile
   }
   saveGame(game: GameSave): void {
-    this.data = { ...this.data, game: { ...game, updatedAt: Date.now() } }
+    const saved = { ...game, updatedAt: Date.now() }
+    const campaigns = this.data.campaigns.map(campaign => campaign.id === this.data.activeCampaignId
+      ? { ...campaign, seed: saved.seed, game: saved, updatedAt: saved.updatedAt }
+      : campaign)
+    this.data = { ...this.data, game: saved, campaigns }
     this.persist()
   }
   clearGame(): void {
-    this.data = { ...this.data, game: null }
+    const campaigns = this.data.campaigns.map(campaign => campaign.id === this.data.activeCampaignId
+      ? { ...campaign, game: null, updatedAt: Date.now() }
+      : campaign)
+    this.data = { ...this.data, game: null, campaigns }
     this.persist()
+  }
+  createCampaign(profile: CharacterProfile, seed: number): string | null {
+    if (this.data.campaigns.length >= MAX_CAMPAIGNS) return null
+    const now = Date.now()
+    const id = `campaign-${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    const campaign: CampaignSlot = {
+      id,
+      seed: clampInteger(seed, 20271117, 0, 4_294_967_295),
+      profile: parseCharacterProfile(profile),
+      game: null,
+      createdAt: now,
+      updatedAt: now,
+    }
+    this.data = { ...this.data, game: null, profile: campaign.profile, campaigns: [...this.data.campaigns, campaign], activeCampaignId: id }
+    this.persist()
+    return id
+  }
+  activateCampaign(id: string): boolean {
+    const campaign = this.data.campaigns.find(entry => entry.id === id)
+    if (!campaign) return false
+    this.data = { ...this.data, activeCampaignId: campaign.id, game: campaign.game, profile: campaign.profile }
+    this.persist()
+    return true
+  }
+  get activeCampaign(): CampaignSlot | null {
+    return this.data.campaigns.find(campaign => campaign.id === this.data.activeCampaignId) ?? null
   }
   get hasGame(): boolean {
     return this.data.game !== null

@@ -111,6 +111,9 @@ button, input, select { font-family: inherit; }
 .title__name { font-family: var(--serif); font-size: clamp(44px, 8vw, 96px); line-height: 0.95; margin: 12px 0 8px; letter-spacing: 0.02em; }
 .title__tag { max-width: 520px; color: #c8bba4; line-height: 1.7; font-size: 15px; }
 .title__menu { display: flex; flex-direction: column; gap: 10px; max-width: 320px; }
+.title__campaigns { display: flex; flex-direction: column; gap: 6px; max-height: min(24vh, 180px); overflow-y: auto; overscroll-behavior: contain; }
+.title__campaigns-label { color: var(--gold); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; }
+.title__campaign { min-height: 38px; padding: 8px 12px; font-size: 12px; text-align: left; }
 .title__foot { display: flex; justify-content: space-between; align-items: flex-end; color: #8d8172; font-size: 12px; letter-spacing: 0.08em; }
 .title__foot kbd { margin-right: 4px; }
 .title__controls--touch { display: none; }
@@ -491,6 +494,7 @@ kbd {
   .title__tag { max-width: 66ch; font-size: 11px; line-height: 1.35; }
   .title__menu { width: 100%; max-width: none; flex-direction: row; flex-wrap: wrap; gap: 8px; }
   .title__menu .btn { min-height: 40px; padding: 8px 12px; font-size: 12px; }
+  .title__campaigns { max-height: 72px; flex: 1 1 100%; }
   .title__foot { display: none; }
   .dialogue { bottom: max(5px, env(safe-area-inset-bottom, 0px)); width: min(760px, 94vw); }
   .dialogue__box { padding: 9px 13px; max-height: calc(var(--app-height, 100vh) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 10px); }
@@ -624,4 +628,8 @@ kbd {
   .campaign-intro__panel { width: 100%; max-height: 84dvh; gap: 11px; padding: 22px 18px max(18px, env(safe-area-inset-bottom, 0px)); border-radius: 14px; }
   .campaign-intro__description { font-size: 14px; line-height: 1.65; }
   .campaign-intro__footer .btn { min-height: 44px; }
+}
+@media (min-width: 641px) and (min-height: 481px) and (max-height: 720px) {
+  .title { justify-content: flex-start; gap: 16px; overflow-y: auto; }
+  .title__foot { margin-top: auto; padding-top: 8px; }
 }

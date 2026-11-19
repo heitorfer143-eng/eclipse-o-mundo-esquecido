@@ -3,6 +3,8 @@ import * as THREE from 'three'
 import { CameraRig } from '../src/game/camera'
 import { parseSave, SAVE_KEY, SaveStore } from '../src/engine/save'
 import { DEFAULT_CHARACTER_PROFILE, isCharacterNameValid } from '../src/game/data/characterProfile'
+import { BOSSES } from '../src/game/data/bossData'
+import { Boss } from '../src/game/entities/boss'
 import { NPCS } from '../src/game/data/npcData'
 import { QUESTS, questById } from '../src/game/data/questData'
 import { DialogueRunner } from '../src/game/systems/dialogue'
@@ -60,8 +62,10 @@ describe('salvamento local', () => {
       updatedAt: 1,
     })
 
-    expect(new SaveStore(storage).data.game?.seed).toBe(seed)
     const restored = new SaveStore(storage)
+    expect(restored.data.game?.seed).toBe(seed)
+    expect(restored.data.campaigns).toHaveLength(1)
+    expect(restored.activeCampaign?.game?.seed).toBe(seed)
     restored.clearGame()
     expect(restored.data.game).toBeNull()
   })
@@ -94,6 +98,44 @@ describe('salvamento local', () => {
 
     values.set(SAVE_KEY, JSON.stringify({ version: 2, game: null, profile: { modelId: '<script>', auraColor: 'url(javascript:alert(1))' } }))
     expect(new SaveStore(storage).data.profile).toEqual(DEFAULT_CHARACTER_PROFILE)
+  })
+  it('mantém personagens e progressos separados ao criar e alternar campanhas', () => {
+    const values = new Map<string, string>()
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value) },
+      removeItem: (key: string) => { values.delete(key) },
+    }
+    const store = new SaveStore(storage)
+    const firstProfile = { name: 'Eira', modelId: 'Rogue_Hooded' as const, auraColor: '#c094ff' as const }
+    const secondProfile = { name: 'Tarin', modelId: 'Mage' as const, auraColor: '#ffcc70' as const }
+    const firstId = store.createCampaign(firstProfile, 11)!
+    store.saveGame({
+      seed: 11, position: [4, 30, -8], facing: 0, playtime: 120, timeOfDay: 0.5,
+      progression: { level: 7, xp: 800, attributePoints: 0, skillPoints: 0, attributes: {} },
+      inventory: { stacks: [], equipment: {}, gold: 55 }, skills: {},
+      quests: { tracked: 'principal-01', states: {} }, discovered: ['poi-1'], openedChests: [],
+      deaths: 1, kills: 9, createdAt: 10, updatedAt: 20,
+    })
+    const secondId = store.createCampaign(secondProfile, 22)!
+    store.saveGame({
+      seed: 22, position: [0, 40, 800], facing: 0, playtime: 12, timeOfDay: 0.3,
+      progression: { level: 2, xp: 30, attributePoints: 0, skillPoints: 0, attributes: {} },
+      inventory: { stacks: [], equipment: {}, gold: 4 }, skills: {},
+      quests: { tracked: null, states: {} }, discovered: [], openedChests: [],
+      deaths: 0, kills: 1, createdAt: 30, updatedAt: 30,
+    })
+
+    expect(store.data.campaigns).toHaveLength(2)
+    expect(store.data.activeCampaignId).toBe(secondId)
+    expect(store.activateCampaign(firstId)).toBe(true)
+    expect(store.data.profile).toEqual(firstProfile)
+    expect(store.data.game).toMatchObject({ seed: 11, progression: { level: 7 }, inventory: { gold: 55 } })
+    const restored = new SaveStore(storage)
+    expect(restored.data.campaigns).toHaveLength(2)
+    expect(restored.activeCampaign?.id).toBe(firstId)
+    expect(restored.data.profile.name).toBe('Eira')
+    expect(restored.data.campaigns.find(slot => slot.id === secondId)?.game?.progression.level).toBe(2)
   })
   it('normaliza posição com componentes Infinity, NaN e fora de limites, sem lançar', () => {
     const stored = JSON.stringify({ version: 2, game: { position: [Infinity, NaN, 1e999] } })
@@ -275,5 +317,15 @@ describe('câmera de terceira pessoa', () => {
 
     expect(camera.camera.position.z).toBeLessThan(3)
     expect(camera.camera.position.z).toBeGreaterThan(0)
+  })
+})
+
+describe('escala dos chefes', () => {
+  it('mantém todos os chefes em tamanho legível e compatível com a câmera', () => {
+    for (const definition of BOSSES) {
+      const boss = new Boss(definition, 0, 0)
+      expect(boss.height, definition.id).toBeLessThanOrEqual(2.45)
+      boss.dispose()
+    }
   })
 })

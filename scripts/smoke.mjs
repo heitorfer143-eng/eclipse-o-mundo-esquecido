@@ -33,7 +33,7 @@ console.log('game object:', hasGame)
 console.log('errors so far:', errors.slice(0, 8))
 
 if (hasGame) {
-  await page.getByRole('button', { name: 'Criar personagem · campanha' }).click()
+  await page.getByRole('button', { name: 'Nova campanha' }).click()
   await page.getByText('Você acorda na Floresta de Brumal sem memória', { exact: false }).waitFor()
   await captureScreenshot(page, '02-prologue.png')
   await page.getByRole('button', { name: 'Iniciar campanha' }).click()
@@ -140,6 +140,56 @@ if (hasGame) {
   if (acceptedLegacy.quest !== 'ativa' || acceptedLegacy.tracked !== 'principal-01') {
     throw new Error('O aceite de O Despertar não funcionou após a migração legada.')
   }
+
+  await page.getByRole('button', { name: 'Encerrar conversa' }).evaluate(button => button.click())
+  const firstCampaignId = await page.evaluate(() => window.__eclipse.save.data.activeCampaignId)
+  await page.evaluate(() => window.__eclipse.game.pause())
+  await page.getByRole('button', { name: 'Sair para o título' }).evaluate(button => button.click())
+  await page.getByRole('button', { name: 'Nova campanha' }).evaluate(button => button.click())
+  await page.getByRole('button', { name: 'Iniciar campanha' }).click()
+  await page.locator('[data-player-name]').fill('Nara Eclipse')
+  await page.getByRole('button', { name: 'Confirmar e começar' }).click()
+  await page.waitForFunction(() => window.__eclipse?.game
+    && window.__eclipse.save.data.campaigns.length === 2
+    && window.__eclipse.save.data.profile.name === 'Nara Eclipse', null, { timeout: 45000 })
+  const newCampaignDialogue = await page.locator('.dialogue').evaluate(element => !element.classList.contains('hidden'))
+  if (newCampaignDialogue) {
+    await page.getByRole('button', { name: 'Encerrar conversa' }).evaluate(button => button.click())
+  } else if (await page.evaluate(() => window.__eclipse.game.mode === 'paused')) {
+    await page.getByRole('button', { name: 'Continuar', exact: true }).evaluate(button => button.click())
+  }
+  await page.waitForFunction(() => window.__eclipse?.game.mode === 'playing', null, { timeout: 10000 })
+  const secondCampaign = await page.evaluate(() => ({
+    activeId: window.__eclipse.save.data.activeCampaignId,
+    profile: window.__eclipse.save.data.profile.name,
+    campaigns: window.__eclipse.save.data.campaigns.map(slot => ({
+      id: slot.id,
+      name: slot.profile.name,
+      level: slot.game?.progression.level ?? null,
+      gold: slot.game?.inventory.gold ?? null,
+    })),
+  }))
+  if (secondCampaign.activeId === firstCampaignId || secondCampaign.profile !== 'Nara Eclipse') {
+    throw new Error(`A segunda personagem/campanha não foi criada: ${JSON.stringify(secondCampaign)}`)
+  }
+  const firstSlot = secondCampaign.campaigns.find(slot => slot.id === firstCampaignId)
+  if (firstSlot?.name !== 'Teste Eclipse' || firstSlot.level !== 5 || firstSlot.gold !== 321) {
+    throw new Error(`A campanha original foi sobrescrita: ${JSON.stringify(secondCampaign)}`)
+  }
+  const dialogueOpen = await page.locator('.dialogue').evaluate(element => !element.classList.contains('hidden'))
+  if (dialogueOpen) await page.getByRole('button', { name: 'Encerrar conversa' }).evaluate(button => button.click())
+  await page.evaluate(() => window.__eclipse.game.pause())
+  await page.getByRole('button', { name: 'Sair para o título' }).evaluate(button => button.click())
+  await page.getByRole('button', { name: /Retomar Teste Eclipse, nível 5/ }).evaluate(button => button.click())
+  await page.waitForFunction(id => window.__eclipse?.game
+    && window.__eclipse.save.data.activeCampaignId === id
+    && window.__eclipse.save.data.profile.name === 'Teste Eclipse'
+    && window.__eclipse.game.progression.level === 5, firstCampaignId, { timeout: 45000 })
+  if (await page.evaluate(() => window.__eclipse.game.mode === 'paused')) {
+    await page.getByRole('button', { name: 'Continuar', exact: true }).evaluate(button => button.click())
+  }
+  await page.waitForFunction(() => window.__eclipse?.game.mode === 'playing', null, { timeout: 10000 })
+  console.log('multiple campaigns: created a second character and resumed the original save intact')
 }
 
 await page.close()
