@@ -44,7 +44,8 @@ export class World {
     const firstNpc = startingVillage ? this.pois.spotsOf(startingVillage.id)?.npcs[0] : undefined
     if (firstNpc) {
       const x = firstNpc.x + 1
-      const z = firstNpc.z - 2
+      // Keep the story NPC ahead of the player, not between the third-person camera and the player.
+      const z = firstNpc.z + 2.6
       this.spawn.set(x, this.terrain.heightAt(x, z) + 0.2, z)
       this.pois.update(this.spawn.x, this.spawn.z, 3)
     }

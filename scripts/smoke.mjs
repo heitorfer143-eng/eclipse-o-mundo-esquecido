@@ -51,6 +51,11 @@ if (hasGame) {
     const g = window.__eclipse.game
     const iara = g.population.npcs.find(npc => npc.def.id === 'iara')
     const iaraDistance = iara?.position.distanceTo(g.player.position) ?? Infinity
+    const camera = g.camera.camera.position
+    const iaraCameraSide = iara
+      ? (iara.position.x - g.player.position.x) * (camera.x - g.player.position.x)
+        + (iara.position.z - g.player.position.z) * (camera.z - g.player.position.z)
+      : Infinity
     const maxEnemyHeight = Math.max(0, ...g.spawner.enemies.map(enemy => enemy.height))
     return {
       mode: g.mode,
@@ -59,6 +64,7 @@ if (hasGame) {
       enemies: g.spawner.enemies.length,
       maxEnemyHeight,
       iaraDistance,
+      iaraCameraSide,
       openingQuest: g.quests.state('principal-01')?.status ?? null,
       trackedQuest: g.quests.tracked,
       level: g.progression.level,
@@ -71,6 +77,7 @@ if (hasGame) {
   console.log('state:', state)
   if (state.openingQuest !== 'ativa' || state.trackedQuest !== 'principal-01') throw new Error('O aceite de O Despertar não persistiu.')
   if (state.iaraDistance > 3.4) throw new Error('Iara não está acessível no ponto de início.')
+  if (state.iaraCameraSide >= 0) throw new Error('Iara está entre a câmera e o jogador no ponto de início.')
   if (state.maxEnemyHeight > 2.45) throw new Error(`Mob maior que o limite: ${state.maxEnemyHeight} m.`)
   await page.keyboard.down('KeyW')
   await page.waitForTimeout(1400)

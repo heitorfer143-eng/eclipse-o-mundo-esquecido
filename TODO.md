@@ -112,4 +112,5 @@ H poção · Tab inventário · K habilidades · M mapa · L missões · Esc pau
 - [x] Limitar a altura visual dos dez chefes a 2,45 m para que nenhum monstro ocupe quase toda a tela; validar cada definição de chefe em teste automatizado.
 - [x] Permitir criar até oito campanhas sem sobrescrever as anteriores; cada slot mantém nome, aparência, seed e progresso próprios, oferece retomada por seleção e migra o save antigo de campanha única sem apagá-lo.
 - [x] Validar no smoke a criação de um segundo personagem/campanha, a troca de volta para a campanha original com nível e ouro preservados, além de retrato e paisagem mobile; build e 14 testes unitários passaram.
+- [x] Posicionar a NPC inicial à frente do protagonista, fora do eixo entre câmera e jogador; cobrir distância de conversa e lado da câmera no smoke mobile.
 - [ ] Login com Google e sincronização/back-end de contas ficam para a próxima etapa, conforme pedido do usuário para focar nisso depois.
