@@ -4,6 +4,13 @@ import { mkdirSync } from 'node:fs'
 const URL = process.env.SMOKE_URL ?? 'http://localhost:5173/'
 const OUT = process.env.SHOTS_DIR ?? 'shots'
 mkdirSync(OUT, { recursive: true })
+async function captureScreenshot(page, filename) {
+  try {
+    await page.screenshot({ path: `${OUT}/${filename}`, timeout: 8000, animations: 'disabled', scale: 'css' })
+  } catch (error) {
+    console.warn(`Screenshot opcional ignorado (${filename}): ${error.message}`)
+  }
+}
 
 const browser = await chromium.launch({
   ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}),
@@ -18,7 +25,7 @@ page.on('pageerror', error => errors.push(`pageerror: ${error.message}`))
 
 await page.goto(URL, { waitUntil: 'domcontentloaded' })
 await page.waitForTimeout(12000)
-await page.screenshot({ path: `${OUT}/01-title.png` })
+await captureScreenshot(page, '01-title.png')
 
 const hasGame = await page.evaluate(() => Boolean(window.__eclipse?.game))
 console.log('game object:', hasGame)
@@ -27,18 +34,18 @@ console.log('errors so far:', errors.slice(0, 8))
 if (hasGame) {
   await page.getByRole('button', { name: 'Criar personagem · campanha' }).click()
   await page.getByText('Você acorda na Floresta de Brumal sem memória', { exact: false }).waitFor()
-  await page.screenshot({ path: `${OUT}/02-prologue.png` })
+  await captureScreenshot(page, '02-prologue.png')
   await page.getByRole('button', { name: 'Iniciar campanha' }).click()
   await page.locator('[data-player-name]').fill('Teste Eclipse')
-  await page.screenshot({ path: `${OUT}/03-character.png` })
+  await captureScreenshot(page, '03-character.png')
   await page.getByRole('button', { name: 'Confirmar e começar' }).click()
   await page.locator('.dialogue').waitFor({ state: 'visible' })
-  await page.screenshot({ path: `${OUT}/04-iara-dialogue.png` })
+  await captureScreenshot(page, '04-iara-dialogue.png')
   await page.getByRole('button', { name: 'Aceitar missão: O Despertar' }).click()
   await page.getByRole('button', { name: 'Encerrar conversa' }).click()
   await page.waitForTimeout(4500)
   await page.getByText('Teste Eclipse', { exact: true }).waitFor()
-  await page.screenshot({ path: `${OUT}/05-game.png` })
+  await captureScreenshot(page, '05-game.png')
   const state = await page.evaluate(() => {
     const g = window.__eclipse.game
     const iara = g.population.npcs.find(npc => npc.def.id === 'iara')
@@ -68,20 +75,20 @@ if (hasGame) {
   await page.waitForTimeout(1400)
   await page.keyboard.up('KeyW')
   await page.waitForTimeout(600)
-  await page.screenshot({ path: `${OUT}/06-walk.png` })
+  await captureScreenshot(page, '06-walk.png')
   await page.keyboard.press('Tab')
   await page.waitForTimeout(800)
-  await page.screenshot({ path: `${OUT}/07-inventory.png` })
+  await captureScreenshot(page, '07-inventory.png')
   await page.keyboard.press('Escape')
   await page.waitForTimeout(500)
   await page.keyboard.press('KeyM')
   await page.waitForTimeout(1600)
-  await page.screenshot({ path: `${OUT}/08-map.png` })
+  await captureScreenshot(page, '08-map.png')
   await page.keyboard.press('Escape')
   await page.waitForTimeout(400)
   await page.keyboard.press('KeyK')
   await page.waitForTimeout(800)
-  await page.screenshot({ path: `${OUT}/09-skills.png` })
+  await captureScreenshot(page, '09-skills.png')
   await page.reload({ waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: 'Continuar campanha' }).waitFor()
   await page.getByRole('button', { name: 'Continuar campanha' }).click()
@@ -123,7 +130,7 @@ if (hasGame) {
   if (legacy.quest || legacy.tracked || legacy.level !== 5 || legacy.gold !== 321 || legacy.spawnDistance > 0.1) {
     throw new Error(`Save antigo não foi direcionado a Iara com progresso preservado: ${JSON.stringify(legacy)}`)
   }
-  await page.screenshot({ path: `${OUT}/10-legacy-iara-dialogue.png` })
+  await captureScreenshot(page, '10-legacy-iara-dialogue.png')
   await page.getByRole('button', { name: 'Aceitar missão: O Despertar' }).evaluate(button => button.click())
   const acceptedLegacy = await page.evaluate(() => ({
     quest: window.__eclipse.game.quests.state('principal-01')?.status ?? null,
@@ -142,7 +149,7 @@ mobilePage.on('pageerror', error => errors.push(`mobile pageerror: ${error.messa
 await mobilePage.goto(mobileUrl.toString(), { waitUntil: 'domcontentloaded' })
 await mobilePage.waitForFunction(() => window.__eclipse?.game, { timeout: 30000 })
 await mobilePage.evaluate(() => window.__eclipse.ui.touch.show(true))
-await mobilePage.screenshot({ path: `${OUT}/11-mobile-portrait.png` })
+await captureScreenshot(mobilePage, '11-mobile-portrait.png')
 const portrait = await mobilePage.evaluate(() => ({
   touchAction: getComputedStyle(document.querySelector('.touch__look')).touchAction,
   appHeight: getComputedStyle(document.documentElement).getPropertyValue('--app-height').trim(),
@@ -164,7 +171,7 @@ const landscape = await mobilePage.evaluate(() => ({
 if (landscape.cameraFov !== 62 || !landscape.isLandscape || landscape.appHeight !== '390px' || landscape.canvasHeight !== '390px') {
   throw new Error(`O jogo não se adaptou ao giro do celular: ${JSON.stringify(landscape)}`)
 }
-await mobilePage.screenshot({ path: `${OUT}/12-mobile-landscape.png` })
+await captureScreenshot(mobilePage, '12-mobile-landscape.png')
 console.log('mobile portrait and landscape:', { portrait, landscape })
 await mobilePage.close()
 
