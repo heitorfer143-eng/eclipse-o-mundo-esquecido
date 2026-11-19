@@ -142,6 +142,8 @@ if (hasGame) {
   }
 }
 
+await page.close()
+
 const mobileUrl = new globalThis.URL(URL)
 mobileUrl.searchParams.set('smoke', '1')
 const mobilePage = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
