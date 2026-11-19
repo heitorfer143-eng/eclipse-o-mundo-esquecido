@@ -208,10 +208,12 @@ export function buildVillage(terrain: Terrain, x: number, z: number, seed: numbe
   const b = new StructureBuilder(x, z, y)
   const rng = mulberry32(seed)
   well(b, x, z, y)
+  // The first village NPC is the story guide; keep her in the open near the well.
+  b.spots.npcs.push({ x: x + 4, z: z + 1, y: terrain.heightAt(x + 4, z + 1) })
   const count = 6 + Math.floor(rng() * 4)
   for (let i = 0; i < count; i += 1) {
     const angle = (i / count) * Math.PI * 2 + rng() * 0.4
-    const radius = 11 + rng() * 9
+    const radius = 20 + rng() * 8
     const hx = x + Math.cos(angle) * radius
     const hz = z + Math.sin(angle) * radius
     const hy = terrain.heightAt(hx, hz)

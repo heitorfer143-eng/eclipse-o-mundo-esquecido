@@ -23,7 +23,7 @@ export const NPCS: NpcDef[] = [
     nodes: {
       raiz: {
         id: 'raiz',
-        text: 'Você voltou. Sente-se, que a idade não me deixa ficar de pé por educação. A marca no seu braço está mais quieta hoje — isso é bom ou é muito ruim.',
+        text: 'Você acordou na clareira com uma marca ardendo no braço. Três lobos sombrios rondam Brumal, os feridos precisam de ervas e o Velho Thom talvez saiba o que aconteceu. Ajude a vila — e depois eu lhe conto o que a marca pode significar.',
         choices: [
           { text: 'Quem sou eu?', next: 'marca' },
           { text: 'O que foi o Eclipse?', next: 'eclipse' },

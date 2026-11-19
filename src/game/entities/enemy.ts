@@ -37,7 +37,9 @@ const STATE_LABEL: Record<string, string> = {
 }
 
 // Ajuste visual global dos inimigos comuns; chefes mantêm as escalas próprias dos dados.
-const COMMON_ENEMY_SIZE_FACTOR = 0.82
+const COMMON_ENEMY_SIZE_FACTOR = 0.7
+const MAX_COMMON_ENEMY_HEIGHT = 2.05
+const MAX_ELITE_ENEMY_HEIGHT = 2.45
 
 /** A single living creature with a small but readable state-machine AI. */
 export class Enemy {
@@ -92,6 +94,13 @@ export class Enemy {
     this.home = new THREE.Vector3(spawn.homeX ?? spawn.x, 0, spawn.homeZ ?? spawn.z)
     const scale = this.def.scale * COMMON_ENEMY_SIZE_FACTOR * (this.elite ? 1.35 : 1)
     this.visual = buildEnemyVisual(this.def.model, this.def.colors, scale)
+    const maxHeight = this.elite ? MAX_ELITE_ENEMY_HEIGHT : MAX_COMMON_ENEMY_HEIGHT
+    if (this.visual.height > maxHeight) {
+      const fit = maxHeight / this.visual.height
+      this.visual.root.scale.multiplyScalar(fit)
+      this.visual.height = maxHeight
+      this.visual.radius *= fit
+    }
     this.root.add(this.visual.root)
     const externalEnemyUrl = this.def.model === 'cavaleiro' ? EXTERNAL_CHARACTER_URLS.knight
       : this.def.model === 'esqueleto' || this.def.model === 'mumia' ? EXTERNAL_CHARACTER_URLS.mummy

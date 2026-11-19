@@ -149,7 +149,7 @@ export class Game {
     this.skills.reset()
     if (fresh) this.save.clearGame()
     this.quests.states.clear()
-    this.quests.tracked = 'principal-01'
+    this.quests.tracked = null
     this.discovered.clear()
     this.openedChests.clear()
     this.defeatedBosses.clear()
@@ -170,15 +170,24 @@ export class Game {
     this.inventory.add('pocao-mana-1', 2)
     this.inventory.add('comida-pao', 2)
     if (saved) this.loadFrom(saved)
+    const shouldIntroduceIara = !this.quests.state('principal-01')
+    if (shouldIntroduceIara) this.spawnPoint.copy(this.world.spawn)
     this.refreshStats()
     this.world.sky.timeOfDay = saved?.timeOfDay ?? 0.3
-    this.player.teleport(new THREE.Vector3(saved?.position[0] ?? this.spawnPoint.x, saved?.position[1] ?? this.spawnPoint.y, saved?.position[2] ?? this.spawnPoint.z))
+    this.player.teleport(shouldIntroduceIara
+      ? this.world.spawn
+      : new THREE.Vector3(saved?.position[0] ?? this.spawnPoint.x, saved?.position[1] ?? this.spawnPoint.y, saved?.position[2] ?? this.spawnPoint.z))
     this.camera.reset(this.player.position, this.player.facing)
+    this.camera.update(0, this.player.position, { x: 0, y: 0 }, this.world, false, false)
+    this.population.update(0, this.player.position)
+    this.updateNpcQuestMarkers()
     this.ui.showGame()
     this.ui.closePanels()
+    this.updateHud(0)
     this.onModeChange?.(this.mode)
     this.ui.toast(saved ? 'Aventura retomada' : 'Uma nova jornada começa', 'quest')
     this.saveGame(true)
+    if (shouldIntroduceIara && this.population.npcs.some(npc => npc.def.id === 'iara')) this.openNpcDialogue('iara')
   }
 
   pause(): void {
@@ -226,6 +235,7 @@ export class Game {
     this.world.update(sim, this.camera.camera, this.player.position)
     this.camera.update(sim, this.player.position, { x: input.lookX, y: input.lookY }, {
       groundAt: (x, z, y) => this.world.groundAt(x, z, y),
+      collidersNear: (x, z) => this.world.collidersNear(x, z),
     }, this.player.sprinting, this.player.gliding)
 
     const playerEvents: PlayerEvent[] = []
@@ -300,6 +310,7 @@ export class Game {
 
     this.effects.update(sim)
     this.population.update(sim, this.player.position)
+    this.updateNpcQuestMarkers()
     this.markSavedChests()
     this.spawner.update(sim, {
       playerPosition: this.player.position,
@@ -966,9 +977,17 @@ export class Game {
   }
 
   // ── dialogue ─────────────────────────────────────────────────────────────
+  private updateNpcQuestMarkers(): void {
+    for (const npc of this.population.npcs) {
+      const { offer, turnIn } = this.quests.forNpc(npc.def.id, this.progression.level)
+      npc.setQuestMarker(turnIn.length ? 'turnIn' : offer.length ? 'offer' : null)
+    }
+  }
+
   openNpcDialogue(npcId: string): void {
     const def = npcById(npcId)
     if (!def) return
+    this.population.npcs.find(npc => npc.def.id === npcId)?.setTalking(true)
     this.dialogue.open(def, this.quests, this.progression.level)
     this.quests.progress('falar', npcId)
     this.mode = 'paused'
@@ -1055,6 +1074,7 @@ export class Game {
     this.audio.play('quest')
     this.quests.tracked = id
     this.quests.syncInventory(this.inventory)
+    this.saveGame(true)
   }
 
   private turnInQuest(id: string): void {
@@ -1077,6 +1097,8 @@ export class Game {
   }
 
   closeDialogue(): void {
+    const npcId = this.dialogue.npc?.id
+    if (npcId) this.population.npcs.find(npc => npc.def.id === npcId)?.setTalking(false)
     this.ui.hideDialogue()
     this.dialogue.close()
     this.mode = 'playing'
@@ -1356,7 +1378,8 @@ export class Game {
       locked: !abilityUnlocked(ability, this.progression.level),
       key: ['Z', 'X', 'C'][index] ?? '?',
     }))
-    const tracked = this.quests.tracked ? questById(this.quests.tracked) : undefined
+    const trackedId = this.quests.tracked
+    const tracked = trackedId && this.quests.state(trackedId)?.status === 'ativa' ? questById(trackedId) : undefined
     const quest = tracked
       ? {
         name: tracked.name,

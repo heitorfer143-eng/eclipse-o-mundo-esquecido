@@ -112,7 +112,8 @@ async function boot(): Promise<void> {
     audio.startMusic()
     started = true
     game.start(fresh)
-    input.lockPointer()
+    if (ui.blocking) input.unlockPointer()
+    else input.lockPointer()
   }
 
   // ── input plumbing ──────────────────────────────────────────────────────
@@ -234,7 +235,7 @@ async function boot(): Promise<void> {
 
     if (!started) {
       if (ui.characterCustomizationVisible) orbitCharacterPreview(now / 1000)
-      else camera.orbit(now / 1000, world.spawn, 14)
+      else camera.orbit(now / 1000, world.spawn, 32)
     } else if (game.mode === 'playing' && !ui.blocking) {
       accumulator += raw
       let steps = 0
@@ -271,7 +272,7 @@ async function boot(): Promise<void> {
       accumulator = 0
       if (started && game.mode === 'paused') {
         if (ui.characterCustomizationVisible) orbitCharacterPreview(now / 1000)
-        else camera.orbit(now / 1000, game.position, 10)
+        else if (!game.dialogue.npc) camera.orbit(now / 1000, game.position, 10)
       }
     }
 
@@ -289,7 +290,8 @@ async function boot(): Promise<void> {
   requestAnimationFrame(loop)
 
   ui.showTitle()
-  if (import.meta.env.DEV) {
+  const localSmoke = window.location.hostname === '127.0.0.1' && new URLSearchParams(window.location.search).has('smoke')
+  if (import.meta.env.DEV || localSmoke) {
     ;(window as unknown as { __eclipse: unknown }).__eclipse = { game, ui, save, world, input, renderer, camera }
   }
 }

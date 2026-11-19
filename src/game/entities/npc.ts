@@ -19,6 +19,11 @@ const ROLE_COLORS: Record<string, { cloth: string; accent: string; leather: stri
   sacerdote: { cloth: '#d8d0c0', accent: '#d8b45a', leather: '#8a7a5a', skin: '#e0b090', hair: '#a0a0a0' },
 }
 
+const QUEST_MARKER_MATERIALS = {
+  offer: makeQuestMarkerMaterial('!', '#f3c65b'),
+  turnIn: makeQuestMarkerMaterial('?', '#7fe0a2'),
+}
+
 /** A townsperson: procedural body, floating nameplate and a small idle routine. */
 export class Npc {
   readonly def: NpcDef
@@ -26,6 +31,9 @@ export class Npc {
   readonly position = new THREE.Vector3()
   readonly model: CharacterModel
   private readonly label: THREE.Sprite
+  private readonly offerMarker: THREE.Sprite
+  private readonly turnInMarker: THREE.Sprite
+  private questMarkerKind: 'offer' | 'turnIn' | null = null
   private readonly home: THREE.Vector3
   private target = new THREE.Vector3()
   private wanderTimer = 2
@@ -65,16 +73,37 @@ export class Npc {
     this.label = makeNameplate(def.name, def.role)
     this.label.position.y = 2.25 * HUMANOID_VISUAL_SCALE * scale
     this.root.add(this.label)
+    this.offerMarker = new THREE.Sprite(QUEST_MARKER_MATERIALS.offer)
+    this.turnInMarker = new THREE.Sprite(QUEST_MARKER_MATERIALS.turnIn)
+    for (const marker of [this.offerMarker, this.turnInMarker]) {
+      marker.position.set(0, 2.35, 0)
+      marker.scale.set(0.48, 0.58, 1)
+      marker.visible = false
+      this.root.add(marker)
+    }
   }
 
   setTalking(talking: boolean): void {
     this.talking = talking
     this.label.visible = !talking
+    this.updateQuestMarkerVisibility(0)
+  }
+
+  setQuestMarker(kind: 'offer' | 'turnIn' | null): void {
+    this.questMarkerKind = kind
+    this.updateQuestMarkerVisibility(0)
+  }
+
+  private updateQuestMarkerVisibility(distance: number): void {
+    const visible = !this.talking && distance < 45
+    this.offerMarker.visible = visible && this.questMarkerKind === 'offer'
+    this.turnInMarker.visible = visible && this.questMarkerKind === 'turnIn'
   }
 
   update(dt: number, playerPosition: THREE.Vector3, playerNear: boolean): void {
     this.animTime += dt
     const distanceToPlayer = Math.hypot(playerPosition.x - this.position.x, playerPosition.z - this.position.z)
+    this.updateQuestMarkerVisibility(distanceToPlayer)
     let moving = false
     if (playerNear && distanceToPlayer < 5) {
       this.facing = dampAngle(this.facing, Math.atan2(-(playerPosition.x - this.position.x), -(playerPosition.z - this.position.z)), 6, dt)
@@ -162,4 +191,26 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.lineTo(x, y + r)
   ctx.quadraticCurveTo(x, y, x + r, y)
   ctx.closePath()
+}
+
+function makeQuestMarkerMaterial(label: string, color: string): THREE.SpriteMaterial {
+  const canvas = document.createElement('canvas')
+  canvas.width = 96
+  canvas.height = 96
+  const ctx = canvas.getContext('2d')!
+  ctx.beginPath()
+  ctx.arc(48, 48, 38, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(12, 10, 18, 0.9)'
+  ctx.fill()
+  ctx.strokeStyle = color
+  ctx.lineWidth = 6
+  ctx.stroke()
+  ctx.fillStyle = color
+  ctx.font = '700 56px system-ui, sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(label, 48, 49)
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  return new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false, toneMapped: false })
 }

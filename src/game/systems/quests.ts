@@ -12,7 +12,7 @@ export type QuestState = {
 /** Tracks accepted quests, objective progress and completion. */
 export class QuestLog {
   states = new Map<string, QuestState>()
-  tracked: string | null = 'principal-01'
+  tracked: string | null = null
 
   state(id: string): QuestState | undefined {
     return this.states.get(id)
@@ -98,18 +98,9 @@ export class QuestLog {
     if (!quest || !state || state.status !== 'ativa' || !this.objectivesDone(quest)) return null
     state.status = 'concluida'
     if (this.tracked === id) {
-      const next = quest.next ?? this.firstAvailable(quest)
-      this.tracked = next ?? null
+      this.tracked = QUESTS.find(candidate => this.states.get(candidate.id)?.status === 'ativa')?.id ?? null
     }
     return quest.rewards
-  }
-
-  private firstAvailable(from: QuestDef): string | null {
-    for (const quest of QUESTS) {
-      if (!quest.requires?.includes(from.id)) continue
-      if (this.states.get(quest.id)?.status === 'ativa') return quest.id
-    }
-    return null
   }
 
   active(): QuestDef[] {
@@ -152,12 +143,16 @@ export class QuestLog {
 
   load(data: Partial<ReturnType<QuestLog['toJSON']>> | undefined): void {
     this.states.clear()
+    this.tracked = null
     if (!data) return
-    this.tracked = data.tracked ?? null
     for (const [id, state] of Object.entries(data.states ?? {})) {
       if (!questById(id)) continue
       if (state.status !== 'ativa' && state.status !== 'concluida') continue
       this.states.set(id, { status: state.status, progress: { ...state.progress } })
     }
+    const requested = data.tracked
+    this.tracked = requested && this.states.get(requested)?.status === 'ativa'
+      ? requested
+      : QUESTS.find(quest => this.states.get(quest.id)?.status === 'ativa')?.id ?? null
   }
 }

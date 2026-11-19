@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import * as THREE from 'three'
+import { CameraRig } from '../src/game/camera'
 import { parseSave, SAVE_KEY, SaveStore } from '../src/engine/save'
 import { DEFAULT_CHARACTER_PROFILE, isCharacterNameValid } from '../src/game/data/characterProfile'
 import { NPCS } from '../src/game/data/npcData'
@@ -225,5 +227,45 @@ describe('arco opcional da memória', () => {
     expect(quests.isCompleted('secundaria-13')).toBe(true)
     expect(quests.isCompleted('secundaria-14')).toBe(true)
     expect(quests.isCompleted('secundaria-15')).toBe(true)
+  })
+})
+
+describe('abertura da campanha', () => {
+  it('oferece O Despertar por Iara e só rastreia a missão depois do aceite', () => {
+    const quests = new QuestLog()
+    const openingQuest = questById('principal-01')!
+
+    expect(quests.tracked).toBeNull()
+    expect(quests.state(openingQuest.id)).toBeUndefined()
+    expect(quests.forNpc('iara', 1).offer.map(quest => quest.id)).toContain(openingQuest.id)
+    expect(quests.accept(openingQuest.id, 1)).toBeNull()
+    expect(quests.tracked).toBe(openingQuest.id)
+    expect(quests.state(openingQuest.id)?.status).toBe('ativa')
+  })
+
+  it('remove o rastreador fantasma de save antigo sem descartar missão já aceita', () => {
+    const quests = new QuestLog()
+    quests.load({ tracked: 'principal-01', states: {} })
+    expect(quests.tracked).toBeNull()
+
+    quests.load({ tracked: 'principal-01', states: { 'principal-01': { status: 'ativa', progress: {} } } })
+    expect(quests.tracked).toBe('principal-01')
+  })
+})
+
+describe('câmera de terceira pessoa', () => {
+  it('encurta o enquadramento antes de atravessar uma parede', () => {
+    const camera = new CameraRig(1)
+    const target = new THREE.Vector3(0, 0, 0)
+    const wall = { kind: 'box' as const, minX: -2, maxX: 2, minZ: 3, maxZ: 4, top: 5, bottom: 0, blocking: true }
+
+    camera.reset(target)
+    camera.update(1 / 60, target, { x: 0, y: 0 }, {
+      groundAt: () => 0,
+      collidersNear: () => [wall],
+    }, false, false)
+
+    expect(camera.camera.position.z).toBeLessThan(3)
+    expect(camera.camera.position.z).toBeGreaterThan(0)
   })
 })

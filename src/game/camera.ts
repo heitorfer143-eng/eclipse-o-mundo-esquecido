@@ -1,8 +1,10 @@
 import * as THREE from 'three'
 import { clamp, damp } from './core/math'
+import type { Collider } from './world/collision'
 
 export type CameraWorld = {
   groundAt: (x: number, z: number, feetY: number) => number
+  collidersNear?: (x: number, z: number) => readonly Collider[]
 }
 
 /**
@@ -84,6 +86,26 @@ export class CameraRig {
       }
     }
 
+    // Shorten the boom before it crosses a house, rock, or tree trunk; otherwise
+    // the camera can start inside opaque geometry and fill the whole screen.
+    if (world.collidersNear) {
+      const steps = 16
+      for (let i = 3; i <= steps; i += 1) {
+        const t = i / steps
+        const x = THREE.MathUtils.lerp(this.target.x, this.desired.x, t)
+        const y = THREE.MathUtils.lerp(this.target.y, this.desired.y, t)
+        const z = THREE.MathUtils.lerp(this.target.z, this.desired.z, t)
+        if (!this.isInsideCollider(x, y, z, world.collidersNear(x, z))) continue
+        const safeT = Math.max(0.22, (i - 1) / steps)
+        this.desired.set(
+          THREE.MathUtils.lerp(this.target.x, this.desired.x, safeT),
+          THREE.MathUtils.lerp(this.target.y, this.desired.y, safeT),
+          THREE.MathUtils.lerp(this.target.z, this.desired.z, safeT),
+        )
+        break
+      }
+    }
+
     // Snap to a valid third-person position on the first frame after reset; smoothing
     // from the world origin made the camera sweep through/under the player.
     this.camera.position.lerp(this.desired, wasInitialized ? 1 - Math.exp(-18 * dt) : 1)
@@ -115,5 +137,19 @@ export class CameraRig {
 
   get forward(): THREE.Vector3 {
     return new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw))
+  }
+
+  private isInsideCollider(x: number, y: number, z: number, colliders: readonly Collider[]): boolean {
+    for (const collider of colliders) {
+      if (collider.kind === 'circle') {
+        const top = collider.top && collider.top > 0 ? collider.top : Number.POSITIVE_INFINITY
+        if (y < (collider.bottom ?? Number.NEGATIVE_INFINITY) || y > top) continue
+        if (Math.hypot(x - collider.x, z - collider.z) <= collider.radius + 0.22) return true
+        continue
+      }
+      if (collider.blocking === false || y < collider.bottom || y > collider.top) continue
+      if (x >= collider.minX - 0.22 && x <= collider.maxX + 0.22 && z >= collider.minZ - 0.22 && z <= collider.maxZ + 0.22) return true
+    }
+    return false
   }
 }

@@ -99,5 +99,11 @@ H poção · Tab inventário · K habilidades · M mapa · L missões · Esc pau
 ## Ciclo atual: campanha e proporções dos personagens (19 nov 2026)
 - [x] Apresentar o prólogo do capítulo 1 ao iniciar a campanha, reutilizando os textos oficiais da missão, e manter a tela de carregamento visível com lore.
 - [x] Exigir nome na criação do protagonista, guardar o perfil no save local e reutilizá-lo ao continuar; saves antigos continuam carregando e só pedem nome se ainda não houver um.
-- [x] Corrigir a escala-base dos NPCs e reduzir em 18% os inimigos comuns, sem alterar as escalas próprias dos chefes.
-- [x] Atualizar o smoke test para percorrer prólogo, criação nominal e entrada no jogo.
+- [x] Corrigir a escala-base dos NPCs, reduzir mobs comuns e limitar altura visual/collider de comuns e elites, mantendo a escala própria dos chefes.
+- [x] Atualizar o smoke test para percorrer prólogo, criação nominal, diálogo/aceite da missão, retomada e save antigo.
+
+## Correções do início da campanha (19 nov 2026)
+- [x] Ao iniciar uma campanha sem O Despertar aceito, posicionar o protagonista em Brumal e apresentar um diálogo de Iara que ofereça a missão; saves antigos sem essa missão são direcionados à conversa sem apagar inventário ou progresso.
+- [x] Não mostrar objetivos de O Despertar antes do aceite; depois que o jogador aceitar, mostrar o rastreador e persistir o estado da missão.
+- [x] Indicar NPCs com missão disponível ou pronta para entrega, permitir falar/interagir com eles e manter o diálogo rolável e dentro da tela em retrato, paisagem e viewports baixos.
+- [x] Impedir que mobs comuns/elite preencham a tela; preservar chefes grandes, manter inimigos iniciais afastados do ponto de chegada e encurtar a câmera antes que atravesse colisores do mundo.

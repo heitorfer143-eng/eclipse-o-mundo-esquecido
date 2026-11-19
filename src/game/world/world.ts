@@ -37,8 +37,16 @@ export class World {
     this.water = new Water(this.scene)
     this.weather = new Weather(this.scene)
     this.spawn.copy(this.findSpawn())
-    this.chunks.prime(this.spawn.x, this.spawn.z, 2)
     this.pois.update(this.spawn.x, this.spawn.z, 3)
+    const startingVillage = this.pois.list().find(poi => poi.id === 'vila-brumal')
+    const firstNpc = startingVillage ? this.pois.spotsOf(startingVillage.id)?.npcs[0] : undefined
+    if (firstNpc) {
+      const x = firstNpc.x + 1
+      const z = firstNpc.z - 2
+      this.spawn.set(x, this.terrain.heightAt(x, z) + 0.2, z)
+      this.pois.update(this.spawn.x, this.spawn.z, 3)
+    }
+    this.chunks.prime(this.spawn.x, this.spawn.z, 2)
   }
 
   /** A dry, gentle forest clearing near the story start. */
