@@ -5,8 +5,11 @@ const URL = process.env.SMOKE_URL ?? 'http://localhost:5173/'
 const OUT = process.env.SHOTS_DIR ?? 'shots'
 mkdirSync(OUT, { recursive: true })
 
-const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] })
-const page = await browser.newPage({ viewport: { width: 1440, height: 860 } })
+const browser = await chromium.launch({
+  ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}),
+  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+})
+const page = await browser.newPage({ viewport: { width: 800, height: 600 } })
 const errors = []
 page.on('console', message => {
   if (message.type() === 'error') errors.push(message.text())
@@ -95,21 +98,17 @@ if (hasGame) {
   console.log('campaign resumed without recreating the character or repeating Iara’s intro')
 
   await page.evaluate(() => {
-    const key = 'eclipse.o-mundo-esquecido.v2'
-    const raw = localStorage.getItem(key)
-    if (!raw) throw new Error('Save da campanha não encontrado para a migração legada.')
-    const data = JSON.parse(raw)
-    if (!data.game) throw new Error('Slot de campanha ausente no save local.')
-    data.game.position = [640, 35, 620]
-    data.game.progression.level = 5
-    data.game.inventory.gold = 321
-    data.game.quests = { tracked: 'principal-01', states: {} }
-    data.game.updatedAt = Date.now()
-    localStorage.setItem(key, JSON.stringify(data))
+    const runtime = window.__eclipse
+    const legacy = JSON.parse(JSON.stringify(runtime.save.data.game))
+    if (!legacy) throw new Error('Slot de campanha ausente para a migração legada.')
+    legacy.position = [640, 35, 620]
+    legacy.progression.level = 5
+    legacy.inventory.gold = 321
+    legacy.quests = { tracked: 'principal-01', states: {} }
+    legacy.updatedAt = Date.now()
+    runtime.save.data.game = legacy
+    runtime.game.start(false)
   })
-  await page.reload({ waitUntil: 'domcontentloaded' })
-  await page.getByRole('button', { name: 'Continuar campanha' }).waitFor()
-  await page.getByRole('button', { name: 'Continuar campanha' }).click()
   await page.locator('.dialogue').waitFor({ state: 'visible' })
   const legacy = await page.evaluate(() => {
     const g = window.__eclipse.game
@@ -125,7 +124,7 @@ if (hasGame) {
     throw new Error(`Save antigo não foi direcionado a Iara com progresso preservado: ${JSON.stringify(legacy)}`)
   }
   await page.screenshot({ path: `${OUT}/10-legacy-iara-dialogue.png` })
-  await page.getByRole('button', { name: 'Aceitar missão: O Despertar' }).click()
+  await page.getByRole('button', { name: 'Aceitar missão: O Despertar' }).evaluate(button => button.click())
   const acceptedLegacy = await page.evaluate(() => ({
     quest: window.__eclipse.game.quests.state('principal-01')?.status ?? null,
     tracked: window.__eclipse.game.quests.tracked,
@@ -134,6 +133,40 @@ if (hasGame) {
     throw new Error('O aceite de O Despertar não funcionou após a migração legada.')
   }
 }
+
+const mobileUrl = new globalThis.URL(URL)
+mobileUrl.searchParams.set('smoke', '1')
+const mobilePage = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
+mobilePage.on('console', message => { if (message.type() === 'error') errors.push(`mobile: ${message.text()}`) })
+mobilePage.on('pageerror', error => errors.push(`mobile pageerror: ${error.message}`))
+await mobilePage.goto(mobileUrl.toString(), { waitUntil: 'domcontentloaded' })
+await mobilePage.waitForFunction(() => window.__eclipse?.game, { timeout: 30000 })
+await mobilePage.evaluate(() => window.__eclipse.ui.touch.show(true))
+await mobilePage.screenshot({ path: `${OUT}/11-mobile-portrait.png` })
+const portrait = await mobilePage.evaluate(() => ({
+  touchAction: getComputedStyle(document.querySelector('.touch__look')).touchAction,
+  appHeight: getComputedStyle(document.documentElement).getPropertyValue('--app-height').trim(),
+  canvasHeight: getComputedStyle(document.querySelector('#game')).height,
+  cameraFov: window.__eclipse.camera.camera.fov,
+  touchButtons: [...document.querySelectorAll('.touch__btn')].filter(button => getComputedStyle(button).display !== 'none').length,
+}))
+if (portrait.touchAction !== 'none' || portrait.touchButtons < 6 || portrait.cameraFov !== 72) {
+  throw new Error(`Controles mobile em retrato não estão prontos: ${JSON.stringify(portrait)}`)
+}
+await mobilePage.setViewportSize({ width: 844, height: 390 })
+await mobilePage.waitForTimeout(350)
+const landscape = await mobilePage.evaluate(() => ({
+  appHeight: getComputedStyle(document.documentElement).getPropertyValue('--app-height').trim(),
+  canvasHeight: getComputedStyle(document.querySelector('#game')).height,
+  cameraFov: window.__eclipse.camera.camera.fov,
+  isLandscape: matchMedia('(orientation: landscape)').matches,
+}))
+if (landscape.cameraFov !== 62 || !landscape.isLandscape || landscape.appHeight !== '390px' || landscape.canvasHeight !== '390px') {
+  throw new Error(`O jogo não se adaptou ao giro do celular: ${JSON.stringify(landscape)}`)
+}
+await mobilePage.screenshot({ path: `${OUT}/12-mobile-landscape.png` })
+console.log('mobile portrait and landscape:', { portrait, landscape })
+await mobilePage.close()
 
 console.log('errors:', errors.slice(0, 20))
 await browser.close()

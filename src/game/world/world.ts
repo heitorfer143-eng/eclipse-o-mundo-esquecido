@@ -9,6 +9,7 @@ import { Sky } from './sky'
 import { SEA_LEVEL, Terrain } from './terrain'
 import { Water } from './water'
 import { Weather } from './weather'
+import { AetherVfx } from './aetherVfx'
 
 const VIEW_RADIUS: Record<Quality, number> = { low: 3, medium: 4, high: 5 }
 
@@ -21,6 +22,7 @@ export class World {
   readonly sky: Sky
   readonly water: Water
   readonly weather: Weather
+  readonly aetherVfx: AetherVfx
   readonly spawn = new THREE.Vector3()
   private readonly colliders: Collider[] = []
   private colliderX = Number.NaN
@@ -28,7 +30,7 @@ export class World {
   private readonly poiColliders: Collider[] = []
   private streamTimer = 0
 
-  constructor(readonly seed: number, quality: Quality) {
+  constructor(readonly seed: number, quality: Quality, relicModel?: THREE.Object3D) {
     this.terrain = new Terrain(seed)
     this.pois = new PoiManager(this.terrain, seed)
     this.chunks = new ChunkManager(this.terrain, (x, z) => this.pois.isBlocked(x, z), VIEW_RADIUS[quality])
@@ -46,6 +48,10 @@ export class World {
       this.spawn.set(x, this.terrain.heightAt(x, z) + 0.2, z)
       this.pois.update(this.spawn.x, this.spawn.z, 3)
     }
+    this.aetherVfx = new AetherVfx(this.scene, seed, quality, relicModel)
+    const relicX = this.spawn.x + 2.8
+    const relicZ = this.spawn.z - 1.8
+    this.aetherVfx.setRelicAnchor(new THREE.Vector3(relicX, this.terrain.heightAt(relicX, relicZ) + 2.1, relicZ))
     this.chunks.prime(this.spawn.x, this.spawn.z, 2)
   }
 
@@ -149,6 +155,11 @@ export class World {
     this.weather.update(dt, camera, biome, this.sky.night)
     this.sky.setWeather(this.weather.fog, this.weather.state === 'limpo' ? null : this.weather.tintColor)
     this.water.update(dt, camera, this.sky.sunDirection, this.sky.sun.color, this.sky.night, this.sky.horizonColor)
+  }
+
+  /** Cosmetic motes and relic remain animated in menus, dialogue and paused scenes. */
+  updateAmbient(dt: number, player: THREE.Vector3): void {
+    this.aetherVfx.update(dt, player, this.terrain.biomeAt(player.x, player.z), this.sky.night)
   }
 
   /** Fast travel target: the nearest shrine or city portal. */

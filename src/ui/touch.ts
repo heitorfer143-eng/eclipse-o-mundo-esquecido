@@ -31,6 +31,7 @@ export class TouchControls {
     this.root.innerHTML = `
       <div class="touch__stick" aria-label="Direção do movimento"><div class="touch__knob"></div></div>
       <div class="touch__look" aria-label="Girar a câmera"></div>
+      <div class="touch__look-hint" aria-hidden="true">Arraste para olhar</div>
       <div class="touch__btns">
         <button class="touch__btn" data-action="block" type="button" aria-label="Bloquear enquanto pressionado">Bloq</button>
         <button class="touch__btn" data-action="jump" type="button" aria-label="Pular">Pular</button>
@@ -85,6 +86,7 @@ export class TouchControls {
       this.look.x += event.clientX - this.lookLast.x
       this.look.y += event.clientY - this.lookLast.y
       this.lookLast = { x: event.clientX, y: event.clientY }
+      this.root.classList.add('look-used')
     })
     look.addEventListener('pointerup', event => this.releaseLook(event, false))
     look.addEventListener('pointercancel', event => this.releaseLook(event, true))
@@ -236,6 +238,9 @@ export class TouchControls {
   show(visible: boolean): void {
     if (!visible) this.clearActiveControls()
     this.root.classList.toggle('on', visible)
+  }
+  resetInputs(): void {
+    this.clearActiveControls()
   }
 
   consume(action: TouchAction): boolean {

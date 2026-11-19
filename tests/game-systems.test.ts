@@ -254,6 +254,14 @@ describe('abertura da campanha', () => {
 })
 
 describe('câmera de terceira pessoa', () => {
+  it('ajusta o campo de visão em retrato e restaura em paisagem', () => {
+    const camera = new CameraRig(1)
+    camera.resize(390, 844)
+    expect(camera.camera.fov).toBe(72)
+    camera.resize(844, 390)
+    expect(camera.camera.fov).toBe(62)
+  })
+
   it('encurta o enquadramento antes de atravessar uma parede', () => {
     const camera = new CameraRig(1)
     const target = new THREE.Vector3(0, 0, 0)

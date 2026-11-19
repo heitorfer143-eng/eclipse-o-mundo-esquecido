@@ -1,5 +1,6 @@
 import './styles/main.css'
 import * as THREE from 'three'
+import { Assets } from './engine/assets'
 import { Audio } from './engine/audio'
 import { Input } from './engine/input'
 import { SaveStore } from './engine/save'
@@ -53,7 +54,7 @@ async function boot(): Promise<void> {
   setProgress(0.06, 'Acendendo o renderizador')
   const touchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: !touchDevice, powerPreference: 'high-performance' })
-  renderer.setSize(window.innerWidth, window.innerHeight)
+  renderer.setSize(window.innerWidth, window.innerHeight, false)
   renderer.shadowMap.enabled = true
   renderer.shadowMap.type = THREE.PCFSoftShadowMap
   renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -62,8 +63,21 @@ async function boot(): Promise<void> {
   applyQuality(renderer, save.data.settings.quality)
   await nextFrame()
 
-  setProgress(0.2, 'Semeando um novo Aetherion')
-  const world = new World(save.data.game?.seed ?? createWorldSeed(), save.data.settings.quality)
+  setProgress(0.2, 'Acordando o fragmento de Aether')
+  const assets = new Assets()
+  let relicModel: THREE.Object3D | undefined
+  const stopAssetProgress = assets.onProgress(progress => {
+    setProgress(0.2 + progress * 0.28, `Carregando relíquia ${Math.round(progress * 100)}%`)
+  })
+  try {
+    relicModel = (await assets.gltf(`${import.meta.env.BASE_URL}assets/models/espirito-aether.glb`)).scene
+  } catch (error) {
+    console.warn('O Fragmento de Aether ficará com a forma leve de reserva.', error)
+  } finally {
+    stopAssetProgress()
+  }
+  setProgress(0.5, 'Semeando um novo Aetherion')
+  const world = new World(save.data.game?.seed ?? createWorldSeed(), save.data.settings.quality, relicModel)
   await nextFrame()
 
   setProgress(0.62, 'Plantando florestas e ruínas')
@@ -181,14 +195,25 @@ async function boot(): Promise<void> {
   })
 
   const resizeViewport = (): void => {
-    const width = window.visualViewport?.width ?? window.innerWidth
-    const height = window.visualViewport?.height ?? window.innerHeight
-    renderer.setSize(width, height)
+    const width = Math.max(1, Math.round(window.visualViewport?.width ?? document.documentElement.clientWidth ?? window.innerWidth))
+    const height = Math.max(1, Math.round(window.visualViewport?.height ?? document.documentElement.clientHeight ?? window.innerHeight))
+    const root = document.documentElement
+    if (root.style.getPropertyValue('--app-width') !== `${width}px`) root.style.setProperty('--app-width', `${width}px`)
+    if (root.style.getPropertyValue('--app-height') !== `${height}px`) root.style.setProperty('--app-height', `${height}px`)
+    if (canvas.width !== Math.floor(width * renderer.getPixelRatio()) || canvas.height !== Math.floor(height * renderer.getPixelRatio())) renderer.setSize(width, height, false)
     camera.resize(width, height)
   }
+  const onOrientationChange = (): void => {
+    ui.touch.resetInputs()
+    requestAnimationFrame(resizeViewport)
+    window.setTimeout(resizeViewport, 180)
+  }
+  resizeViewport()
   window.addEventListener('resize', resizeViewport)
   window.visualViewport?.addEventListener('resize', resizeViewport)
   window.visualViewport?.addEventListener('scroll', resizeViewport)
+  window.addEventListener('orientationchange', onOrientationChange)
+  window.addEventListener('pageshow', resizeViewport)
 
   // iOS Safari can still start browser gestures outside individual controls.
   // Keep ordinary one-finger gameplay input intact; block only pinch/double-tap gestures.
@@ -201,6 +226,7 @@ async function boot(): Promise<void> {
 
   document.addEventListener('visibilitychange', () => {
     if (document.hidden && game.mode === 'playing') game.pause()
+    else resizeViewport()
   })
 
   // ── main loop ───────────────────────────────────────────────────────────
@@ -232,6 +258,7 @@ async function boot(): Promise<void> {
     input.invertY = save.data.settings.invertY
     input.update(raw)
     const look = input.takeLook()
+    world.updateAmbient(raw, started ? game.position : world.spawn)
 
     if (!started) {
       if (ui.characterCustomizationVisible) orbitCharacterPreview(now / 1000)
@@ -306,11 +333,11 @@ function applyQuality(renderer: THREE.WebGLRenderer, quality: 'low' | 'medium' |
   // Retina phones render many more pixels than desktop displays; cap the internal
   // resolution to keep frame times and battery use under control.
   const pixelRatio = quality === 'low' ? 1 : touchDevice
-    ? Math.min(ratio, quality === 'medium' ? 1.15 : 1.35)
+    ? Math.min(ratio, quality === 'medium' ? 1.05 : 1.18)
     : quality === 'medium' ? Math.min(ratio, 1.35) : Math.min(ratio, 2)
   renderer.setPixelRatio(pixelRatio)
   renderer.shadowMap.enabled = quality !== 'low'
-  renderer.setSize(window.visualViewport?.width ?? window.innerWidth, window.visualViewport?.height ?? window.innerHeight)
+  renderer.setSize(window.visualViewport?.width ?? window.innerWidth, window.visualViewport?.height ?? window.innerHeight, false)
 }
 
 function buildLoading(): { root: HTMLDivElement; fill: HTMLDivElement; label: HTMLDivElement; tip: HTMLDivElement } {

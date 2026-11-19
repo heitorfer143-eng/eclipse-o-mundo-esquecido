@@ -24,6 +24,7 @@ export class CameraRig {
   private readonly lookAt = new THREE.Vector3()
   private initialized = false
   private readonly baseFov = 62
+  private activeBaseFov = this.baseFov
 
   constructor(aspect: number) {
     this.camera = new THREE.PerspectiveCamera(this.baseFov, aspect, 0.15, 1400)
@@ -31,7 +32,10 @@ export class CameraRig {
   }
 
   resize(width: number, height: number): void {
-    this.camera.aspect = width / Math.max(1, height)
+    const aspect = width / Math.max(1, height)
+    this.camera.aspect = aspect
+    this.activeBaseFov = aspect < 0.62 ? 72 : this.baseFov
+    this.camera.fov = this.activeBaseFov
     this.camera.updateProjectionMatrix()
   }
 
@@ -123,7 +127,7 @@ export class CameraRig {
     }
 
     this.camera.lookAt(this.lookAt)
-    const targetFov = this.baseFov + (sprinting ? 4 : 0) + (gliding ? 6 : 0)
+    const targetFov = this.activeBaseFov + (sprinting ? 4 : 0) + (gliding ? 6 : 0)
     this.camera.fov = damp(this.camera.fov, targetFov, 5, dt)
     this.camera.updateProjectionMatrix()
   }
