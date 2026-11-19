@@ -3,8 +3,9 @@ import { mkdirSync } from 'node:fs'
 
 const URL = process.env.SMOKE_URL ?? 'http://localhost:5173/'
 const OUT = process.env.SHOTS_DIR ?? 'shots'
-mkdirSync(OUT, { recursive: true })
 async function captureScreenshot(page, filename) {
+  if (process.env.CAPTURE_SMOKE_SHOTS !== '1') return
+  mkdirSync(OUT, { recursive: true })
   try {
     await page.screenshot({ path: `${OUT}/${filename}`, timeout: 8000, animations: 'disabled', scale: 'css' })
   } catch (error) {
