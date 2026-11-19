@@ -1,4 +1,4 @@
-name: Publish game to GitHub Pages
+name: Publish Eclipse directly to GitHub Pages
 
 on:
   push:
@@ -13,52 +13,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  configure-pages:
-    name: Configure Pages
+  build:
+    name: Build and upload the game
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pages: write
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the game
+        run: pnpm build
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
-  build:
-    name: Prepare authenticated game redirect
-    runs-on: ubuntu-latest
-    needs: configure-pages
-    permissions:
-      contents: read
-    steps:
-      - name: Create redirect page
-        run: |
-          mkdir -p pages-redirect
-          cat > pages-redirect/index.html <<'EOF'
-          <!doctype html>
-          <html lang="pt-BR">
-            <head>
-              <meta charset="utf-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1">
-              <meta http-equiv="refresh" content="0;url=https://eclipse-zhfl8j3s.manus.game/">
-              <meta name="robots" content="noindex">
-              <title>Eclipse: O Mundo Esquecido</title>
-            </head>
-            <body>
-              <p>O jogo agora usa login seguro. Se o redirecionamento não acontecer, <a href="https://eclipse-zhfl8j3s.manus.game/">abra Eclipse: O Mundo Esquecido</a>.</p>
-            </body>
-          </html>
-          EOF
-          touch pages-redirect/.nojekyll
-
-      - name: Upload Pages artifact
+      - name: Upload built game
         uses: actions/upload-pages-artifact@v4
         with:
-          path: pages-redirect
+          path: dist
 
   deploy:
-    name: Deploy public site
+    name: Deploy the game
     runs-on: ubuntu-latest
     needs: build
     permissions:

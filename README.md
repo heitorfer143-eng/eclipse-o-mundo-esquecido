@@ -34,9 +34,7 @@ algo no coração da Cicatriz está acordando. Você carrega a marca que pode fe
 
 ## Como jogar
 
-Versão pública para teste: [jogar Eclipse no GitHub Pages](https://heitorfer143-eng.github.io/eclipse-o-mundo-esquecido/). O site é atualizado automaticamente quando uma alteração chega ao branch `main`.
-
-O Preview interno do Manus continua disponível na aba **Preview** do projeto **Eclipse**.
+Jogue diretamente no [GitHub Pages](https://heitorfer143-eng.github.io/eclipse-o-mundo-esquecido/). O workflow compila o jogo e publica os arquivos de `dist/` automaticamente quando uma alteração chega ao branch `main`; esta versão estática não exige login.
 
 ```bash
 pnpm install
