@@ -95,3 +95,9 @@ H poção · Tab inventário · K habilidades · M mapa · L missões · Esc pau
 - [x] Ajustar joystick, áreas de toque, safe areas e feedback visual dos controles.
 - [x] Revisar a hierarquia compacta do HUD em retrato e paisagem.
 - [x] Validar viewports pequenos, rodar testes/typecheck/build e atualizar a publicação do GitHub Pages.
+
+## Ciclo atual: campanha e proporções dos personagens (19 nov 2026)
+- [x] Apresentar o prólogo do capítulo 1 ao iniciar a campanha, reutilizando os textos oficiais da missão, e manter a tela de carregamento visível com lore.
+- [x] Exigir nome na criação do protagonista, guardar o perfil no save local e reutilizá-lo ao continuar; saves antigos continuam carregando e só pedem nome se ainda não houver um.
+- [x] Corrigir a escala-base dos NPCs e reduzir em 18% os inimigos comuns, sem alterar as escalas próprias dos chefes.
+- [x] Atualizar o smoke test para percorrer prólogo, criação nominal e entrada no jogo.

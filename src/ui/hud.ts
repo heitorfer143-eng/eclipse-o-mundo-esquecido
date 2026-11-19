@@ -16,6 +16,7 @@ export type HudSnapshot = {
   stamina: number
   maxStamina: number
   level: number
+  playerName: string
   xpRatio: number
   gold: number
   abilities: HudAbility[]
@@ -263,6 +264,7 @@ export class Hud {
 
   render(snapshot: HudSnapshot, dt: number): void {
     this.levelEl.textContent = `Nv ${snapshot.level}`
+    this.nameEl.textContent = snapshot.playerName || 'O Marcado'
     this.xpFill.style.width = `${Math.round(snapshot.xpRatio * 100)}%`
     this.healthFill.style.width = `${(snapshot.health / snapshot.maxHealth) * 100}%`
     this.manaFill.style.width = `${(snapshot.mana / snapshot.maxMana) * 100}%`

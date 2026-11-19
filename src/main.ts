@@ -5,6 +5,7 @@ import { Input } from './engine/input'
 import { SaveStore } from './engine/save'
 import { CameraRig } from './game/camera'
 import { Game, type GameInput } from './game/game'
+import { questById } from './game/data/questData'
 import type { ElementId } from './game/data/types'
 import { World } from './game/world/world'
 import { Ui } from './ui/ui'
@@ -30,6 +31,7 @@ const ELEMENT_KEYS: Record<string, ElementId> = {
 }
 
 async function boot(): Promise<void> {
+  const bootStartedAt = performance.now()
   const canvas = document.querySelector<HTMLCanvasElement>('#game')!
   const uiRoot = document.querySelector<HTMLElement>('#ui')!
   const save = new SaveStore()
@@ -39,7 +41,9 @@ async function boot(): Promise<void> {
 
   const loading = buildLoading()
   document.body.appendChild(loading.root)
-  loading.tip.textContent = TIPS[Math.floor(Math.random() * TIPS.length)]
+  const opening = questById('principal-01')
+  const tip = TIPS[Math.floor(Math.random() * TIPS.length)]
+  loading.tip.textContent = opening ? `${opening.summary} ${tip}` : tip
   const setProgress = (value: number, label: string): void => {
     loading.fill.style.width = `${Math.round(value * 100)}%`
     loading.label.textContent = label
@@ -96,6 +100,9 @@ async function boot(): Promise<void> {
   await nextFrame()
   setProgress(1, 'Pronto')
   await nextFrame()
+  const minimumLoadingMs = 1400
+  const remainingLoadingMs = Math.max(0, minimumLoadingMs - (performance.now() - bootStartedAt))
+  if (remainingLoadingMs > 0) await new Promise<void>(resolve => window.setTimeout(resolve, remainingLoadingMs))
   loading.root.style.opacity = '0'
   window.setTimeout(() => loading.root.remove(), 700)
 

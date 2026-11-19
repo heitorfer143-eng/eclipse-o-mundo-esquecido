@@ -6,6 +6,8 @@ import { Hud, type HudSnapshot } from './hud'
 import { Panels, type DialogueChoiceView, type PanelContext } from './panels'
 import { TitleScreen } from './title'
 import { CharacterCustomizer } from './characterCustomizer'
+import { CampaignIntro } from './campaignIntro'
+import { isCharacterNameValid } from '../game/data/characterProfile'
 import { TouchControls, type TouchAction } from './touch'
 
 export type UiCallbacks = {
@@ -23,6 +25,7 @@ export class Ui {
   readonly touch: TouchControls
   private readonly settingsOverlay = document.createElement('div')
   private readonly characterCustomizer: CharacterCustomizer
+  private readonly campaignIntro: CampaignIntro
   private readonly save: SaveStore
   private readonly onSettingsChanged?: (settings: Settings) => void
   private readonly onCharacterProfileChanged?: (profile: CharacterProfile) => void
@@ -35,20 +38,30 @@ export class Ui {
     this.onCharacterProfileChanged = callbacks.onCharacterProfileChanged
     this.touch = new TouchControls(root)
     document.documentElement.classList.toggle('touch-capable', TouchControls.supported)
+    this.characterCustomizer = new CharacterCustomizer(root, () => this.syncTouch())
+    this.campaignIntro = new CampaignIntro(root, {
+      onStart: () => {
+        this.campaignIntro.close(false)
+        this.ensureCharacter(callbacks.onNewGame, this.title.newCampaignTrigger)
+      },
+      onClose: () => this.syncTouch(),
+    })
     this.title = new TitleScreen(root, save, {
-      onNew: () => callbacks.onNewGame(),
-      onContinue: () => callbacks.onContinue(),
+      onNew: () => {
+        this.campaignIntro.open()
+        this.syncTouch()
+      },
+      onContinue: () => this.ensureCharacter(callbacks.onContinue),
       onSettings: () => this.openSettings(),
       onCustomize: () => this.openCharacterCustomization(),
     })
     this.settingsOverlay.className = 'overlay hidden'
     root.appendChild(this.settingsOverlay)
-    this.characterCustomizer = new CharacterCustomizer(root, () => this.syncTouch())
     this.syncTouch()
   }
 
   get blocking(): boolean {
-    return this.panels.isOpen || this.panels.dialogueOpen || this.title.visible || !this.settingsOverlay.classList.contains('hidden') || this.characterCustomizer.visible
+    return this.panels.isOpen || this.panels.dialogueOpen || this.title.visible || this.campaignIntro.visible || !this.settingsOverlay.classList.contains('hidden') || this.characterCustomizer.visible
   }
 
   get characterCustomizationVisible(): boolean {
@@ -57,11 +70,13 @@ export class Ui {
 
   showTitle(): void {
     this.hud.show(false)
+    this.campaignIntro.close(false)
     this.title.show()
     this.syncTouch()
   }
 
   showGame(): void {
+    this.campaignIntro.close(false)
     this.title.hide()
     this.hud.show(true)
     this.syncTouch()
@@ -86,6 +101,25 @@ export class Ui {
     this.characterCustomizer.open(this.save.data.profile, profile => {
       const saved = this.save.updateProfile(profile)
       this.onCharacterProfileChanged?.(saved)
+    }, { mode: 'edit' })
+    this.syncTouch()
+  }
+
+  private ensureCharacter(onComplete: () => void, returnFocus?: HTMLElement): void {
+    if (isCharacterNameValid(this.save.data.profile.name)) {
+      onComplete()
+      return
+    }
+    this.characterCustomizer.open(this.save.data.profile, profile => {
+      this.onCharacterProfileChanged?.(profile)
+    }, {
+      mode: 'create',
+      returnFocus,
+      onConfirm: profile => {
+        const saved = this.save.updateProfile(profile)
+        this.onCharacterProfileChanged?.(saved)
+        onComplete()
+      },
     })
     this.syncTouch()
   }

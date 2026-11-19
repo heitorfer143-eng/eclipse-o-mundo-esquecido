@@ -574,3 +574,34 @@ kbd {
   .quest__name, .quest__obj { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .quest__obj ~ .quest__obj { display: none; }
 }
+
+
+/* Prólogo da campanha e identidade única do personagem */
+#ui > .campaign-intro { z-index: 105; }
+.campaign-intro { background: radial-gradient(ellipse at 50% 20%, rgba(63, 49, 76, 0.72), rgba(4, 3, 8, 0.92)); }
+.campaign-intro__panel {
+  display: flex; flex-direction: column; gap: 15px; width: min(720px, 100%); max-height: min(88dvh, 720px); overflow-y: auto;
+  padding: clamp(22px, 5vw, 46px); border: 1px solid rgba(214, 180, 110, 0.38); border-radius: 16px;
+  background: linear-gradient(155deg, rgba(25, 19, 32, 0.98), rgba(10, 8, 14, 0.98));
+  box-shadow: 0 28px 88px rgba(0, 0, 0, 0.72), inset 0 1px rgba(255, 255, 255, 0.05);
+}
+.campaign-intro__eyebrow { color: var(--gold); font-size: 11px; letter-spacing: 0.24em; text-transform: uppercase; }
+.campaign-intro__title { margin: 0; color: var(--parchment); font: 600 clamp(30px, 6vw, 48px)/1.05 var(--serif); }
+.campaign-intro__summary { margin: 0; color: #e3d5ba; font-size: clamp(15px, 2.4vw, 18px); line-height: 1.65; }
+.campaign-intro__divider { width: 72px; height: 2px; background: linear-gradient(90deg, var(--gold), transparent); }
+.campaign-intro__description { margin: 0; color: #b9ad98; font: 15px/1.8 var(--serif); }
+.campaign-intro__footer { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; }
+.character-customizer__name {
+  width: 100%; min-height: 48px; padding: 11px 13px; border: 1px solid rgba(214, 180, 110, 0.34); border-radius: 8px;
+  background: rgba(4, 3, 8, 0.58); color: var(--parchment); font-size: 16px; outline: none;
+}
+.character-customizer__name:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(214, 180, 110, 0.14); }
+.character-customizer__name[readonly] { opacity: 0.72; }
+.character-customizer__footer [data-finish]:disabled { opacity: 0.45; cursor: not-allowed; }
+
+@media (max-width: 640px) {
+  .campaign-intro { align-items: flex-end; padding: max(8px, env(safe-area-inset-top, 0px)) 8px max(8px, env(safe-area-inset-bottom, 0px)); }
+  .campaign-intro__panel { width: 100%; max-height: 84dvh; gap: 11px; padding: 22px 18px max(18px, env(safe-area-inset-bottom, 0px)); border-radius: 14px; }
+  .campaign-intro__description { font-size: 14px; line-height: 1.65; }
+  .campaign-intro__footer .btn { min-height: 44px; }
+}

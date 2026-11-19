@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseSave, SAVE_KEY, SaveStore } from '../src/engine/save'
-import { DEFAULT_CHARACTER_PROFILE } from '../src/game/data/characterProfile'
+import { DEFAULT_CHARACTER_PROFILE, isCharacterNameValid } from '../src/game/data/characterProfile'
 import { NPCS } from '../src/game/data/npcData'
 import { QUESTS, questById } from '../src/game/data/questData'
 import { DialogueRunner } from '../src/game/systems/dialogue'
@@ -63,7 +63,7 @@ describe('salvamento local', () => {
     restored.clearGame()
     expect(restored.data.game).toBeNull()
   })
-  it('migra saves antigos e persiste somente escolhas cosméticas seguras fora da aventura', () => {
+  it('migra saves antigos e persiste com segurança o perfil do protagonista fora da aventura', () => {
     const values = new Map<string, string>()
     const storage = {
       getItem: (key: string) => values.get(key) ?? null,
@@ -74,7 +74,7 @@ describe('salvamento local', () => {
     expect(legacy.profile).toEqual(DEFAULT_CHARACTER_PROFILE)
 
     const store = new SaveStore(storage)
-    store.updateProfile({ modelId: 'Rogue_Hooded', auraColor: '#c094ff' })
+    store.updateProfile({ name: 'Eira da Lua', modelId: 'Rogue_Hooded', auraColor: '#c094ff' })
     store.saveGame({
       seed: 7, position: [0, 40, 800], facing: 0, playtime: 0, timeOfDay: 0.32,
       progression: { level: 1, xp: 0, attributePoints: 0, skillPoints: 0, attributes: {} },
@@ -83,10 +83,12 @@ describe('salvamento local', () => {
       deaths: 0, kills: 0, createdAt: 1, updatedAt: 1,
     })
     const restored = new SaveStore(storage)
-    expect(restored.data.profile).toEqual({ modelId: 'Rogue_Hooded', auraColor: '#c094ff' })
+    expect(restored.data.profile).toEqual({ name: 'Eira da Lua', modelId: 'Rogue_Hooded', auraColor: '#c094ff' })
     restored.clearGame()
     expect(new SaveStore(storage).data.game).toBeNull()
-    expect(new SaveStore(storage).data.profile).toEqual({ modelId: 'Rogue_Hooded', auraColor: '#c094ff' })
+    expect(new SaveStore(storage).data.profile).toEqual({ name: 'Eira da Lua', modelId: 'Rogue_Hooded', auraColor: '#c094ff' })
+    expect(isCharacterNameValid('Eira')).toBe(true)
+    expect(isCharacterNameValid(' ')).toBe(false)
 
     values.set(SAVE_KEY, JSON.stringify({ version: 2, game: null, profile: { modelId: '<script>', auraColor: 'url(javascript:alert(1))' } }))
     expect(new SaveStore(storage).data.profile).toEqual(DEFAULT_CHARACTER_PROFILE)

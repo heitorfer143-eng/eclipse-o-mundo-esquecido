@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import type { NpcDef } from '../data/types'
 import { clamp, dampAngle } from '../core/math'
 import { CharacterModel, type Appearance } from './character'
-import { EXTERNAL_CHARACTER_URLS } from './externalModels'
+import { EXTERNAL_CHARACTER_URLS, HUMANOID_VISUAL_SCALE } from './externalModels'
 
 const ROLE_COLORS: Record<string, { cloth: string; accent: string; leather: string; skin: string; hair: string }> = {
   ferreiro: { cloth: '#5a4030', accent: '#8a6a45', leather: '#3a2a20', skin: '#c98f63', hair: '#3a2a24' },
@@ -53,7 +53,7 @@ export class Npc {
     this.model = new CharacterModel(appearance, modelUrl)
     this.model.setEquipment({ weapon: def.role === 'guarda' ? 'lanca' : def.role === 'cacador' ? 'arco' : undefined, armor: def.role === 'guarda', helmet: def.role === 'guarda' })
     const scale = def.role === 'crianca' ? 0.72 : 1
-    this.model.root.scale.setScalar(scale)
+    this.model.root.scale.multiplyScalar(scale)
     this.root.add(this.model.root)
     this.position.set(x, groundY, z)
     this.home = this.position.clone()
@@ -63,7 +63,7 @@ export class Npc {
     this.root.rotation.y = facing
 
     this.label = makeNameplate(def.name, def.role)
-    this.label.position.y = 2.25 * scale
+    this.label.position.y = 2.25 * HUMANOID_VISUAL_SCALE * scale
     this.root.add(this.label)
   }
 

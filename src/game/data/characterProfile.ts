@@ -18,9 +18,10 @@ export const AURA_OPTIONS = [
 ] as const
 
 export type AuraColor = (typeof AURA_OPTIONS)[number]['color']
-export type CharacterProfile = { modelId: CharacterModelId; auraColor: AuraColor }
+export type CharacterProfile = { name: string; modelId: CharacterModelId; auraColor: AuraColor }
 
 export const DEFAULT_CHARACTER_PROFILE: CharacterProfile = {
+  name: '',
   modelId: 'Knight',
   auraColor: '#7fe3ff',
 }
@@ -28,12 +29,21 @@ export const DEFAULT_CHARACTER_PROFILE: CharacterProfile = {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
+export function normalizeCharacterName(value: string): string {
+  return [...value.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ')].slice(0, 24).join('')
+}
+
+export function isCharacterNameValid(value: string): boolean {
+  return normalizeCharacterName(value).trim().length >= 2
+}
+
 /** Treat local-storage profile data as untrusted and accept only bundled cosmetic choices. */
 export function parseCharacterProfile(value: unknown): CharacterProfile {
   const raw = isRecord(value) ? value : {}
+  const name = typeof raw.name === 'string' ? normalizeCharacterName(raw.name).trim() : ''
   const modelId = CHARACTER_OPTIONS.find(option => option.id === raw.modelId)?.id
     ?? DEFAULT_CHARACTER_PROFILE.modelId
   const auraColor = AURA_OPTIONS.find(option => option.color === raw.auraColor)?.color
     ?? DEFAULT_CHARACTER_PROFILE.auraColor
-  return { modelId, auraColor }
+  return { name, modelId, auraColor }
 }

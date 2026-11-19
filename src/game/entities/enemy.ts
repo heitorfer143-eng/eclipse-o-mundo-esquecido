@@ -36,6 +36,9 @@ const STATE_LABEL: Record<string, string> = {
   dead: 'Morto',
 }
 
+// Ajuste visual global dos inimigos comuns; chefes mantêm as escalas próprias dos dados.
+const COMMON_ENEMY_SIZE_FACTOR = 0.82
+
 /** A single living creature with a small but readable state-machine AI. */
 export class Enemy {
   readonly def: EnemyType
@@ -87,7 +90,7 @@ export class Enemy {
     this.xp = Math.round(this.def.xp * (1 + (this.level - 1) * 0.14) * (this.elite ? 2.4 : 1))
     this.position.set(spawn.x, 0, spawn.z)
     this.home = new THREE.Vector3(spawn.homeX ?? spawn.x, 0, spawn.homeZ ?? spawn.z)
-    const scale = this.def.scale * (this.elite ? 1.35 : 1)
+    const scale = this.def.scale * COMMON_ENEMY_SIZE_FACTOR * (this.elite ? 1.35 : 1)
     this.visual = buildEnemyVisual(this.def.model, this.def.colors, scale)
     this.root.add(this.visual.root)
     const externalEnemyUrl = this.def.model === 'cavaleiro' ? EXTERNAL_CHARACTER_URLS.knight

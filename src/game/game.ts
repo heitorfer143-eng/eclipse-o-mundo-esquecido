@@ -1381,6 +1381,7 @@ export class Game {
       stamina: this.player.stamina,
       maxStamina: this.player.effective.maxStamina,
       level: this.progression.level,
+      playerName: this.save.data.profile.name || 'O Marcado',
       xpRatio: this.progression.xpRatio,
       gold: this.inventory.gold,
       abilities,

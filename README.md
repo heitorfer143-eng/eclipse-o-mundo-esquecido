@@ -24,13 +24,15 @@ algo no coração da Cicatriz está acordando. Você carrega a marca que pode fe
 - **Progressão completa**: níveis até 50, atributos, pontos de habilidade, inventário com 7
   equipamentos, 6 raridades, conjuntos com bônus, aprimoramento no ferreiro, lojas, coleta e
   crafting (forja, alquimia, cozinha, bancada).
-- **Campanha principal em 10 capítulos, 15 missões secundárias e 8 caçadas**, com diálogos ramificados
-  sobre as entidades, a memória perdida e o passado de Aetherion, além de 16 NPCs e lojas por especialidade.
+- **Campanha principal em 10 capítulos, 15 missões secundárias e 8 caçadas**, com prólogo narrativo no início,
+  criação única de personagem com nome salvo e diálogos ramificados sobre as entidades, a memória perdida
+  e o passado de Aetherion, além de 16 NPCs e lojas por especialidade.
 - **Interface em português**: HUD com vida/mana/stamina, bússola, minimapa, rastreador de missões,
   barra de chefe, números de dano; painéis de inventário, habilidades, mapa, diário, crafting,
   loja, diálogo, pausa e configurações; controles por teclado/mouse e por toque.
-- **Salvamento local** automático (posição, nível, itens, missões, chefes derrotados, baús abertos,
-  hora do mundo) com um único slot versionado.
+- **Salvamento local** automático (progresso, posição, itens, missões, chefes derrotados, baús abertos,
+  hora do mundo e nome do protagonista) com um único slot versionado; a campanha continua sem criar
+  outro personagem a cada sessão.
 
 ## Como jogar
 
