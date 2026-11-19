@@ -4,7 +4,9 @@ import { CameraRig } from '../src/game/camera'
 import { parseSave, SAVE_KEY, SaveStore } from '../src/engine/save'
 import { DEFAULT_CHARACTER_PROFILE, isCharacterNameValid } from '../src/game/data/characterProfile'
 import { BOSSES } from '../src/game/data/bossData'
+import { ENEMIES } from '../src/game/data/enemyData'
 import { Boss } from '../src/game/entities/boss'
+import { Enemy } from '../src/game/entities/enemy'
 import { NPCS } from '../src/game/data/npcData'
 import { QUESTS, questById } from '../src/game/data/questData'
 import { DialogueRunner } from '../src/game/systems/dialogue'
@@ -326,6 +328,21 @@ describe('escala dos chefes', () => {
       const boss = new Boss(definition, 0, 0)
       expect(boss.height, definition.id).toBeLessThanOrEqual(2.45)
       boss.dispose()
+    }
+  })
+})
+
+describe('escala de mobs', () => {
+  it('mantém a Aranha Tecelã pequena também na largura das patas', () => {
+    const definition = ENEMIES.find(enemy => enemy.id === 'aranha-tecela')!
+    const spider = new Enemy({ def: definition, level: 2, x: 0, z: 0 })
+    try {
+      const visual = (spider as unknown as { visual: { root: THREE.Group } }).visual.root
+      const size = new THREE.Box3().setFromObject(visual).getSize(new THREE.Vector3())
+      expect(spider.height).toBeLessThanOrEqual(0.35)
+      expect(Math.max(size.x, size.z)).toBeLessThanOrEqual(0.6)
+    } finally {
+      spider.dispose()
     }
   })
 })

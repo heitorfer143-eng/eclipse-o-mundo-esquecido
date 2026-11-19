@@ -94,7 +94,7 @@ export const ENEMIES: EnemyType[] = [
     attackCooldown: 1.8,
     aggroRange: 14,
     xp: 15,
-    scale: 0.8,
+    scale: 0.35,
     colors: { body: '#2f2a3a', accent: '#b06ad6' },
     loot: [
       { itemId: 'mat-seda', chance: 0.8, min: 1, max: 3 },
