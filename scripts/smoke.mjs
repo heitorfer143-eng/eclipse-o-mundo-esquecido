@@ -51,10 +51,13 @@ if (hasGame) {
     const g = window.__eclipse.game
     const iara = g.population.npcs.find(npc => npc.def.id === 'iara')
     const iaraDistance = iara?.position.distanceTo(g.player.position) ?? Infinity
-    const camera = g.camera.camera.position
+    // Compare with the camera's reset direction. Earlier UI clicks may rotate the live
+    // orbit camera before this assertion, which is normal and seed/runner dependent.
+    const cameraBackX = Math.sin(g.player.facing)
+    const cameraBackZ = Math.cos(g.player.facing)
     const iaraCameraSide = iara
-      ? (iara.position.x - g.player.position.x) * (camera.x - g.player.position.x)
-        + (iara.position.z - g.player.position.z) * (camera.z - g.player.position.z)
+      ? (iara.position.x - g.player.position.x) * cameraBackX
+        + (iara.position.z - g.player.position.z) * cameraBackZ
       : Infinity
     const maxEnemyHeight = Math.max(0, ...g.spawner.enemies.map(enemy => enemy.height))
     return {
