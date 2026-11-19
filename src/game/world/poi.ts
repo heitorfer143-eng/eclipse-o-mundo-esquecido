@@ -76,10 +76,10 @@ function siteName(rng: () => number, kind: PoiKind): string {
   return `${prefix}${base}${suffix}`
 }
 
-function buildSite(poi: Poi, terrain: Terrain): SiteResult {
+function buildSite(poi: Poi, terrain: Terrain, houseModels: readonly THREE.Object3D[]): SiteResult {
   switch (poi.kind) {
-    case 'vila': return buildVillage(terrain, poi.x, poi.z, poi.seed, poi.name)
-    case 'cidade': return buildCity(terrain, poi.x, poi.z, poi.seed)
+    case 'vila': return buildVillage(terrain, poi.x, poi.z, poi.seed, poi.name, houseModels)
+    case 'cidade': return buildCity(terrain, poi.x, poi.z, poi.seed, houseModels)
     case 'castelo': return buildCastle(terrain, poi.x, poi.z, poi.seed)
     case 'masmorra': return buildDungeon(terrain, poi.x, poi.z, poi.seed)
     case 'templo': return buildTemple(terrain, poi.x, poi.z, poi.seed)
@@ -87,7 +87,7 @@ function buildSite(poi: Poi, terrain: Terrain): SiteResult {
     case 'acampamento': return buildCamp(terrain, poi.x, poi.z, poi.seed)
     case 'santuario': return buildShrine(terrain, poi.x, poi.z)
     case 'torre': return buildTower(terrain, poi.x, poi.z, poi.seed)
-    case 'porto': return buildPort(terrain, poi.x, poi.z, poi.seed)
+    case 'porto': return buildPort(terrain, poi.x, poi.z, poi.seed, houseModels)
     case 'caverna': return buildCave(terrain, poi.x, poi.z, poi.seed)
     case 'ilha': return buildIslandSite(terrain, poi.x, poi.z, poi.seed)
   }
@@ -105,7 +105,7 @@ export class PoiManager {
   private readonly cellRadius = 3
   private built = 0
 
-  constructor(private readonly terrain: Terrain, private readonly seed: number) {
+  constructor(private readonly terrain: Terrain, private readonly seed: number, private readonly houseModels: readonly THREE.Object3D[] = []) {
     this.group.name = 'pois'
     for (const fixed of FIXED_POIS) this.addFixed(fixed)
     this.rebuildBlocked()
@@ -226,7 +226,7 @@ export class PoiManager {
       const entry = this.loaded.get(poi.id)
       if (distance < 430 && !entry) {
         if (built >= budget) continue
-        const site = buildSite(poi, this.terrain)
+        const site = buildSite(poi, this.terrain, this.houseModels)
         site.group.position.set(0, 0, 0)
         this.group.add(site.group)
         this.loaded.set(poi.id, { group: site.group, colliders: site.colliders, spots: site.spots })
@@ -236,7 +236,7 @@ export class PoiManager {
         this.group.remove(entry.group)
         entry.group.traverse(obj => {
           const mesh = obj as THREE.Mesh
-          if (mesh.isMesh) mesh.geometry.dispose()
+          if (mesh.isMesh && mesh.userData.sharedHouseAsset !== true) mesh.geometry.dispose()
         })
         this.loaded.delete(poi.id)
       }

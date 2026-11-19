@@ -30,9 +30,9 @@ export class World {
   private readonly poiColliders: Collider[] = []
   private streamTimer = 0
 
-  constructor(readonly seed: number, quality: Quality, relicModel?: THREE.Object3D) {
+  constructor(readonly seed: number, quality: Quality, relicModel?: THREE.Object3D, houseModels: readonly THREE.Object3D[] = []) {
     this.terrain = new Terrain(seed)
-    this.pois = new PoiManager(this.terrain, seed)
+    this.pois = new PoiManager(this.terrain, seed, houseModels)
     this.chunks = new ChunkManager(this.terrain, (x, z) => this.pois.isBlocked(x, z), VIEW_RADIUS[quality])
     this.scene.add(this.chunks.group, this.pois.group)
     this.sky = new Sky(this.scene)

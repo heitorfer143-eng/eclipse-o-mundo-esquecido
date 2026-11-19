@@ -19,6 +19,11 @@ const TIPS = [
   'A noite traz criaturas mais fortes — e melhores recompensas.',
   'Cada arma tem um ritmo. A adaga pune pelas costas, o espadão pune a paciência.',
 ]
+const HOUSE_MODEL_ASSETS = [
+  'assets/models/houses/low-poly-medieval-house.glb',
+  'assets/models/houses/low-poly-city-house-building-low.glb',
+  'assets/models/houses/gable-house.glb',
+]
 
 function createWorldSeed(): number {
   const values = new Uint32Array(1)
@@ -72,18 +77,31 @@ async function boot(): Promise<void> {
   setProgress(0.2, 'Acordando o fragmento de Aether')
   const assets = new Assets()
   let relicModel: THREE.Object3D | undefined
+  let houseModels: THREE.Object3D[] = []
   const stopAssetProgress = assets.onProgress(progress => {
-    setProgress(0.2 + progress * 0.28, `Carregando relíquia ${Math.round(progress * 100)}%`)
+    setProgress(0.2 + progress * 0.28, `Carregando modelos ${Math.round(progress * 100)}%`)
   })
   try {
-    relicModel = (await assets.gltf(`${import.meta.env.BASE_URL}assets/models/espirito-aether.glb`)).scene
-  } catch (error) {
-    console.warn('O Fragmento de Aether ficará com a forma leve de reserva.', error)
+    const relicPromise: Promise<THREE.Object3D | null> = assets.gltf(`${import.meta.env.BASE_URL}assets/models/espirito-aether.glb`)
+      .then(gltf => gltf.scene as THREE.Object3D)
+      .catch(error => {
+        console.warn('O Fragmento de Aether ficará com a forma leve de reserva.', error)
+        return null
+      })
+    const housePromises: Promise<THREE.Object3D | null>[] = HOUSE_MODEL_ASSETS.map(path => assets.gltf(`${import.meta.env.BASE_URL}${path}`)
+      .then(gltf => gltf.scene as THREE.Object3D)
+      .catch(error => {
+        console.warn(`Casa externa indisponível; será usada a casa procedural: ${path}`, error)
+        return null
+      }))
+    const loadedModels = await Promise.all([relicPromise, ...housePromises])
+    relicModel = loadedModels[0] ?? undefined
+    houseModels = loadedModels.slice(1).filter((model): model is THREE.Object3D => model !== null)
   } finally {
     stopAssetProgress()
   }
   setProgress(0.5, 'Semeando um novo Aetherion')
-  const world = new World(save.data.game?.seed ?? save.activeCampaign?.seed ?? createWorldSeed(), save.data.settings.quality, relicModel)
+  const world = new World(save.data.game?.seed ?? save.activeCampaign?.seed ?? createWorldSeed(), save.data.settings.quality, relicModel, houseModels)
   await nextFrame()
 
   setProgress(0.62, 'Plantando florestas e ruínas')

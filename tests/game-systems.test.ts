@@ -161,6 +161,52 @@ describe('salvamento local', () => {
     expect(restored.data.profile.name).toBe('Eira')
     expect(restored.data.campaigns.find(slot => slot.id === secondId)?.game?.progression.level).toBe(2)
   })
+  it('exclui só o save selecionado, ativa uma campanha remanescente e limpa o último slot', () => {
+    const values = new Map<string, string>()
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value) },
+      removeItem: (key: string) => { values.delete(key) },
+    }
+    const store = new SaveStore(storage)
+    const settings = { ...store.data.settings }
+    const firstProfile = { name: 'Eira', modelId: 'Rogue_Hooded' as const, auraColor: '#c094ff' as const }
+    const secondProfile = { name: 'Tarin', modelId: 'Mage' as const, auraColor: '#ffcc70' as const }
+    const firstId = store.createCampaign(firstProfile, 11)!
+    store.saveGame({
+      seed: 11, position: [4, 30, -8], facing: 0, playtime: 120, timeOfDay: 0.5,
+      progression: { level: 7, xp: 800, attributePoints: 0, skillPoints: 0, attributes: {} },
+      inventory: { stacks: [], equipment: {}, gold: 55 }, skills: {},
+      quests: { tracked: 'principal-01', states: {} }, discovered: ['poi-1'], openedChests: [],
+      deaths: 1, kills: 9, createdAt: 10, updatedAt: 20,
+    })
+    const secondId = store.createCampaign(secondProfile, 22)!
+    store.saveGame({
+      seed: 22, position: [0, 40, 800], facing: 0, playtime: 12, timeOfDay: 0.3,
+      progression: { level: 2, xp: 30, attributePoints: 0, skillPoints: 0, attributes: {} },
+      inventory: { stacks: [], equipment: {}, gold: 4 }, skills: {},
+      quests: { tracked: null, states: {} }, discovered: [], openedChests: [],
+      deaths: 0, kills: 1, createdAt: 30, updatedAt: 30,
+    })
+
+    expect(store.deleteCampaign('missing-slot')).toBe(false)
+    expect(store.deleteCampaign(secondId)).toBe(true)
+    expect(store.data.campaigns.map(slot => slot.id)).toEqual([firstId])
+    expect(store.data.activeCampaignId).toBe(firstId)
+    expect(store.data.profile).toEqual(firstProfile)
+    expect(store.data.game).toMatchObject({ seed: 11, progression: { level: 7 }, inventory: { gold: 55 } })
+    expect(store.data.settings).toEqual(settings)
+
+    const restored = new SaveStore(storage)
+    expect(restored.data.campaigns).toHaveLength(1)
+    expect(restored.activeCampaign?.profile).toEqual(firstProfile)
+    expect(restored.deleteCampaign(firstId)).toBe(true)
+    expect(restored.data.campaigns).toHaveLength(0)
+    expect(restored.data.activeCampaignId).toBeNull()
+    expect(restored.data.game).toBeNull()
+    expect(restored.data.profile).toEqual(DEFAULT_CHARACTER_PROFILE)
+    expect(restored.data.settings).toEqual(settings)
+  })
   it('permite completar identidade de save legado incompleto apenas uma vez', () => {
     const values = new Map<string, string>()
     const storage = {

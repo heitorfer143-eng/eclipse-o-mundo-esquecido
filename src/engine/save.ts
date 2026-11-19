@@ -361,6 +361,22 @@ export class SaveStore {
     this.persist()
     return true
   }
+  deleteCampaign(id: string): boolean {
+    const campaigns = this.data.campaigns.filter(campaign => campaign.id !== id)
+    if (campaigns.length === this.data.campaigns.length) return false
+    const active = campaigns.find(campaign => campaign.id === this.data.activeCampaignId)
+      ?? [...campaigns].sort((a, b) => b.updatedAt - a.updatedAt)[0]
+      ?? null
+    this.data = {
+      ...this.data,
+      campaigns,
+      activeCampaignId: active?.id ?? null,
+      game: active?.game ?? null,
+      profile: active?.profile ?? DEFAULT_CHARACTER_PROFILE,
+    }
+    this.persist()
+    return true
+  }
   get activeCampaign(): CampaignSlot | null {
     return this.data.campaigns.find(campaign => campaign.id === this.data.activeCampaignId) ?? null
   }

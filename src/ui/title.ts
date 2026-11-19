@@ -66,33 +66,69 @@ export class TitleScreen {
     const profile = this.save.data.profile
     const hasCharacter = profile.name.length >= 2
     const activeId = this.save.data.activeCampaignId
+    const savedCampaigns = this.save.data.campaigns
     this.continueButton.classList.toggle('hidden', !game)
-    this.newButton.disabled = this.save.data.campaigns.length >= MAX_CAMPAIGNS
+    this.newButton.disabled = savedCampaigns.length >= MAX_CAMPAIGNS
     this.newButton.textContent = this.newButton.disabled ? 'Limite de campanhas alcançado' : 'Nova campanha'
 
     this.campaigns.replaceChildren()
-    const otherCampaigns = this.save.data.campaigns.filter(campaign => campaign.game && campaign.id !== activeId)
-    if (otherCampaigns.length) {
+    if (savedCampaigns.length) {
       const label = document.createElement('div')
       label.className = 'title__campaigns-label'
-      label.textContent = 'Outras campanhas salvas'
+      label.textContent = 'Campanhas salvas'
       this.campaigns.appendChild(label)
-      for (const campaign of otherCampaigns) {
-        const button = document.createElement('button')
-        button.type = 'button'
-        button.className = 'btn btn--ghost title__campaign'
-        button.textContent = `${campaign.profile.name || 'Sem nome'} · Nv. ${campaign.game!.progression.level} · Retomar`
-        button.setAttribute('aria-label', `Retomar ${campaign.profile.name || 'campanha sem nome'}, nível ${campaign.game!.progression.level}`)
-        button.addEventListener('click', () => this.onContinueCampaign(campaign.id))
-        this.campaigns.appendChild(button)
+
+      for (const campaign of savedCampaigns) {
+        const campaignName = campaign.profile.name || 'Personagem sem nome'
+        const row = document.createElement('div')
+        row.className = 'title__campaign'
+
+        const details = document.createElement('div')
+        details.className = 'title__campaign-info'
+        const name = document.createElement('strong')
+        name.textContent = campaignName
+        const summary = document.createElement('small')
+        summary.textContent = campaign.game
+          ? `Nível ${campaign.game.progression.level} · ${formatTime(campaign.game.playtime)} de jornada`
+          : 'Jornada ainda não iniciada'
+        details.append(name, summary)
+
+        const actions = document.createElement('div')
+        actions.className = 'title__campaign-actions'
+        if (campaign.game && campaign.id !== activeId) {
+          const resumeButton = document.createElement('button')
+          resumeButton.type = 'button'
+          resumeButton.className = 'btn btn--ghost btn--sm title__campaign-action'
+          resumeButton.textContent = 'Retomar'
+          resumeButton.setAttribute('aria-label', `Retomar ${campaignName}, nível ${campaign.game.progression.level}`)
+          resumeButton.addEventListener('click', () => this.onContinueCampaign(campaign.id))
+          actions.appendChild(resumeButton)
+        }
+
+        const deleteButton = document.createElement('button')
+        deleteButton.type = 'button'
+        deleteButton.className = 'btn btn--danger btn--sm title__campaign-action title__campaign-delete'
+        deleteButton.textContent = 'Excluir'
+        deleteButton.dataset.deleteCampaign = campaign.id
+        deleteButton.setAttribute('aria-label', `Excluir save de ${campaignName}`)
+        deleteButton.addEventListener('click', () => {
+          const level = campaign.game ? ` (nível ${campaign.game.progression.level})` : ''
+          const confirmed = window.confirm(
+            `Excluir permanentemente o save de ${campaignName}${level}? O personagem e o progresso desta campanha serão apagados. As outras campanhas e as configurações serão mantidas.`,
+          )
+          if (confirmed && this.save.deleteCampaign(campaign.id)) this.show()
+        })
+        actions.appendChild(deleteButton)
+        row.append(details, actions)
+        this.campaigns.appendChild(row)
       }
     }
 
     this.meta.textContent = game
-      ? `${profile.name || 'Personagem sem nome'} · Nível ${game.progression.level} · ${formatTime(game.playtime)} de jornada · ${game.kills} criaturas derrotadas · ${this.save.data.campaigns.length} campanha(s) salva(s)`
+      ? `${profile.name || 'Personagem sem nome'} · Nível ${game.progression.level} · ${formatTime(game.playtime)} de jornada · ${game.kills} criaturas derrotadas · ${savedCampaigns.length} campanha(s) salva(s)`
       : hasCharacter
-        ? `${profile.name} · pronto para iniciar outra campanha · ${this.save.data.campaigns.length} campanha(s) salva(s)`
-        : this.save.data.campaigns.length >= MAX_CAMPAIGNS
+        ? `${profile.name} · pronto para iniciar outra campanha · ${savedCampaigns.length} campanha(s) salva(s)`
+        : savedCampaigns.length >= MAX_CAMPAIGNS
           ? `Limite de ${MAX_CAMPAIGNS} campanhas atingido. Seus saves continuam preservados neste dispositivo.`
           : 'Crie um personagem para cada campanha. Seus nomes e progressos ficam salvos neste dispositivo.'
     this.root.classList.remove('hidden')

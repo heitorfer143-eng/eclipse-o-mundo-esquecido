@@ -47,14 +47,14 @@ if (hasGame) {
   await page.getByRole('button', { name: 'Aceitar missão: O Despertar' }).click()
   await page.getByRole('button', { name: 'Encerrar conversa' }).click()
   await page.waitForTimeout(4500)
-  await page.waitForFunction(() => window.__eclipse.game.population.npcs.some(npc => npc.model.external), null, { timeout: 15000 })
+  await page.waitForFunction(() => window.__eclipse.game.population.npcs.some(npc => npc.model.external), null, { timeout: 30000 })
   const externalModelScales = await page.evaluate(() => window.__eclipse.game.population.npcs
     .map(npc => npc.model.external?.root.children[0]?.scale.x)
     .filter(scale => Number.isFinite(scale)))
   if (externalModelScales.length && Math.max(...externalModelScales) > 100) {
     throw new Error(`Bounds inválidos no modelo clonado; fator de escala extremo: ${Math.max(...externalModelScales)}.`)
   }
-  await page.getByText('Teste Eclipse', { exact: true }).waitFor()
+  await page.locator('.hud__title').filter({ hasText: 'Teste Eclipse' }).waitFor()
   await captureScreenshot(page, '05-game.png')
   const state = await page.evaluate(() => {
     const g = window.__eclipse.game
@@ -118,6 +118,19 @@ if (hasGame) {
   if (await page.locator('[data-customize]').count()) throw new Error('A pausa ainda permite editar a identidade do personagem.')
   await page.getByRole('button', { name: 'Continuar', exact: true }).evaluate(button => button.click())
   await page.waitForFunction(() => window.__eclipse.game.mode === 'playing')
+  await page.waitForFunction(() => {
+    const sites = window.__eclipse.game.world.pois.group
+    let count = 0
+    sites.traverse(object => { if (object.name.startsWith('house-model-')) count += 1 })
+    return count >= 7
+  }, null, { timeout: 20000 })
+  const villageHouseCount = await page.evaluate(() => {
+    let count = 0
+    window.__eclipse.game.world.pois.group.traverse(object => { if (object.name.startsWith('house-model-')) count += 1 })
+    return count
+  })
+  if (villageHouseCount < 7) throw new Error(`Modelos GLB de casas não foram instanciados na vila: ${villageHouseCount}`)
+  console.log(`house models: ${villageHouseCount} CC0 GLB instances loaded in streamed settlements`)
   await page.keyboard.down('KeyW')
   await page.waitForTimeout(1400)
   await page.keyboard.up('KeyW')
@@ -139,7 +152,7 @@ if (hasGame) {
   await page.reload({ waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: 'Continuar campanha' }).waitFor()
   await page.getByRole('button', { name: 'Continuar campanha' }).click()
-  await page.getByText('Teste Eclipse', { exact: true }).waitFor()
+  await page.locator('.hud__title').filter({ hasText: 'Teste Eclipse' }).waitFor()
   await page.waitForTimeout(300)
   const resumed = await page.evaluate(() => ({
     mode: window.__eclipse.game.mode,
@@ -237,6 +250,35 @@ if (hasGame) {
   }
   await page.waitForFunction(() => window.__eclipse?.game.mode === 'playing', null, { timeout: 10000 })
   console.log('multiple campaigns: created a second character and resumed the original save intact')
+
+  await page.evaluate(() => window.__eclipse.game.pause())
+  await page.getByRole('button', { name: 'Sair para o título' }).evaluate(button => button.click())
+  const settingsBeforeDeletion = await page.evaluate(() => JSON.stringify(window.__eclipse.save.data.settings))
+  const deleteConfirmations = []
+  page.on('dialog', async dialog => {
+    deleteConfirmations.push(dialog.message())
+    await dialog.accept()
+  })
+  await page.getByRole('button', { name: 'Excluir save de Nara Eclipse' }).click()
+  await page.waitForFunction(id => window.__eclipse.save.data.campaigns.length === 1
+    && window.__eclipse.save.data.activeCampaignId === id
+    && window.__eclipse.save.data.profile.name === 'Teste Eclipse', firstCampaignId)
+  if (deleteConfirmations.length !== 1 || !deleteConfirmations[0].includes('As outras campanhas')) {
+    throw new Error('A exclusão do save não exibiu confirmação clara sobre os outros slots.')
+  }
+  await page.getByRole('button', { name: 'Excluir save de Teste Eclipse' }).click()
+  await page.waitForFunction(() => window.__eclipse.save.data.campaigns.length === 0
+    && window.__eclipse.save.data.activeCampaignId === null
+    && window.__eclipse.save.data.game === null)
+  const afterDeletion = await page.evaluate(() => ({
+    campaigns: window.__eclipse.save.data.campaigns.length,
+    game: window.__eclipse.save.data.game,
+    settings: JSON.stringify(window.__eclipse.save.data.settings),
+  }))
+  if (deleteConfirmations.length !== 2 || afterDeletion.settings !== settingsBeforeDeletion) {
+    throw new Error(`Excluir saves alterou outros dados ou não pediu duas confirmações: ${JSON.stringify(afterDeletion)}`)
+  }
+  console.log('save deletion: confirmed per-slot removal, other campaigns preserved, settings unchanged')
 }
 
 await page.close()

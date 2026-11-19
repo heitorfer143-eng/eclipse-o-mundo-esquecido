@@ -46,7 +46,7 @@ function cases(): SiteCase[] {
 function disposeSite(site: SiteResult): void {
   site.group.traverse(object => {
     const mesh = object as THREE.Mesh
-    if (mesh.isMesh) mesh.geometry.dispose()
+    if (mesh.isMesh && mesh.userData.sharedHouseAsset !== true) mesh.geometry.dispose()
   })
 }
 
@@ -127,6 +127,47 @@ describe('arquitetura procedural do mundo', () => {
     disposeSite(city)
     disposeSite(castle)
     disposeSite(dungeon)
+  })
+
+  it('usa modelos GLB compartilhados em vila, cidade e porto sem mover spots funcionais', () => {
+    const terrain = new Terrain(SEED)
+    const template = new THREE.Group()
+    const sharedGeometry = new THREE.BoxGeometry(4, 5, 3)
+    template.add(new THREE.Mesh(sharedGeometry, new THREE.MeshStandardMaterial()))
+    const templates = [template]
+    const proceduralVillage = buildVillage(terrain, X, Z, SEED, 'Brumal')
+    const village = buildVillage(terrain, X, Z, SEED, 'Brumal', templates)
+    const proceduralCity = buildCity(terrain, X, Z, SEED)
+    const city = buildCity(terrain, X, Z, SEED, templates)
+    const proceduralPort = buildPort(terrain, X, Z, SEED)
+    const port = buildPort(terrain, X, Z, SEED, templates)
+    const modelInstances = (site: SiteResult): THREE.Object3D[] => {
+      const instances: THREE.Object3D[] = []
+      site.group.traverse(object => { if (object.name.startsWith('house-model-')) instances.push(object) })
+      return instances
+    }
+    const villageModels = modelInstances(village)
+    const cityModels = modelInstances(city)
+    const portModels = modelInstances(port)
+
+    expect(villageModels.length).toBeGreaterThanOrEqual(7)
+    expect(cityModels).toHaveLength(4)
+    expect(portModels).toHaveLength(1)
+    expect(village.spots).toEqual(proceduralVillage.spots)
+    expect(city.spots).toEqual(proceduralCity.spots)
+    expect(port.spots).toEqual(proceduralPort.spots)
+    expect(village.colliders.length).toBeGreaterThanOrEqual(villageModels.length * 5)
+    const clonedMeshes: THREE.Mesh[] = []
+    village.group.traverse(object => {
+      const mesh = object as THREE.Mesh
+      if (mesh.isMesh && mesh.userData.sharedHouseAsset === true) clonedMeshes.push(mesh)
+    })
+    expect(clonedMeshes.length).toBeGreaterThanOrEqual(7)
+    expect(clonedMeshes.every(mesh => mesh.geometry === sharedGeometry)).toBe(true)
+    expect([...villageModels, ...cityModels, ...portModels].every(model => model.scale.toArray().every(Number.isFinite))).toBe(true)
+
+    for (const site of [proceduralVillage, village, proceduralCity, city, proceduralPort, port]) disposeSite(site)
+    sharedGeometry.dispose()
   })
 
   it('fornece piso suportado para a câmara da masmorra sem alterar o terreno ou o save', () => {
