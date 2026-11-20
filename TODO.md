@@ -111,10 +111,22 @@ H poção · Tab inventário · K habilidades · M mapa · L missões · Esc pau
 ## Ciclo atual: jogo jogável e múltiplas campanhas (19 nov 2026)
 - [x] Limitar a altura visual dos dez chefes a 2,45 m para que nenhum monstro ocupe quase toda a tela; validar cada definição de chefe em teste automatizado.
 - [x] Reduzir a Aranha Tecelã para cerca de 0,3 m de altura e no máximo 0,6 m de largura/profundidade, contando o volume das patas.
-- [x] Permitir criar até oito campanhas sem sobrescrever as anteriores; cada slot mantém nome, aparência, seed e progresso próprios, oferece retomada por seleção e migra o save antigo de campanha única sem apagá-lo.
+- [x] (Decisão anterior, substituída pelo pedido mais recente) Permitir criar até oito campanhas sem sobrescrever as anteriores; cada slot mantém nome, aparência, seed e progresso próprios, oferece retomada por seleção e migra o save antigo de campanha única sem apagá-lo.
 - [x] Validar no smoke a criação de um segundo personagem/campanha, a troca de volta para a campanha original com nível e ouro preservados, além de retrato e paisagem mobile; build e 15 testes unitários passaram.
 - [x] Posicionar a NPC inicial à frente do protagonista, fora do eixo entre câmera e jogador; cobrir distância de conversa e lado da câmera no smoke mobile.
 - [ ] Integrar login Google real, sem autenticação Manus, e sincronizar campanhas/personagens no backend por UID, preservando os slots locais; depende de configurar projeto/provedor e suas credenciais públicas de app.
+
+## Continuação solicitada: campanha, vida do mundo e interiores (19 nov 2026)
+- [x] Manter apenas uma campanha ativa: a identidade (nome/modelo/aura) e o progresso são fixos; ao existir save, oferecer Continuar e não criar outra campanha; conservar a exclusão confirmada do único save e a migração dos formatos antigos priorizando a campanha ativa.
+- [x] Após o prólogo/aceite de missão, não reabrir automaticamente introduções já vistas; usar flags persistentes de história para Iara e chefes e retomar diálogos em falas contextuais sem repetir a apresentação inicial.
+- [x] Fazer NPCs e fauna apresentarem locomoção visível (clips glTF reais quando houver, fallback de rig procedural quando não houver), sem root motion; mostrar uma queda/desaparecimento legível ao morrer, sem congelar o modelo de pé.
+- [x] Remover a silhueta de “ovo” da praça sem eliminar o Fragmento de Aether: manter um cristal angular/fragmentado, ancorado ao terreno e visualmente distinto de um objeto oval.
+- [x] Permitir entrar por portas de casas carregadas, percorrer um interior simples com colisões, sair pela porta e persistir a casa de retorno ao salvar/reabrir o jogo.
+- [x] Começar com o protagonista em aparência simples, sem armadura/capacete/botas; manter a identidade fixa e permitir obter/equipar armadura pela progressão e crafting sem deixar a campanha inicial visualmente de cavaleiro.
+
+## Novos modelos 3D indicados pelo jogador (19 nov 2026)
+- [ ] Auditar individualmente as fontes fornecidas: 13/18 auditorias concluídas; faltam Poly Haven, ambientCG e as fontes Google Fonts Cinzel, Alegreya SC e MedievalSharp. Confirmar termos, licença e permissão de uso/redistribuição antes de baixar modelos; não tratar “grátis para baixar” como autorização automática para incluir arquivos no repositório.
+- [ ] Integrar apenas assets licenciados e úteis ao jogo; documentar nome, função no gameplay, procedência/licença, escala, clips disponíveis, mapeamento de animação e fallback, mantendo a bundle e o streaming dentro de limites.
 
 ## Próxima rodada: fechar e polir o primeiro ciclo (19 nov 2026)
 - [x] Confirmar que o commit `fcd572d` passou build/smoke e deploy do Pages; o bundle público `assets/index-fE5_OR4S.js` responde HTTP 200.

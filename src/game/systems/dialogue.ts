@@ -25,9 +25,9 @@ export class DialogueRunner {
   npc: NpcDef | null = null
   nodeId: string | null = null
 
-  open(npc: NpcDef, quests: QuestLog, level: number): void {
+  open(npc: NpcDef, quests: QuestLog, level: number, startNode?: string): void {
     this.npc = npc
-    this.nodeId = npc.root
+    this.nodeId = startNode && npc.nodes[startNode] ? startNode : npc.root
     void quests
     void level
   }

@@ -76,32 +76,24 @@ async function boot(): Promise<void> {
 
   setProgress(0.2, 'Acordando o fragmento de Aether')
   const assets = new Assets()
-  let relicModel: THREE.Object3D | undefined
   let houseModels: THREE.Object3D[] = []
   const stopAssetProgress = assets.onProgress(progress => {
     setProgress(0.2 + progress * 0.28, `Carregando modelos ${Math.round(progress * 100)}%`)
   })
   try {
-    const relicPromise: Promise<THREE.Object3D | null> = assets.gltf(`${import.meta.env.BASE_URL}assets/models/espirito-aether.glb`)
-      .then(gltf => gltf.scene as THREE.Object3D)
-      .catch(error => {
-        console.warn('O Fragmento de Aether ficará com a forma leve de reserva.', error)
-        return null
-      })
     const housePromises: Promise<THREE.Object3D | null>[] = HOUSE_MODEL_ASSETS.map(path => assets.gltf(`${import.meta.env.BASE_URL}${path}`)
       .then(gltf => gltf.scene as THREE.Object3D)
       .catch(error => {
         console.warn(`Casa externa indisponível; será usada a casa procedural: ${path}`, error)
         return null
       }))
-    const loadedModels = await Promise.all([relicPromise, ...housePromises])
-    relicModel = loadedModels[0] ?? undefined
-    houseModels = loadedModels.slice(1).filter((model): model is THREE.Object3D => model !== null)
+    const loadedModels = await Promise.all(housePromises)
+    houseModels = loadedModels.filter((model): model is THREE.Object3D => model !== null)
   } finally {
     stopAssetProgress()
   }
   setProgress(0.5, 'Semeando um novo Aetherion')
-  const world = new World(save.data.game?.seed ?? save.activeCampaign?.seed ?? createWorldSeed(), save.data.settings.quality, relicModel, houseModels)
+  const world = new World(save.data.game?.seed ?? save.activeCampaign?.seed ?? createWorldSeed(), save.data.settings.quality, undefined, houseModels)
   await nextFrame()
 
   setProgress(0.62, 'Plantando florestas e ruínas')
@@ -112,7 +104,7 @@ async function boot(): Promise<void> {
     onNewGame: profile => {
       const campaignId = save.createCampaign(profile, createWorldSeed())
       if (!campaignId) {
-        window.alert('Você já tem 8 campanhas salvas. Seus personagens e progressos continuam preservados.')
+        window.alert('Já existe uma campanha ativa. Continue essa jornada ou exclua o único save antes de criar outra.')
         ui.showTitle()
         return
       }
@@ -358,8 +350,14 @@ async function boot(): Promise<void> {
     if (ui.consumeTouch('ability1') && game.mode === 'playing' && !ui.blocking) game.castAbility(1)
     if (ui.consumeTouch('ability2') && game.mode === 'playing' && !ui.blocking) game.castAbility(2)
     if (ui.consumeTouch('potion') && game.mode === 'playing' && !ui.blocking) game.usePotion()
-    if (input.consume('pause') && game.mode === 'playing' && !ui.blocking) game.pause()
-    if (ui.consumeTouch('pause') && game.mode === 'playing' && !ui.blocking) game.pause()
+    if (input.consume('pause') && game.mode === 'playing' && !ui.blocking) {
+      input.unlockPointer()
+      game.pause()
+    }
+    if (ui.consumeTouch('pause') && game.mode === 'playing' && !ui.blocking) {
+      input.unlockPointer()
+      game.pause()
+    }
 
     renderer.render(world.scene, camera.camera)
     input.endFrame()

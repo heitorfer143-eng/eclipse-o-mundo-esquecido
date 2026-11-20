@@ -36,6 +36,8 @@ export type Poi = {
   discovered: boolean
 }
 
+export type HouseDoor = { houseId: string; houseName: string; poiId: string; x: number; z: number; y: number }
+
 type FixedPoi = {
   id: string
   kind: PoiKind
@@ -257,6 +259,31 @@ export class PoiManager {
 
   spotsOf(id: string): Spots | undefined {
     return this.loaded.get(id)?.spots
+  }
+
+  /** Closest entry among currently loaded buildings; doors participate in the normal E interaction. */
+  nearestHouseDoor(x: number, z: number, maxDistance = 3.1): HouseDoor | null {
+    let best: HouseDoor | null = null
+    let bestDistance = maxDistance
+    for (const [poiId, entry] of this.loaded) {
+      const poi = this.pois.get(poiId)
+      if (!poi) continue
+      for (let index = 0; index < entry.spots.houses.length; index += 1) {
+        const door = entry.spots.houses[index]
+        const distance = Math.hypot(door.x - x, door.z - z)
+        if (distance >= bestDistance) continue
+        bestDistance = distance
+        best = {
+          houseId: `${poiId}-${door.id}`,
+          houseName: `${poi.name} · Casa ${index + 1}`,
+          poiId,
+          x: door.x,
+          z: door.z,
+          y: door.y,
+        }
+      }
+    }
+    return best
   }
 
   get loadedCount(): number {

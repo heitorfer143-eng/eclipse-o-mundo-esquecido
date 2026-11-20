@@ -53,6 +53,7 @@ export type Spots = {
   npcs: { x: number; z: number; y: number }[]
   chests: { x: number; z: number; y: number; tier: number }[]
   enemies: { x: number; z: number; y: number }[]
+  houses: { id: string; x: number; z: number; y: number }[]
   braziers: { x: number; z: number; y: number }[]
   resources: { x: number; z: number; y: number; kind: 'ferro' | 'prata' | 'mithril' | 'erva' | 'madeira' | 'pesca' | 'cristal' }[]
   stations: { x: number; z: number; y: number; kind: 'forja' | 'alquimia' | 'fogueira' | 'bancada' }[]
@@ -68,7 +69,7 @@ export type Spots = {
 export class StructureBuilder {
   private readonly parts = new Map<MaterialKey, THREE.BufferGeometry[]>()
   readonly colliders: Collider[] = []
-  readonly spots: Spots = { npcs: [], chests: [], enemies: [], braziers: [], resources: [], stations: [] }
+  readonly spots: Spots = { npcs: [], chests: [], enemies: [], houses: [], braziers: [], resources: [], stations: [] }
   readonly lights: { x: number; y: number; z: number; color: string; intensity: number; distance: number }[] = []
   readonly objects: THREE.Object3D[] = []
 
@@ -238,6 +239,8 @@ function addHouseModel(b: StructureBuilder, template: THREE.Object3D, index: num
 function house(b: StructureBuilder, x: number, z: number, y: number, w: number, d: number, h: number, rng: () => number, roofColor: MaterialKey = 'telhado', houseModels: readonly THREE.Object3D[] = []): void {
   // Retain the three historical random draws so mob/resource coordinates after buildings stay unchanged.
   const rolls = [rng(), rng(), rng()]
+  const doorIndex = b.spots.houses.length + 1
+  b.spots.houses.push({ id: `house-${doorIndex}`, x, z: z + d / 2 + 1.15, y })
   if (houseModels.length) {
     const index = Math.min(houseModels.length - 1, Math.floor(rolls[0] * houseModels.length))
     if (addHouseModel(b, houseModels[index], index, x, z, y, w, d, h)) return
@@ -254,7 +257,8 @@ function house(b: StructureBuilder, x: number, z: number, y: number, w: number, 
   b.box(x - doorWidth / 2 - segmentWidth / 2, y + h / 2, frontZ, segmentWidth, h, wall, 'reboco', 0, true)
   b.box(x + doorWidth / 2 + segmentWidth / 2, y + h / 2, frontZ, segmentWidth, h, wall, 'reboco', 0, true)
   b.box(x, y + h + 0.11, frontZ, doorWidth + 0.2, 0.22, wall, 'madeira', 0, true)
-  b.box(x, y + 1.02, frontZ + 0.04, doorWidth - 0.12, 2.04, 0.1, 'madeira-envelhecida', 0, true)
+  // The visible door leaf is not a collider: interaction at the threshold teleports to the interior.
+  b.box(x, y + 1.02, frontZ + 0.04, doorWidth - 0.12, 2.04, 0.1, 'madeira-envelhecida')
   // Corner posts and two timber belts break up broad wall surfaces without adding draw calls.
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
     b.box(x + sx * (w / 2 - 0.16), y + h / 2, z + sz * (d / 2 - 0.16), 0.3, h + 0.08, 0.3, 'madeira')

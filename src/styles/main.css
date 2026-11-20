@@ -406,7 +406,7 @@ kbd {
 .dialogue__choice--quest { border-color: rgba(143, 184, 255, 0.4); color: #d5e4ff; }
 
 .pause-card { width: min(520px, 92vw); }
-.pause-card .panel__body { flex-direction: column; gap: 16px; padding: 22px; }
+.pause-card .panel__body { flex-direction: column; gap: 16px; padding: 22px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .setting { display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 13px; }
 .setting input[type='range'] { width: 180px; accent-color: var(--gold); }
 .setting select { background: rgba(0, 0, 0, 0.4); color: var(--parchment); border: 1px solid rgba(214, 180, 110, 0.3); border-radius: 6px; padding: 5px 8px; }

@@ -32,6 +32,25 @@ export const NPCS: NpcDef[] = [
           { text: 'Agora não, anciã.' },
         ],
       },
+      retorno: {
+        id: 'retorno',
+        text: 'Você voltou. Os lobos de Brumal ainda ameaçam a clareira, mas agora sabemos que a marca não apareceu por acaso. O que precisa saber?',
+        choices: [
+          { text: 'Quero entender a marca.', next: 'marca' },
+          { text: 'Conte novamente a história do Eclipse.', next: 'eclipse' },
+          { text: 'Há outro trabalho para mim?', next: 'trabalho' },
+          { text: 'Vou continuar minha jornada.' },
+        ],
+      },
+      aposMissao: {
+        id: 'aposMissao',
+        text: 'A clareira está mais segura graças a você. Os moradores vão lembrar do que fez. A marca, porém, ainda guarda perguntas que não devemos ignorar.',
+        choices: [
+          { text: 'Quero entender a marca.', next: 'marca' },
+          { text: 'Conte novamente a história do Eclipse.', next: 'eclipse' },
+          { text: 'Vou continuar minha jornada.' },
+        ],
+      },
       marca: {
         id: 'marca',
         text: 'Se eu soubesse, teria dormido nas últimas sete noites. A marca é da mesma cor do céu naquele dia, e ninguém que a carregou até hoje viveu para contar. A floresta, porém, não fugiu de você.',

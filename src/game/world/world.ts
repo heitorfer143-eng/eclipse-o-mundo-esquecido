@@ -4,12 +4,13 @@ import type { Quality } from '../../engine/save'
 import { CHUNK_SIZE, ChunkManager } from './chunks'
 import { collidersNearPoint, supportHeight, type Collider } from './collision'
 import { BIOMES } from './biomes'
-import { PoiManager, SPAWN_POINT, type Poi } from './poi'
+import { PoiManager, SPAWN_POINT, type HouseDoor, type Poi } from './poi'
 import { Sky } from './sky'
 import { SEA_LEVEL, Terrain } from './terrain'
 import { Water } from './water'
 import { Weather } from './weather'
 import { AetherVfx } from './aetherVfx'
+import { type HouseInterior } from './interior'
 
 const VIEW_RADIUS: Record<Quality, number> = { low: 3, medium: 4, high: 5 }
 
@@ -29,6 +30,10 @@ export class World {
   private colliderZ = Number.NaN
   private readonly poiColliders: Collider[] = []
   private streamTimer = 0
+  private interiorRoom: HouseInterior | null = null
+  private exteriorVisibility: Map<THREE.Object3D, boolean> | null = null
+  private previousBackground: THREE.Color | THREE.Texture | null = null
+  private previousFog: THREE.Fog | THREE.FogExp2 | null = null
 
   constructor(readonly seed: number, quality: Quality, relicModel?: THREE.Object3D, houseModels: readonly THREE.Object3D[] = []) {
     this.terrain = new Terrain(seed)
@@ -50,8 +55,9 @@ export class World {
       this.pois.update(this.spawn.x, this.spawn.z, 3)
     }
     this.aetherVfx = new AetherVfx(this.scene, seed, quality, relicModel)
-    const relicX = this.spawn.x + 2.8
-    const relicZ = this.spawn.z - 1.8
+    // Keep the Aether fragment on the edge of the starting clearing, not in the village plaza.
+    const relicX = this.spawn.x + 9
+    const relicZ = this.spawn.z - 8
     this.aetherVfx.setRelicAnchor(new THREE.Vector3(relicX, this.terrain.heightAt(relicX, relicZ) + 2.1, relicZ))
     this.chunks.prime(this.spawn.x, this.spawn.z, 2)
   }
@@ -86,17 +92,24 @@ export class World {
   }
 
   get biomeName(): string {
+    if (this.interiorRoom) return 'Interior de casa'
     return BIOMES[this.terrain.biomeAt(this.playerX, this.playerZ)].name
+  }
+
+  get isInterior(): boolean {
+    return this.interiorRoom !== null
   }
 
   playerX = 0
   playerZ = 0
 
   isWater(x: number, z: number): boolean {
+    if (this.interiorRoom) return false
     return this.terrain.heightAt(x, z) < SEA_LEVEL - 0.2
   }
 
   waterDepth(x: number, z: number): number {
+    if (this.interiorRoom) return 0
     return Math.max(0, SEA_LEVEL - this.terrain.heightAt(x, z))
   }
 
@@ -113,12 +126,14 @@ export class World {
   }
 
   collidersNear(x: number, z: number): readonly Collider[] {
+    if (this.interiorRoom) return this.interiorRoom.colliders
     this.refreshColliders(x, z)
     return this.colliders
   }
 
   /** Walkable surface height (terrain or a building floor) under a position. */
   groundAt(x: number, z: number, feetY: number): number {
+    if (this.interiorRoom) return this.interiorRoom.floorY
     const terrain = this.terrain.heightAt(x, z)
     const colliders = this.collidersNear(x, z)
     return supportHeight(x, z, feetY, terrain, colliders)
@@ -127,6 +142,10 @@ export class World {
   /** Colliders from a wider radius, used by projectiles and area attacks. */
   collidersAround(x: number, z: number, radius: number): Collider[] {
     const out: Collider[] = []
+    if (this.interiorRoom) {
+      collidersNearPoint(this.interiorRoom.colliders, x, z, radius, out)
+      return out
+    }
     collidersNearPoint(this.chunks.collidersNear(x, z, []), x, z, radius, out)
     collidersNearPoint(this.pois.collidersNear(x, z, []), x, z, radius, out)
     return out
@@ -140,10 +159,48 @@ export class World {
     return this.pois.nearest(x, z, filter)
   }
 
+  nearestHouseDoor(x: number, z: number, maxDistance = 3.1): HouseDoor | null {
+    return this.pois.nearestHouseDoor(x, z, maxDistance)
+  }
+
+  enterInterior(room: HouseInterior, playerRoot: THREE.Object3D): void {
+    if (this.interiorRoom) this.exitInterior()
+    this.previousBackground = this.scene.background
+    this.previousFog = this.scene.fog
+    this.exteriorVisibility = new Map(this.scene.children.map(child => [child, child.visible]))
+    for (const child of this.scene.children) {
+      if (child !== playerRoot) child.visible = false
+    }
+    this.interiorRoom = room
+    this.scene.add(room.root)
+    this.scene.background = new THREE.Color('#211a16')
+    this.scene.fog = null
+    this.colliderX = Number.NaN
+    this.colliderZ = Number.NaN
+  }
+
+  exitInterior(): void {
+    const room = this.interiorRoom
+    if (!room) return
+    room.dispose()
+    for (const [object, visible] of this.exteriorVisibility ?? []) {
+      if (object.parent === this.scene) object.visible = visible
+    }
+    this.scene.background = this.previousBackground
+    this.scene.fog = this.previousFog
+    this.interiorRoom = null
+    this.exteriorVisibility = null
+    this.previousBackground = null
+    this.previousFog = null
+    this.colliderX = Number.NaN
+    this.colliderZ = Number.NaN
+  }
+
   /** One render-frame update: stream chunks and settlements, move the sky and weather. */
   update(dt: number, camera: THREE.PerspectiveCamera, player: THREE.Vector3): void {
     this.playerX = player.x
     this.playerZ = player.z
+    if (this.interiorRoom) return
     this.streamTimer += dt
     // Build at most one chunk and one settlement per 0.1 s to avoid frame spikes.
     if (this.streamTimer > 0.08) {
@@ -151,6 +208,7 @@ export class World {
       this.chunks.update(player.x, player.z, 1)
       this.pois.update(player.x, player.z, 1)
     }
+    this.chunks.updateWildlife(dt, player)
     const biome = this.terrain.biomeAt(player.x, player.z)
     this.sky.update(dt, camera, player)
     this.weather.update(dt, camera, biome, this.sky.night)
@@ -160,6 +218,7 @@ export class World {
 
   /** Cosmetic motes and relic remain animated in menus, dialogue and paused scenes. */
   updateAmbient(dt: number, player: THREE.Vector3): void {
+    if (this.interiorRoom) return
     this.aetherVfx.update(dt, player, this.terrain.biomeAt(player.x, player.z), this.sky.night)
   }
 

@@ -31,6 +31,8 @@ export type GameSave = {
   quests: { tracked: string | null; states: Record<string, { status: 'ativa' | 'concluida'; progress: Record<string, number> }> }
   discovered: string[]
   openedChests: string[]
+  storyFlags?: string[]
+  interior?: { houseId: string; houseName: string } | null
   deaths: number
   kills: number
   createdAt: number
@@ -45,7 +47,7 @@ export type CampaignSlot = {
   updatedAt: number
 }
 export type SaveData = {
-  version: 3
+  version: 4
   settings: Settings
   game: GameSave | null
   profile: CharacterProfile
@@ -53,7 +55,7 @@ export type SaveData = {
   activeCampaignId: string | null
 }
 export const SAVE_KEY = 'eclipse.o-mundo-esquecido.v2'
-export const MAX_CAMPAIGNS = 8
+export const MAX_CAMPAIGNS = 1
 const DEFAULT_POSITION: [number, number, number] = [0, 40, 800]
 const ATTRIBUTE_KEYS = ['forca', 'defesa', 'agilidade', 'inteligencia', 'energia', 'vitalidade'] as const
 const EQUIPMENT_KINDS = {
@@ -89,7 +91,7 @@ export function defaultSettings(): Settings {
   }
 }
 export function defaultSave(): SaveData {
-  return { version: 3, settings: defaultSettings(), game: null, profile: DEFAULT_CHARACTER_PROFILE, campaigns: [], activeCampaignId: null }
+  return { version: 4, settings: defaultSettings(), game: null, profile: DEFAULT_CHARACTER_PROFILE, campaigns: [], activeCampaignId: null }
 }
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -177,6 +179,11 @@ function parseQuests(raw: unknown): GameSave['quests'] {
   }
   return { tracked, states }
 }
+function parseInterior(raw: unknown): GameSave['interior'] {
+  if (!isRecord(raw) || typeof raw.houseId !== 'string' || !/^[a-zA-Z0-9_-]{1,120}$/.test(raw.houseId)) return null
+  const houseName = typeof raw.houseName === 'string' ? raw.houseName.trim().slice(0, 80) : 'Casa'
+  return { houseId: raw.houseId, houseName: houseName || 'Casa' }
+}
 function parseGame(raw: unknown): GameSave | null {
   if (!isRecord(raw)) return null
   const positionRaw = raw.position
@@ -205,6 +212,10 @@ function parseGame(raw: unknown): GameSave | null {
     quests: parseQuests(raw.quests),
     discovered: Array.isArray(raw.discovered) ? raw.discovered.filter((id): id is string => typeof id === 'string' && id.length > 0 && id.length <= 256) : [],
     openedChests: Array.isArray(raw.openedChests) ? raw.openedChests.filter((id): id is string => typeof id === 'string' && id.length > 0 && id.length <= 256) : [],
+    storyFlags: Array.isArray(raw.storyFlags)
+      ? [...new Set(raw.storyFlags.filter((id): id is string => typeof id === 'string' && /^[a-zA-Z0-9:_-]{1,128}$/.test(id)))].slice(0, 256)
+      : [],
+    interior: parseInterior(raw.interior),
     deaths: clampInteger(raw.deaths, 0, 0, MAX_COUNTER),
     kills: clampInteger(raw.kills, 0, 0, MAX_COUNTER),
     createdAt: clampNumber(raw.createdAt, Date.now(), 0, MAX_TIMESTAMP),
@@ -235,7 +246,7 @@ export function parseSave(raw: string | null): SaveData {
   } catch {
     return base
   }
-  if (data.version !== 2 && data.version !== 3) return base
+  if (data.version !== 2 && data.version !== 3 && data.version !== 4) return base
   const settingsRaw = isRecord(data.settings) ? data.settings : {}
   const settings: Settings = {
     musicVolume: clamp01(settingsRaw.musicVolume, base.settings.musicVolume),
@@ -249,25 +260,30 @@ export function parseSave(raw: string | null): SaveData {
   }
   const profile = parseCharacterProfile(data.profile)
   const game = parseGame(data.game)
-  const campaigns: CampaignSlot[] = []
+  const parsedCampaigns: CampaignSlot[] = []
   const seenCampaignIds = new Set<string>()
   if (Array.isArray(data.campaigns)) {
-    for (const rawCampaign of data.campaigns.slice(0, MAX_CAMPAIGNS * 2)) {
+    for (const rawCampaign of data.campaigns.slice(0, 64)) {
       const campaign = parseCampaign(rawCampaign)
       if (!campaign || seenCampaignIds.has(campaign.id)) continue
-      campaigns.push(campaign)
+      parsedCampaigns.push(campaign)
       seenCampaignIds.add(campaign.id)
-      if (campaigns.length >= MAX_CAMPAIGNS) break
     }
   }
-  // Migrate the old single adventure into a permanent slot; its progress is never discarded.
-  if (campaigns.length === 0 && game) {
-    campaigns.push({ id: `legacy-${game.seed}`, seed: game.seed, profile, game, createdAt: game.createdAt, updatedAt: game.updatedAt })
-  }
   const requestedActiveId = typeof data.activeCampaignId === 'string' ? data.activeCampaignId : null
-  const active = campaigns.find(campaign => campaign.id === requestedActiveId) ?? campaigns[0] ?? null
+  let active = parsedCampaigns.find(campaign => campaign.id === requestedActiveId)
+    ?? parsedCampaigns.reduce<CampaignSlot | null>((latest, campaign) => !latest || campaign.updatedAt > latest.updatedAt ? campaign : latest, null)
+  // Version 3 also kept a top-level copy. Use it only when the active campaign is unambiguous.
+  if (active && !active.game && game && (active.id === requestedActiveId || parsedCampaigns.length === 1)) {
+    active = { ...active, seed: game.seed, game, updatedAt: Math.max(active.updatedAt, game.updatedAt) }
+  }
+  // Migrate the old single adventure into the one permanent slot; its progress is never discarded.
+  if (!active && game) {
+    active = { id: `legacy-${game.seed}`, seed: game.seed, profile, game, createdAt: game.createdAt, updatedAt: game.updatedAt }
+  }
+  const campaigns = active ? [active] : []
   return {
-    version: 3,
+    version: 4,
     settings,
     game: active ? active.game : game,
     profile: active ? active.profile : profile,

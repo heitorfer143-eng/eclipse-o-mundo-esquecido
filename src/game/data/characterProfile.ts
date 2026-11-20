@@ -1,4 +1,9 @@
 export const CHARACTER_OPTIONS = [
+  { id: 'Survivor', label: 'Sobrevivente', description: 'Começa sem armadura, capacete ou botas; equipamento vem da exploração e do crafting.' },
+] as const
+
+/** IDs antigos continuam válidos apenas para saves já criados; não são oferecidos em campanhas novas. */
+export const LEGACY_CHARACTER_OPTIONS = [
   { id: 'Knight', label: 'Cavaleiro', description: 'Armadura clássica de Aetherion' },
   { id: 'Barbarian', label: 'Bárbaro', description: 'Visual robusto de aventureiro' },
   { id: 'Mage', label: 'Maga', description: 'Túnica arcana e silhueta leve' },
@@ -6,7 +11,9 @@ export const CHARACTER_OPTIONS = [
   { id: 'Rogue_Hooded', label: 'Andarilha encapuzada', description: 'Manto de viajante furtivo' },
 ] as const
 
-export type CharacterModelId = (typeof CHARACTER_OPTIONS)[number]['id']
+export const ALL_CHARACTER_OPTIONS = [...CHARACTER_OPTIONS, ...LEGACY_CHARACTER_OPTIONS] as const
+export type CharacterModelId = (typeof ALL_CHARACTER_OPTIONS)[number]['id']
+export type LegacyCharacterModelId = (typeof LEGACY_CHARACTER_OPTIONS)[number]['id']
 
 export const AURA_OPTIONS = [
   { id: 'lunar', label: 'Luar', color: '#7fe3ff' },
@@ -22,7 +29,7 @@ export type CharacterProfile = { name: string; modelId: CharacterModelId; auraCo
 
 export const DEFAULT_CHARACTER_PROFILE: CharacterProfile = {
   name: '',
-  modelId: 'Knight',
+  modelId: 'Survivor',
   auraColor: '#7fe3ff',
 }
 
@@ -37,11 +44,11 @@ export function isCharacterNameValid(value: string): boolean {
   return normalizeCharacterName(value).trim().length >= 2
 }
 
-/** Treat local-storage profile data as untrusted and accept only bundled cosmetic choices. */
+/** Accept legacy looks when loading old campaigns, but only expose Survivor for a new campaign. */
 export function parseCharacterProfile(value: unknown): CharacterProfile {
   const raw = isRecord(value) ? value : {}
   const name = typeof raw.name === 'string' ? normalizeCharacterName(raw.name).trim() : ''
-  const modelId = CHARACTER_OPTIONS.find(option => option.id === raw.modelId)?.id
+  const modelId = ALL_CHARACTER_OPTIONS.find(option => option.id === raw.modelId)?.id
     ?? DEFAULT_CHARACTER_PROFILE.modelId
   const auraColor = AURA_OPTIONS.find(option => option.color === raw.auraColor)?.color
     ?? DEFAULT_CHARACTER_PROFILE.auraColor

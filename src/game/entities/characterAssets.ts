@@ -1,6 +1,6 @@
-import { CHARACTER_OPTIONS, type CharacterModelId } from '../data/characterProfile'
+import { ALL_CHARACTER_OPTIONS, type CharacterModelId, type LegacyCharacterModelId } from '../data/characterProfile'
 
-export type KayKitCharacterId = CharacterModelId
+export type KayKitCharacterId = LegacyCharacterModelId
 
 const STORAGE_PATHS: Record<KayKitCharacterId, string> = {
   Barbarian: '/manus-storage/game/sha256/cefc311a0e10c7858b6141f5ada7e33268727564fb8ac1347aab97d000669cc6.glb',
@@ -18,11 +18,14 @@ const FILES: Record<KayKitCharacterId, string> = {
   Rogue_Hooded: 'Rogue_Hooded.glb',
 }
 
-export const KAYKIT_CHARACTER_IDS: readonly KayKitCharacterId[] = CHARACTER_OPTIONS.map(option => option.id)
+export const KAYKIT_CHARACTER_IDS: readonly KayKitCharacterId[] = ALL_CHARACTER_OPTIONS
+  .map(option => option.id)
+  .filter((id): id is KayKitCharacterId => id !== 'Survivor')
 
-/** Resolve only allowlisted KayKit models; never accept arbitrary local or remote URLs. */
-export function characterModelUrlFor(id: KayKitCharacterId): string {
-  const allowedId = CHARACTER_OPTIONS.find(option => option.id === id)?.id ?? 'Knight'
+/** Resolve only bundled/allowlisted legacy models; Survivor deliberately uses the animated procedural rig. */
+export function characterModelUrlFor(id: CharacterModelId): string {
+  if (id === 'Survivor') return ''
+  const allowedId = KAYKIT_CHARACTER_IDS.includes(id) ? id : 'Knight'
   const host = typeof window === 'undefined' ? '' : window.location.hostname
   const isManusHost = host.endsWith('.manus.computer')
     || host.endsWith('.manuspre.computer')

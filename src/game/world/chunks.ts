@@ -27,14 +27,32 @@ const animalAssets = [
   'https://gobkit.com/freebies/animalB/Goat.glb',
   'https://gobkit.com/freebies/animal005/Sheep.glb',
 ]
-const animalCache = new Map<string, Promise<THREE.Group>>()
-function loadAnimal(url: string): Promise<THREE.Group> {
+type AnimalMotion = 'idle' | 'walk' | 'run'
+type AnimalBone = { bone: THREE.Bone; base: THREE.Euler; phase: number; amplitude: number }
+type WildlifeAgent = {
+  root: THREE.Group
+  model: THREE.Group
+  mixer: THREE.AnimationMixer
+  actions: Record<AnimalMotion, THREE.AnimationAction | undefined>
+  active?: THREE.AnimationAction
+  position: THREE.Vector3
+  target: THREE.Vector3
+  direction: THREE.Vector3
+  state: AnimalMotion
+  timer: number
+  phase: number
+  baseModelY: number
+  bones: AnimalBone[]
+}
+
+const animalCache = new Map<string, Promise<{ scene: THREE.Group; animations: THREE.AnimationClip[] }>>()
+function loadAnimal(url: string): Promise<{ scene: THREE.Group; animations: THREE.AnimationClip[] }> {
   let pending = animalCache.get(url)
   if (!pending) {
     pending = animalLoader.loadAsync(url).then(gltf => {
       // Initialize skinned bounds before SkeletonUtils.clone rebinds the animal skeleton.
       new THREE.Box3().setFromObject(gltf.scene)
-      return gltf.scene
+      return { scene: gltf.scene, animations: gltf.animations.map(stripAnimalRootMotion) }
     })
     animalCache.set(url, pending)
     pending.catch(() => animalCache.delete(url))
@@ -42,9 +60,52 @@ function loadAnimal(url: string): Promise<THREE.Group> {
   return pending
 }
 
+export function resolveAnimalClipName(mode: AnimalMotion, names: readonly string[]): string | undefined {
+  const candidates = mode === 'idle' ? ['idle', 'stand', 'rest']
+    : mode === 'walk' ? ['walk', 'walking', 'trot', 'move']
+      : ['run', 'running', 'gallop', 'canter', 'walk', 'walking']
+  const normalized = names.map(name => name.toLowerCase())
+  for (const candidate of candidates) {
+    const exact = normalized.findIndex(name => name === candidate)
+    if (exact >= 0) return names[exact]
+  }
+  for (const candidate of candidates) {
+    const partial = normalized.findIndex(name => name.includes(candidate))
+    if (partial >= 0) return names[partial]
+  }
+  return undefined
+}
+
+function stripAnimalRootMotion(source: THREE.AnimationClip): THREE.AnimationClip {
+  const clip = source.clone()
+  clip.tracks = clip.tracks.filter(track => {
+    const split = track.name.lastIndexOf('.')
+    if (split < 0 || track.name.slice(split + 1) !== 'position') return true
+    const node = track.name.slice(0, split).split(/[/.|:]/).at(-1)?.toLowerCase()
+    return node !== 'root' && node !== 'hips' && node !== 'armature'
+  })
+  clip.resetDuration()
+  return clip
+}
+
+function collectAnimalBones(model: THREE.Group): AnimalBone[] {
+  const bones: AnimalBone[] = []
+  model.traverse(object => {
+    const bone = object as THREE.Bone
+    if (!bone.isBone) return
+    const name = bone.name.toLowerCase().replace(/[^a-z]/g, '')
+    if (!/leg|paw|foot|hoof|hock|arm/.test(name)) return
+    const left = /left/.test(name) || /(^|[^a-z])l($|[^a-z])/.test(bone.name.toLowerCase())
+    const arm = /arm/.test(name)
+    bones.push({ bone, base: bone.rotation.clone(), phase: (left ? 0 : Math.PI) + (arm ? Math.PI : 0), amplitude: arm ? 0.2 : 0.38 })
+  })
+  return bones
+}
+
 export class Chunk {
   readonly group = new THREE.Group()
   readonly colliders: Collider[] = []
+  private readonly wildlife: WildlifeAgent[] = []
   private terrain?: THREE.Mesh
   private propGroup?: THREE.Group
   private currentLod?: Lod
@@ -136,6 +197,7 @@ export class Chunk {
   }
 
   private buildProps(lod: Lod): void {
+    this.disposeWildlife()
     if (this.propGroup) {
       this.group.remove(this.propGroup)
       this.propGroup.traverse(obj => {
@@ -271,29 +333,169 @@ export class Chunk {
       if (biome === 'oceano' || biome === 'vulcanico' || biome === 'cinzas') continue
       const options = biome === 'deserto' ? [animalAssets[2], animalAssets[3], animalAssets[1]]
         : biome === 'neve' || biome === 'montanha' ? [animalAssets[0], animalAssets[1], animalAssets[5]]
-        : biome === 'praia' || biome === 'ilha' ? [animalAssets[3], animalAssets[6], animalAssets[2]]
+      : biome === 'praia' || biome === 'ilha' ? [animalAssets[3], animalAssets[6], animalAssets[2]]
         : animalAssets
       const url = options[Math.floor(random() * options.length)]
+      const localX = x - originX
+      const localZ = z - originZ
+      const heading = random() * Math.PI * 2
+      const target = new THREE.Vector3(8 + random() * (CHUNK_SIZE - 16), 0, 8 + random() * (CHUNK_SIZE - 16))
+      const phase = random() * Math.PI * 2
+      const timer = 1 + random() * 3
       void loadAnimal(url).then(source => {
         if (!group.parent) return
-        const animal = clone(source) as THREE.Group
+        const animal = clone(source.scene) as THREE.Group
         const bounds = new THREE.Box3().setFromObject(animal)
         const size = bounds.getSize(new THREE.Vector3())
         const scale = (url.includes('PalominoHorse') ? 1.65 : 0.95) / Math.max(0.01, size.y)
         animal.scale.setScalar(scale)
         const scaled = new THREE.Box3().setFromObject(animal)
-        animal.position.set(x - originX, y - scaled.min.y, z - originZ)
-        animal.rotation.y = random() * Math.PI * 2
+        const baseModelY = -scaled.min.y
+        animal.position.set(0, baseModelY, 0)
         animal.traverse(object => {
           const mesh = object as THREE.Mesh
           if (mesh.isMesh) { mesh.castShadow = true; mesh.receiveShadow = false }
         })
-        group.add(animal)
+        const root = new THREE.Group()
+        root.position.set(localX, y, localZ)
+        root.rotation.y = heading
+        root.add(animal)
+        group.add(root)
+        const animations = source.animations
+        const names = animations.map(clip => clip.name)
+        const findClip = (name: string | undefined): THREE.AnimationClip | undefined => name ? animations.find(clip => clip.name === name) : undefined
+        const idleClip = findClip(resolveAnimalClipName('idle', names))
+        const walkClip = findClip(resolveAnimalClipName('walk', names))
+        const runClip = findClip(resolveAnimalClipName('run', names)) ?? walkClip
+        const mixer = new THREE.AnimationMixer(animal)
+        const makeAction = (clip?: THREE.AnimationClip): THREE.AnimationAction | undefined => {
+          if (!clip) return undefined
+          const action = mixer.clipAction(clip)
+          action.setLoop(THREE.LoopRepeat, Infinity)
+          action.clampWhenFinished = false
+          return action
+        }
+        const agent: WildlifeAgent = {
+          root,
+          model: animal,
+          mixer,
+          actions: { idle: makeAction(idleClip), walk: makeAction(walkClip), run: makeAction(runClip) },
+          position: new THREE.Vector3(localX, y, localZ),
+          target,
+          direction: new THREE.Vector3(Math.sin(heading), 0, Math.cos(heading)),
+          state: 'idle',
+          timer,
+          phase,
+          baseModelY,
+          bones: collectAnimalBones(animal),
+        }
+        this.wildlife.push(agent)
       }).catch(() => undefined)
     }
   }
 
+  updateWildlife(dt: number, player: THREE.Vector3): void {
+    const step = Math.max(0, Math.min(0.1, dt))
+    if (step <= 0) return
+    const originX = this.cx * CHUNK_SIZE
+    const originZ = this.cz * CHUNK_SIZE
+    for (const agent of this.wildlife) {
+      const worldX = originX + agent.position.x
+      const worldZ = originZ + agent.position.z
+      const awayX = worldX - player.x
+      const awayZ = worldZ - player.z
+      const playerDistance = Math.hypot(awayX, awayZ)
+      if (playerDistance < 9) {
+        const length = Math.max(0.001, playerDistance)
+        agent.direction.set(awayX / length, 0, awayZ / length)
+        agent.target.set(
+          Math.max(6, Math.min(CHUNK_SIZE - 6, agent.position.x + agent.direction.x * 18)),
+          0,
+          Math.max(6, Math.min(CHUNK_SIZE - 6, agent.position.z + agent.direction.z * 18)),
+        )
+        agent.state = 'run'
+      } else {
+        if (agent.state === 'run') {
+          agent.state = 'idle'
+          agent.timer = 1.2
+        }
+        agent.timer -= step
+        if (agent.timer <= 0) {
+          if (Math.random() < 0.62) {
+            agent.state = 'walk'
+            agent.target.set(7 + Math.random() * (CHUNK_SIZE - 14), 0, 7 + Math.random() * (CHUNK_SIZE - 14))
+            agent.timer = 3 + Math.random() * 4
+          } else {
+            agent.state = 'idle'
+            agent.timer = 1.5 + Math.random() * 3
+          }
+        }
+      }
+
+      if (agent.state === 'walk' || agent.state === 'run') {
+        const dx = agent.target.x - agent.position.x
+        const dz = agent.target.z - agent.position.z
+        const distance = Math.hypot(dx, dz)
+        if (distance < 0.8) {
+          agent.state = 'idle'
+          agent.timer = 1.2 + Math.random() * 1.8
+        } else {
+          const desiredX = dx / distance
+          const desiredZ = dz / distance
+          agent.direction.x += (desiredX - agent.direction.x) * Math.min(1, step * 4)
+          agent.direction.z += (desiredZ - agent.direction.z) * Math.min(1, step * 4)
+          agent.direction.normalize()
+          const speed = agent.state === 'run' ? 4.4 : 1.05
+          const nextX = Math.max(5, Math.min(CHUNK_SIZE - 5, agent.position.x + agent.direction.x * speed * step))
+          const nextZ = Math.max(5, Math.min(CHUNK_SIZE - 5, agent.position.z + agent.direction.z * speed * step))
+          const nextWorldX = originX + nextX
+          const nextWorldZ = originZ + nextZ
+          const nextY = this.terrainField.heightAt(nextWorldX, nextWorldZ)
+          if (nextY < SEA_LEVEL + 1 || this.terrainField.slopeAt(nextWorldX, nextWorldZ) > 0.72 || this.blocked(nextWorldX, nextWorldZ)) {
+            agent.state = 'idle'
+            agent.timer = 1.3
+          } else {
+            agent.position.set(nextX, nextY, nextZ)
+          }
+        }
+      }
+
+      agent.root.position.copy(agent.position)
+      agent.root.rotation.y = Math.atan2(agent.direction.x, agent.direction.z)
+      const movementAction = agent.state === 'run' ? agent.actions.run ?? agent.actions.walk
+        : agent.state === 'walk' ? agent.actions.walk : agent.actions.idle
+      const action = agent.state === 'idle' ? agent.actions.idle : movementAction ?? agent.actions.idle
+      if (action && agent.active !== action) {
+        agent.active?.fadeOut(0.22)
+        action.reset().fadeIn(0.22)
+        action.play()
+        agent.active = action
+      }
+      agent.mixer.update(step)
+      const hasLocomotion = Boolean(agent.actions.walk || agent.actions.run)
+      if ((agent.state === 'walk' || agent.state === 'run') && !hasLocomotion) {
+        agent.phase += step * (agent.state === 'run' ? 11 : 7)
+        agent.model.position.y = agent.baseModelY + Math.abs(Math.sin(agent.phase * 2)) * 0.035
+        for (const item of agent.bones) {
+          item.bone.rotation.set(item.base.x + Math.sin(agent.phase + item.phase) * item.amplitude, item.base.y, item.base.z)
+        }
+      } else if (!hasLocomotion && !agent.actions.idle) {
+        agent.model.position.y = agent.baseModelY
+        for (const item of agent.bones) item.bone.rotation.copy(item.base)
+      }
+    }
+  }
+
+  private disposeWildlife(): void {
+    for (const agent of this.wildlife) {
+      agent.mixer.stopAllAction()
+      agent.root.removeFromParent()
+    }
+    this.wildlife.length = 0
+  }
+
   dispose(): void {
+    this.disposeWildlife()
     this.terrain?.geometry.dispose()
     this.propGroup?.traverse(obj => {
       if ((obj as THREE.InstancedMesh).isInstancedMesh) (obj as THREE.InstancedMesh).dispose()
@@ -316,6 +518,10 @@ export class ChunkManager {
 
   chunkAt(x: number, z: number): Chunk | undefined {
     return this.chunks.get(`${Math.floor(x / CHUNK_SIZE)},${Math.floor(z / CHUNK_SIZE)}`)
+  }
+
+  updateWildlife(dt: number, player: THREE.Vector3): void {
+    for (const chunk of this.chunks.values()) chunk.updateWildlife(dt, player)
   }
 
   /** Colliders from the chunks touching a world position (3x3 neighbourhood). */

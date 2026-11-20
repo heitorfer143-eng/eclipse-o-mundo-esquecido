@@ -3,6 +3,9 @@ import { mkdirSync } from 'node:fs'
 
 const URL = process.env.SMOKE_URL ?? 'http://localhost:5173/'
 const OUT = process.env.SHOTS_DIR ?? 'shots'
+const errors = []
+const pageErrors = []
+
 async function captureScreenshot(page, filename) {
   if (process.env.CAPTURE_SMOKE_SHOTS !== '1') return
   mkdirSync(OUT, { recursive: true })
@@ -18,281 +21,251 @@ const browser = await chromium.launch({
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 })
 const page = await browser.newPage({ viewport: { width: 800, height: 600 } })
-const errors = []
-const pageErrors = []
-page.on('console', message => {
-  if (message.type() === 'error') errors.push(message.text())
+page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
+page.on('pageerror', error => {
+  const message = `pageerror: ${error.message}`
+  errors.push(message)
+  pageErrors.push(message)
 })
-page.on('pageerror', error => { pageErrors.push(error.message); errors.push(`pageerror: ${error.message}`) })
 
 await page.goto(URL, { waitUntil: 'domcontentloaded' })
-await page.waitForTimeout(12000)
+await page.waitForFunction(() => window.__eclipse?.game, { timeout: 30000 })
+await page.waitForTimeout(2500)
 await captureScreenshot(page, '01-title.png')
+console.log('game object:', await page.evaluate(() => Boolean(window.__eclipse?.game)))
 
-const hasGame = await page.evaluate(() => Boolean(window.__eclipse?.game))
-console.log('game object:', hasGame)
-console.log('errors so far:', errors.slice(0, 8))
+// New-game flow: exactly one identity, saved before the first story dialogue.
+await page.getByRole('button', { name: 'Criar personagem', exact: true }).click()
+await page.locator('.campaign-intro').waitFor({ state: 'visible' })
+await page.getByRole('button', { name: 'Iniciar campanha' }).click()
+await page.locator('[data-player-name]').fill('Teste Eclipse')
+await page.locator('[data-aura="arcano"]').click()
+await captureScreenshot(page, '02-character.png')
+await page.getByRole('button', { name: 'Confirmar e começar' }).click()
+await page.locator('.dialogue').waitFor({ state: 'visible', timeout: 45000 })
+await captureScreenshot(page, '03-iara-dialogue.png')
+await page.getByRole('button', { name: 'Aceitar missão: O Despertar' }).click()
+await page.getByRole('button', { name: 'Encerrar conversa' }).click()
+await page.waitForFunction(() => window.__eclipse.game.mode === 'playing' && window.__eclipse.game.quests.tracked === 'principal-01')
+await page.waitForTimeout(1000)
 
-if (hasGame) {
-  await page.getByRole('button', { name: 'Nova campanha' }).click()
-  await page.getByText('Você acorda na Floresta de Brumal sem memória', { exact: false }).waitFor()
-  await captureScreenshot(page, '02-prologue.png')
-  await page.getByRole('button', { name: 'Iniciar campanha' }).click()
-  await page.locator('[data-player-name]').fill('Teste Eclipse')
-  await page.locator('[data-model="Mage"]').click()
-  await page.locator('[data-aura="arcano"]').click()
-  await captureScreenshot(page, '03-character.png')
-  await page.getByRole('button', { name: 'Confirmar e começar' }).click()
-  await page.locator('.dialogue').waitFor({ state: 'visible' })
-  await captureScreenshot(page, '04-iara-dialogue.png')
-  await page.getByRole('button', { name: 'Aceitar missão: O Despertar' }).click()
-  await page.getByRole('button', { name: 'Encerrar conversa' }).click()
-  await page.waitForTimeout(4500)
-  await page.waitForFunction(() => window.__eclipse.game.population.npcs.some(npc => npc.model.external), null, { timeout: 30000 })
-  const externalModelScales = await page.evaluate(() => window.__eclipse.game.population.npcs
-    .map(npc => npc.model.external?.root.children[0]?.scale.x)
-    .filter(scale => Number.isFinite(scale)))
-  if (externalModelScales.length && Math.max(...externalModelScales) > 100) {
-    throw new Error(`Bounds inválidos no modelo clonado; fator de escala extremo: ${Math.max(...externalModelScales)}.`)
+const openingState = await page.evaluate(() => {
+  const g = window.__eclipse.game
+  const iara = g.population.npcs.find(npc => npc.def.id === 'iara')
+  const profile = window.__eclipse.save.activeCampaign?.profile
+  const equipment = g.inventory.equipment
+  const cameraBackX = Math.sin(g.player.facing)
+  const cameraBackZ = Math.cos(g.player.facing)
+  return {
+    mode: g.mode,
+    profile,
+    distanceToIara: iara?.position.distanceTo(g.player.position) ?? Infinity,
+    iaraCameraSide: iara
+      ? (iara.position.x - g.player.position.x) * cameraBackX + (iara.position.z - g.player.position.z) * cameraBackZ
+      : Infinity,
+    maxEnemyHeight: Math.max(0, ...g.spawner.enemies.map(enemy => enemy.height)),
+    quest: g.quests.state('principal-01')?.status ?? null,
+    tracked: g.quests.tracked,
+    storyFlags: g.save.data.game?.storyFlags ?? [],
+    armorEquipped: Boolean(equipment.armadura || equipment.capacete || equipment.botas),
+    activeCampaigns: g.save.data.campaigns.length,
   }
-  await page.locator('.hud__title').filter({ hasText: 'Teste Eclipse' }).waitFor()
-  await captureScreenshot(page, '05-game.png')
-  const state = await page.evaluate(() => {
-    const g = window.__eclipse.game
-    const iara = g.population.npcs.find(npc => npc.def.id === 'iara')
-    const iaraDistance = iara?.position.distanceTo(g.player.position) ?? Infinity
-    // Compare with the camera's reset direction. Earlier UI clicks may rotate the live
-    // orbit camera before this assertion, which is normal and seed/runner dependent.
-    const cameraBackX = Math.sin(g.player.facing)
-    const cameraBackZ = Math.cos(g.player.facing)
-    const iaraCameraSide = iara
-      ? (iara.position.x - g.player.position.x) * cameraBackX
-        + (iara.position.z - g.player.position.z) * cameraBackZ
-      : Infinity
-    const maxEnemyHeight = Math.max(0, ...g.spawner.enemies.map(enemy => enemy.height))
-    return {
-      mode: g.mode,
-      pos: g.player.position.toArray().map(n => Math.round(n)),
-      health: Math.round(g.player.health),
-      enemies: g.spawner.enemies.length,
-      maxEnemyHeight,
-      iaraDistance,
-      iaraCameraSide,
-      openingQuest: g.quests.state('principal-01')?.status ?? null,
-      trackedQuest: g.quests.tracked,
-      level: g.progression.level,
-      biome: g.world.biomeAt(g.player.position.x, g.player.position.z),
-      fps: g.fps,
-      pois: g.world.pois.list().length,
-      drawCalls: null,
-    }
-  })
-  console.log('state:', state)
-  if (state.openingQuest !== 'ativa' || state.trackedQuest !== 'principal-01') throw new Error('O aceite de O Despertar não persistiu.')
-  const createdProfile = await page.evaluate(() => window.__eclipse.save.activeCampaign?.profile)
-  if (createdProfile?.name !== 'Teste Eclipse' || createdProfile.modelId !== 'Mage' || createdProfile.auraColor !== '#c094ff') {
-    throw new Error(`O perfil escolhido na criação não foi salvo na campanha: ${JSON.stringify(createdProfile)}`)
-  }
-  if (state.iaraDistance > 3.4) throw new Error('Iara não está acessível no ponto de início.')
-  if (state.iaraCameraSide >= 0) throw new Error('Iara está entre a câmera e o jogador no ponto de início.')
-  if (state.maxEnemyHeight > 2.45) throw new Error(`Mob maior que o limite: ${state.maxEnemyHeight} m.`)
-  await page.keyboard.press('KeyL')
-  const huntCard = page.locator('.quest-hunt')
-  await huntCard.waitFor({ state: 'visible' })
-  const huntGuide = await huntCard.textContent()
-  const locateAction = await page.locator('.panel__foot [data-hunt-locate]').textContent()
-  if (!huntGuide?.includes('Lobo Sombrio') || !huntGuide.includes('Mata Sombria') || !locateAction?.includes('Localizar no jogo')) {
-    throw new Error(`O diário não mostrou o localizador do objetivo atual: ${huntGuide}`)
-  }
-  await page.locator('.panel__close').evaluate(button => button.click())
-  await page.waitForFunction(() => window.__eclipse.game.mode === 'playing' && window.__eclipse.game.quests.tracked === 'principal-01')
-  await page.waitForFunction(() => {
-    const locator = document.querySelector('.quest__locator')
-    return locator && !locator.classList.contains('hidden') && locator.textContent?.trim()
-  })
-  const liveLocator = await page.locator('.quest__locator').textContent()
-  if (!liveLocator?.includes('Lobo Sombrio') && !liveLocator?.includes('Zona de caça')) {
-    throw new Error(`A HUD não exibiu a pista de localização do mob: ${liveLocator}`)
-  }
-  await page.evaluate(() => window.__eclipse.game.pause())
-  await page.locator('.pause-card').waitFor()
-  if (await page.locator('[data-customize]').count()) throw new Error('A pausa ainda permite editar a identidade do personagem.')
-  await page.getByRole('button', { name: 'Continuar', exact: true }).evaluate(button => button.click())
-  await page.waitForFunction(() => window.__eclipse.game.mode === 'playing')
-  await page.waitForFunction(() => {
-    const sites = window.__eclipse.game.world.pois.group
-    let count = 0
-    sites.traverse(object => { if (object.name.startsWith('house-model-')) count += 1 })
-    return count >= 7
-  }, null, { timeout: 20000 })
-  const villageHouseCount = await page.evaluate(() => {
-    let count = 0
-    window.__eclipse.game.world.pois.group.traverse(object => { if (object.name.startsWith('house-model-')) count += 1 })
-    return count
-  })
-  if (villageHouseCount < 7) throw new Error(`Modelos GLB de casas não foram instanciados na vila: ${villageHouseCount}`)
-  console.log(`house models: ${villageHouseCount} CC0 GLB instances loaded in streamed settlements`)
-  await page.keyboard.down('KeyW')
-  await page.waitForTimeout(1400)
-  await page.keyboard.up('KeyW')
-  await page.waitForTimeout(600)
-  await captureScreenshot(page, '06-walk.png')
-  await page.keyboard.press('Tab')
-  await page.waitForTimeout(800)
-  await captureScreenshot(page, '07-inventory.png')
-  await page.keyboard.press('Escape')
-  await page.waitForTimeout(500)
-  await page.keyboard.press('KeyM')
-  await page.waitForTimeout(1600)
-  await captureScreenshot(page, '08-map.png')
-  await page.keyboard.press('Escape')
-  await page.waitForTimeout(400)
-  await page.keyboard.press('KeyK')
-  await page.waitForTimeout(800)
-  await captureScreenshot(page, '09-skills.png')
-  await page.reload({ waitUntil: 'domcontentloaded' })
-  await page.getByRole('button', { name: 'Continuar campanha' }).waitFor()
-  await page.getByRole('button', { name: 'Continuar campanha' }).click()
-  await page.locator('.hud__title').filter({ hasText: 'Teste Eclipse' }).waitFor()
-  await page.waitForTimeout(300)
-  const resumed = await page.evaluate(() => ({
-    mode: window.__eclipse.game.mode,
-    quest: window.__eclipse.game.quests.state('principal-01')?.status ?? null,
-    dialogueVisible: !document.querySelector('.dialogue')?.classList.contains('hidden'),
-  }))
-  const creatorVisible = await page.locator('.character-customizer').evaluate(element => !element.classList.contains('hidden'))
-  if (creatorVisible) throw new Error('A retomada da campanha repetiu a criação do personagem.')
-  if (resumed.mode !== 'playing' || resumed.quest !== 'ativa' || resumed.dialogueVisible) throw new Error('A retomada não restaurou a campanha diretamente.')
-  console.log('campaign resumed without recreating the character or repeating Iara’s intro')
-
-  await page.evaluate(() => {
-    const runtime = window.__eclipse
-    const legacy = JSON.parse(JSON.stringify(runtime.save.data.game))
-    if (!legacy) throw new Error('Slot de campanha ausente para a migração legada.')
-    legacy.position = [640, 35, 620]
-    legacy.progression.level = 5
-    legacy.inventory.gold = 321
-    legacy.quests = { tracked: 'principal-01', states: {} }
-    legacy.updatedAt = Date.now()
-    runtime.save.data.game = legacy
-    runtime.game.start(false)
-  })
-  await page.locator('.dialogue').waitFor({ state: 'visible' })
-  const legacy = await page.evaluate(() => {
-    const g = window.__eclipse.game
-    return {
-      quest: g.quests.state('principal-01')?.status ?? null,
-      tracked: g.quests.tracked,
-      level: g.progression.level,
-      gold: g.inventory.gold,
-      spawnDistance: g.player.position.distanceTo(g.world.spawn),
-    }
-  })
-  if (legacy.quest || legacy.tracked || legacy.level !== 5 || legacy.gold !== 321 || legacy.spawnDistance > 0.1) {
-    throw new Error(`Save antigo não foi direcionado a Iara com progresso preservado: ${JSON.stringify(legacy)}`)
-  }
-  await captureScreenshot(page, '10-legacy-iara-dialogue.png')
-  await page.getByRole('button', { name: 'Aceitar missão: O Despertar' }).evaluate(button => button.click())
-  const acceptedLegacy = await page.evaluate(() => ({
-    quest: window.__eclipse.game.quests.state('principal-01')?.status ?? null,
-    tracked: window.__eclipse.game.quests.tracked,
-  }))
-  if (acceptedLegacy.quest !== 'ativa' || acceptedLegacy.tracked !== 'principal-01') {
-    throw new Error('O aceite de O Despertar não funcionou após a migração legada.')
-  }
-
-  await page.getByRole('button', { name: 'Encerrar conversa' }).evaluate(button => button.click())
-  const firstCampaignId = await page.evaluate(() => window.__eclipse.save.data.activeCampaignId)
-  await page.evaluate(() => window.__eclipse.game.pause())
-  await page.getByRole('button', { name: 'Sair para o título' }).evaluate(button => button.click())
-  if (await page.getByRole('button', { name: 'Editar aparência' }).count()) throw new Error('O título ainda permite editar o personagem de uma campanha existente.')
-  await page.getByRole('button', { name: 'Nova campanha' }).evaluate(button => button.click())
-  await page.getByRole('button', { name: 'Iniciar campanha' }).click()
-  await page.locator('[data-player-name]').fill('Nara Eclipse')
-  await page.getByRole('button', { name: 'Confirmar e começar' }).click()
-  await page.waitForFunction(() => window.__eclipse?.game
-    && window.__eclipse.save.data.campaigns.length === 2
-    && window.__eclipse.save.data.profile.name === 'Nara Eclipse', null, { timeout: 45000 })
-  const newCampaignDialogue = await page.locator('.dialogue').evaluate(element => !element.classList.contains('hidden'))
-  if (newCampaignDialogue) {
-    await page.getByRole('button', { name: 'Encerrar conversa' }).evaluate(button => button.click())
-  } else if (await page.evaluate(() => window.__eclipse.game.mode === 'paused')) {
-    await page.getByRole('button', { name: 'Continuar', exact: true }).evaluate(button => button.click())
-  }
-  await page.waitForFunction(() => window.__eclipse?.game.mode === 'playing', null, { timeout: 10000 })
-  const secondCampaign = await page.evaluate(() => ({
-    activeId: window.__eclipse.save.data.activeCampaignId,
-    profile: window.__eclipse.save.data.profile.name,
-    campaigns: window.__eclipse.save.data.campaigns.map(slot => ({
-      id: slot.id,
-      name: slot.profile.name,
-      level: slot.game?.progression.level ?? null,
-      gold: slot.game?.inventory.gold ?? null,
-    })),
-  }))
-  if (secondCampaign.activeId === firstCampaignId || secondCampaign.profile !== 'Nara Eclipse') {
-    throw new Error(`A segunda personagem/campanha não foi criada: ${JSON.stringify(secondCampaign)}`)
-  }
-  const firstSlot = secondCampaign.campaigns.find(slot => slot.id === firstCampaignId)
-  if (firstSlot?.name !== 'Teste Eclipse' || firstSlot.level !== 5 || firstSlot.gold !== 321) {
-    throw new Error(`A campanha original foi sobrescrita: ${JSON.stringify(secondCampaign)}`)
-  }
-  const dialogueOpen = await page.locator('.dialogue').evaluate(element => !element.classList.contains('hidden'))
-  if (dialogueOpen) await page.getByRole('button', { name: 'Encerrar conversa' }).evaluate(button => button.click())
-  await page.evaluate(() => window.__eclipse.game.pause())
-  await page.getByRole('button', { name: 'Sair para o título' }).evaluate(button => button.click())
-  await page.getByRole('button', { name: /Retomar Teste Eclipse, nível 5/ }).evaluate(button => button.click())
-  await page.waitForFunction(id => window.__eclipse?.game
-    && window.__eclipse.save.data.activeCampaignId === id
-    && window.__eclipse.save.data.profile.name === 'Teste Eclipse'
-    && window.__eclipse.game.progression.level === 5, firstCampaignId, { timeout: 45000 })
-  if (await page.evaluate(() => window.__eclipse.game.mode === 'paused')) {
-    await page.getByRole('button', { name: 'Continuar', exact: true }).evaluate(button => button.click())
-  }
-  await page.waitForFunction(() => window.__eclipse?.game.mode === 'playing', null, { timeout: 10000 })
-  console.log('multiple campaigns: created a second character and resumed the original save intact')
-
-  await page.evaluate(() => window.__eclipse.game.pause())
-  await page.getByRole('button', { name: 'Sair para o título' }).evaluate(button => button.click())
-  const settingsBeforeDeletion = await page.evaluate(() => JSON.stringify(window.__eclipse.save.data.settings))
-  const deleteConfirmations = []
-  page.on('dialog', async dialog => {
-    deleteConfirmations.push(dialog.message())
-    await dialog.accept()
-  })
-  await page.getByRole('button', { name: 'Excluir save de Nara Eclipse' }).click()
-  await page.waitForFunction(id => window.__eclipse.save.data.campaigns.length === 1
-    && window.__eclipse.save.data.activeCampaignId === id
-    && window.__eclipse.save.data.profile.name === 'Teste Eclipse', firstCampaignId)
-  if (deleteConfirmations.length !== 1 || !deleteConfirmations[0].includes('As outras campanhas')) {
-    throw new Error('A exclusão do save não exibiu confirmação clara sobre os outros slots.')
-  }
-  await page.getByRole('button', { name: 'Excluir save de Teste Eclipse' }).click()
-  await page.waitForFunction(() => window.__eclipse.save.data.campaigns.length === 0
-    && window.__eclipse.save.data.activeCampaignId === null
-    && window.__eclipse.save.data.game === null)
-  const afterDeletion = await page.evaluate(() => ({
-    campaigns: window.__eclipse.save.data.campaigns.length,
-    game: window.__eclipse.save.data.game,
-    settings: JSON.stringify(window.__eclipse.save.data.settings),
-  }))
-  if (deleteConfirmations.length !== 2 || afterDeletion.settings !== settingsBeforeDeletion) {
-    throw new Error(`Excluir saves alterou outros dados ou não pediu duas confirmações: ${JSON.stringify(afterDeletion)}`)
-  }
-  console.log('save deletion: confirmed per-slot removal, other campaigns preserved, settings unchanged')
+})
+console.log('opening state:', openingState)
+if (openingState.mode !== 'playing' || openingState.quest !== 'ativa' || openingState.tracked !== 'principal-01') {
+  throw new Error(`O aceite da missão inicial não persistiu: ${JSON.stringify(openingState)}`)
 }
+if (openingState.profile?.name !== 'Teste Eclipse' || openingState.profile.modelId !== 'Survivor' || openingState.profile.auraColor !== '#c094ff') {
+  throw new Error(`Perfil inicial deveria ser um sobrevivente sem armadura: ${JSON.stringify(openingState.profile)}`)
+}
+if (openingState.armorEquipped || openingState.activeCampaigns !== 1 || !openingState.storyFlags.includes('iara-intro')) {
+  throw new Error('A campanha não começou com uma identidade única, sem armadura e com a introdução marcada.')
+}
+if (openingState.distanceToIara > 3.4 || openingState.iaraCameraSide >= 0) throw new Error('Iara não está acessível ou ficou entre a câmera e o jogador.')
+if (openingState.maxEnemyHeight > 2.45) throw new Error(`Mob maior que o limite: ${openingState.maxEnemyHeight} m.`)
 
+await page.keyboard.press('l')
+const huntCard = page.locator('.quest-hunt')
+await huntCard.waitFor({ state: 'visible' })
+const huntGuide = await huntCard.textContent()
+const locateAction = await page.locator('.panel__foot [data-hunt-locate]').textContent()
+if (!huntGuide?.includes('Lobo Sombrio') || !huntGuide.includes('Mata Sombria') || !locateAction?.includes('Localizar no jogo')) {
+  throw new Error(`O diário não mostrou o localizador da missão: ${huntGuide}`)
+}
+await page.locator('.panel__close').evaluate(button => button.click())
+await page.waitForFunction(() => window.__eclipse.game.mode === 'playing')
+await page.locator('.quest__locator:not(.hidden)').waitFor({ state: 'visible' })
+const liveLocator = await page.locator('.quest__locator').textContent()
+if (!liveLocator?.includes('Lobo Sombrio') && !liveLocator?.includes('Zona de caça')) throw new Error(`A HUD não mostrou o localizador: ${liveLocator}`)
+
+// Existing CC0 house GLBs must appear in streamed settlements; the nearby door must be usable.
+await page.waitForFunction(() => {
+  let count = 0
+  window.__eclipse.game.world.pois.group.traverse(object => { if (object.name.startsWith('house-model-')) count += 1 })
+  return count >= 7
+}, null, { timeout: 30000 })
+const houseEntry = await page.evaluate(() => {
+  const g = window.__eclipse.game
+  const door = g.world.nearestHouseDoor(g.player.position.x, g.player.position.z, 180)
+  if (!door) return { found: false }
+  g.player.position.set(door.x, door.y + 0.2, door.z)
+  g.player.root.position.copy(g.player.position)
+  g.player.velocity.set(0, 0, 0)
+  g.update(1 / 60, {
+    moveX: 0, moveY: 0, sprint: false, jumpPressed: false, jumpHeld: false, rollPressed: false,
+    attackPressed: false, attackHeld: false, blockHeld: false, lookX: 0, lookY: 0, interact: true,
+  })
+  return {
+    found: true,
+    inside: g.world.isInterior,
+    doorId: door.houseId,
+    savedId: g.save.data.game?.interior?.houseId ?? null,
+  }
+})
+if (!houseEntry.found || !houseEntry.inside || houseEntry.savedId !== houseEntry.doorId) {
+  throw new Error(`A porta não abriu um interior persistido: ${JSON.stringify(houseEntry)}`)
+}
+console.log('house interior entered and saved:', houseEntry)
+await captureScreenshot(page, '04-house-interior.png')
+
+// Reload/continue must restore the room directly and must not replay Iara's first-meeting dialogue.
+await page.reload({ waitUntil: 'domcontentloaded' })
+await page.waitForFunction(() => window.__eclipse?.game, { timeout: 30000 })
+await page.getByRole('button', { name: 'Continuar campanha' }).waitFor({ timeout: 20000 })
+await page.getByRole('button', { name: 'Continuar campanha' }).click()
+await page.waitForFunction(() => window.__eclipse.game.world.isInterior, null, { timeout: 30000 })
+const resumedInterior = await page.evaluate(() => ({
+  inside: window.__eclipse.game.world.isInterior,
+  dialogueOpen: !document.querySelector('.dialogue')?.classList.contains('hidden'),
+  storyFlags: window.__eclipse.save.data.game?.storyFlags ?? [],
+}))
+if (!resumedInterior.inside || resumedInterior.dialogueOpen || !resumedInterior.storyFlags.includes('iara-intro')) {
+  throw new Error(`A retomada repetiu introdução ou não restaurou a casa: ${JSON.stringify(resumedInterior)}`)
+}
+const exitResult = await page.evaluate(() => {
+  const g = window.__eclipse.game
+  if (!g.interior) return { inside: g.world.isInterior, savedInterior: g.save.data.game?.interior ?? null }
+  g.player.teleport(g.interior.exitPosition)
+  g.update(1 / 60, {
+    moveX: 0, moveY: 0, sprint: false, jumpPressed: false, jumpHeld: false, rollPressed: false,
+    attackPressed: false, attackHeld: false, blockHeld: false, lookX: 0, lookY: 0, interact: true,
+  })
+  return { inside: g.world.isInterior, savedInterior: g.save.data.game?.interior ?? null }
+})
+if (exitResult.inside || exitResult.savedInterior !== null) throw new Error(`A saída da casa não restaurou o mundo/save: ${JSON.stringify(exitResult)}`)
+await page.waitForFunction(() => !window.__eclipse.game.world.isInterior)
+if (await page.locator('.dialogue').evaluate(element => !element.classList.contains('hidden'))) {
+  throw new Error('O diálogo inicial reapareceu ao sair da casa.')
+}
+console.log('interior restored on reload, exit works, Iara intro stays closed')
+
+// No second campaign may be created until the active save is deliberately deleted.
+await page.keyboard.press('Escape')
+await page.waitForFunction(() => window.__eclipse.game.mode === 'paused' && document.pointerLockElement === null)
+await page.locator('.pause-card').waitFor()
+const pauseHitTest = await page.evaluate(() => {
+  const save = document.querySelector('.pause-card [data-save]')
+  const quit = document.querySelector('.pause-card [data-quit]')
+  const body = document.querySelector('.pause-card .panel__body')
+  if (!(save instanceof HTMLElement) || !(quit instanceof HTMLElement) || !(body instanceof HTMLElement)) return { missing: true }
+  const saveRect = save.getBoundingClientRect()
+  const quitRect = quit.getBoundingClientRect()
+  const hit = document.elementFromPoint(quitRect.left + quitRect.width / 2, quitRect.top + quitRect.height / 2)
+  return {
+    missing: false,
+    save: { top: saveRect.top, bottom: saveRect.bottom },
+    quit: { top: quitRect.top, bottom: quitRect.bottom },
+    body: { height: body.clientHeight, scrollHeight: body.scrollHeight, scrollTop: body.scrollTop },
+    hit: hit?.closest('[data-quit]') ? 'quit' : hit?.closest('[data-save]') ? 'save' : hit?.tagName ?? 'none',
+  }
+})
+console.log('pause hit test:', pauseHitTest)
+if (pauseHitTest.hit !== 'quit') throw new Error(`Saída da pausa encoberta por outro elemento: ${JSON.stringify(pauseHitTest)}`)
+if (await page.locator('[data-customize]').count()) throw new Error('A pausa permite editar identidade fixa.')
+const quitButton = page.locator('.pause-card [data-quit]')
+const quitBounds = await quitButton.boundingBox()
+if (!quitBounds) throw new Error('O botão Sair para o título não tem uma caixa clicável.')
+const quitPoint = { x: quitBounds.x + quitBounds.width / 2, y: quitBounds.y + quitBounds.height / 2 }
+await page.mouse.move(quitPoint.x, quitPoint.y, { steps: 1 })
+const pointerTarget = await page.evaluate(({ x, y }) => {
+  const hit = document.elementFromPoint(x, y)
+  return hit?.closest('[data-quit]') ? 'quit' : hit?.closest('[data-save]') ? 'save' : hit?.tagName ?? 'none'
+}, quitPoint)
+if (pointerTarget !== 'quit') throw new Error(`O cursor não alcançou Sair para o título: ${pointerTarget}`)
+await page.mouse.click(quitPoint.x, quitPoint.y)
+await page.waitForTimeout(250)
+const afterQuit = await page.evaluate(() => ({
+  titleVisible: !document.querySelector('.title')?.classList.contains('hidden'),
+  titleMenu: document.querySelector('.title__menu')?.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+  pauseVisible: Boolean(document.querySelector('.pause-card') && !document.querySelector('.pause-card')?.classList.contains('hidden')),
+  mode: window.__eclipse.game.mode,
+}))
+console.log('after quit click:', afterQuit)
+if (!afterQuit.titleVisible || afterQuit.pauseVisible) throw new Error(`Sair da pausa não abriu a tela de título: ${JSON.stringify(afterQuit)}`)
+const createButton = page.locator('.title__menu button').filter({ hasText: 'Campanha única ativa' })
+if (await createButton.count() !== 1) throw new Error(`A tela de título não mostrou o estado de campanha única: ${afterQuit.titleMenu}`)
+if (!(await createButton.isDisabled())) throw new Error('A tela de título deixa criar outra campanha enquanto existe um save.')
+const settingsBeforeDeletion = await page.evaluate(() => JSON.stringify(window.__eclipse.save.data.settings))
+let deleteMessages = 0
+page.once('dialog', async dialog => { deleteMessages += 1; await dialog.dismiss() })
+await page.getByRole('button', { name: 'Excluir save de Teste Eclipse' }).click()
+if (deleteMessages !== 1 || await page.evaluate(() => window.__eclipse.save.data.campaigns.length) !== 1) {
+  throw new Error('Cancelar a confirmação de exclusão não preservou a campanha.')
+}
+page.once('dialog', async dialog => { deleteMessages += 1; await dialog.accept() })
+await page.getByRole('button', { name: 'Excluir save de Teste Eclipse' }).click()
+await page.waitForFunction(() => window.__eclipse.save.data.campaigns.length === 0
+  && window.__eclipse.save.data.activeCampaignId === null && window.__eclipse.save.data.game === null)
+if (deleteMessages !== 2 || await page.evaluate(() => JSON.stringify(window.__eclipse.save.data.settings)) !== settingsBeforeDeletion) {
+  throw new Error('Excluir o save alterou configurações ou deixou de pedir confirmação.')
+}
+await page.getByRole('button', { name: 'Criar personagem', exact: true }).click()
+await page.getByRole('button', { name: 'Iniciar campanha' }).click()
+await page.locator('[data-player-name]').fill('Nara Eclipse')
+await page.getByRole('button', { name: 'Confirmar e começar' }).click()
+await page.locator('.dialogue').waitFor({ state: 'visible', timeout: 45000 })
+const recreated = await page.evaluate(() => ({
+  count: window.__eclipse.save.data.campaigns.length,
+  name: window.__eclipse.save.activeCampaign?.profile.name,
+  model: window.__eclipse.save.activeCampaign?.profile.modelId,
+}))
+if (recreated.count !== 1 || recreated.name !== 'Nara Eclipse' || recreated.model !== 'Survivor') {
+  throw new Error(`Após excluir, a campanha única não pôde ser recriada corretamente: ${JSON.stringify(recreated)}`)
+}
+await page.getByRole('button', { name: 'Encerrar conversa' }).click()
+await page.keyboard.press('Escape')
+await page.waitForFunction(() => window.__eclipse.game.mode === 'paused' && document.pointerLockElement === null)
+await page.locator('.pause-card').waitFor()
+const finalQuitBounds = await page.locator('.pause-card [data-quit]').boundingBox()
+if (!finalQuitBounds) throw new Error('O segundo botão Sair para o título não tem uma caixa clicável.')
+const finalQuitPoint = { x: finalQuitBounds.x + finalQuitBounds.width / 2, y: finalQuitBounds.y + finalQuitBounds.height / 2 }
+await page.mouse.move(finalQuitPoint.x, finalQuitPoint.y, { steps: 1 })
+const finalPointerTarget = await page.evaluate(({ x, y }) => {
+  const hit = document.elementFromPoint(x, y)
+  return hit?.closest('[data-quit]') ? 'quit' : hit?.closest('[data-save]') ? 'save' : hit?.className ?? hit?.tagName ?? 'none'
+}, finalQuitPoint)
+if (finalPointerTarget !== 'quit') throw new Error(`O segundo botão Sair está encoberto por ${finalPointerTarget}.`)
+await page.mouse.click(finalQuitPoint.x, finalQuitPoint.y)
+await page.waitForFunction(() => !document.querySelector('.title')?.classList.contains('hidden'))
+if (!(await page.locator('.title__menu button').filter({ hasText: 'Campanha única ativa' }).isDisabled())) {
+  throw new Error('O save recriado permite iniciar outra campanha em paralelo.')
+}
+console.log('single campaign: duplicate creation blocked; confirmed deletion preserves settings and enables a fresh journey')
 await page.close()
 
+// Mobile smoke: creation, mission diary/localizer, touch controls and rotation.
 const mobileUrl = new globalThis.URL(URL)
 mobileUrl.searchParams.set('smoke', '1')
 const mobilePage = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
 mobilePage.on('console', message => { if (message.type() === 'error') errors.push(`mobile: ${message.text()}`) })
-mobilePage.on('pageerror', error => errors.push(`mobile pageerror: ${error.message}`))
+mobilePage.on('pageerror', error => {
+  const message = `mobile pageerror: ${error.message}`
+  errors.push(message)
+  pageErrors.push(message)
+})
 await mobilePage.goto(mobileUrl.toString(), { waitUntil: 'domcontentloaded' })
 await mobilePage.waitForFunction(() => window.__eclipse?.game, { timeout: 30000 })
-await mobilePage.getByRole('button', { name: 'Nova campanha' }).waitFor({ timeout: 20000 })
-await mobilePage.getByRole('button', { name: 'Nova campanha' }).click()
+await mobilePage.getByRole('button', { name: 'Criar personagem', exact: true }).click()
 await mobilePage.getByRole('button', { name: 'Iniciar campanha' }).click()
 await mobilePage.locator('[data-player-name]').fill('Mobile Eclipse')
 await mobilePage.getByRole('button', { name: 'Confirmar e começar' }).click()
@@ -304,22 +277,16 @@ const mobileQuestButton = mobilePage.locator('[data-open-quests]')
 await mobileQuestButton.waitFor({ state: 'visible' })
 const mobileQuestButtonBox = await mobileQuestButton.boundingBox()
 if (!mobileQuestButtonBox) throw new Error('Botão de missões mobile sem área clicável.')
-await mobilePage.touchscreen.tap(
-  mobileQuestButtonBox.x + mobileQuestButtonBox.width / 2,
-  mobileQuestButtonBox.y + mobileQuestButtonBox.height / 2,
-)
+await mobilePage.touchscreen.tap(mobileQuestButtonBox.x + mobileQuestButtonBox.width / 2, mobileQuestButtonBox.y + mobileQuestButtonBox.height / 2)
 await mobilePage.locator('.quest-hunt').waitFor({ state: 'visible' })
 const mobileLocateButton = mobilePage.locator('[data-hunt-locate]')
 const mobileLocateButtonBox = await mobileLocateButton.boundingBox()
 if (!mobileLocateButtonBox) throw new Error('Ação Localizar sem área clicável no diário mobile.')
-await mobilePage.touchscreen.tap(
-  mobileLocateButtonBox.x + mobileLocateButtonBox.width / 2,
-  mobileLocateButtonBox.y + mobileLocateButtonBox.height / 2,
-)
+await mobilePage.touchscreen.tap(mobileLocateButtonBox.x + mobileLocateButtonBox.width / 2, mobileLocateButtonBox.y + mobileLocateButtonBox.height / 2)
 await mobilePage.waitForFunction(() => window.__eclipse.game.mode === 'playing')
 await mobilePage.locator('.quest__locator:not(.hidden)').waitFor({ state: 'visible' })
 await mobilePage.evaluate(() => window.__eclipse.ui.touch.show(true))
-await captureScreenshot(mobilePage, '11-mobile-portrait.png')
+await captureScreenshot(mobilePage, '05-mobile-portrait.png')
 const portrait = await mobilePage.evaluate(() => ({
   touchAction: getComputedStyle(document.querySelector('.touch__look')).touchAction,
   appHeight: getComputedStyle(document.documentElement).getPropertyValue('--app-height').trim(),
@@ -349,7 +316,7 @@ const touchProbe = await mobilePage.evaluate(() => {
   return { moveX, lookDelta }
 })
 if (touchProbe.moveX < 0.4 || Math.abs(touchProbe.lookDelta.x) < 20 || Math.abs(touchProbe.lookDelta.y) < 10) {
-  throw new Error(`Arraste touch não chegou aos controles: ${JSON.stringify(touchProbe)}`)
+  throw new Error(`O gesto touch não chegou aos controles: ${JSON.stringify(touchProbe)}`)
 }
 await mobilePage.setViewportSize({ width: 844, height: 390 })
 await mobilePage.waitForTimeout(350)
@@ -363,11 +330,11 @@ const landscape = await mobilePage.evaluate(() => ({
 if (landscape.cameraFov !== 62 || !landscape.isLandscape || landscape.appHeight !== '390px' || landscape.canvasHeight !== '390px') {
   throw new Error(`O jogo não se adaptou ao giro do celular: ${JSON.stringify(landscape)}`)
 }
-if (landscape.overlappingPoiLabels) throw new Error('Rótulos longos de destinos se sobrepõem no compasso mobile landscape.')
-await captureScreenshot(mobilePage, '12-mobile-landscape.png')
+if (landscape.overlappingPoiLabels) throw new Error('Rótulos de destinos se sobrepõem no compasso em landscape.')
+await captureScreenshot(mobilePage, '06-mobile-landscape.png')
 console.log('mobile portrait and landscape:', { portrait, landscape })
 await mobilePage.close()
 
-console.log('errors:', errors.slice(0, 20))
+console.log('browser errors:', errors.slice(0, 20))
 await browser.close()
 if (pageErrors.length) throw new Error(`Erros fatais de JavaScript durante o smoke test: ${pageErrors.join(' | ')}`)

@@ -78,7 +78,7 @@ describe('arquitetura procedural do mundo', () => {
           expect(Number.isFinite(positions.getX(i)) && Number.isFinite(positions.getY(i)) && Number.isFinite(positions.getZ(i)), siteCase.name).toBe(true)
         }
       }
-      for (const list of [site.spots.npcs, site.spots.chests, site.spots.enemies, site.spots.resources, site.spots.stations]) {
+      for (const list of [site.spots.npcs, site.spots.chests, site.spots.enemies, site.spots.houses, site.spots.resources, site.spots.stations]) {
         for (const spot of list) expect([spot.x, spot.y, spot.z].every(Number.isFinite), siteCase.name).toBe(true)
       }
       if (site.spots.portal) expect([site.spots.portal.x, site.spots.portal.y, site.spots.portal.z].every(Number.isFinite), siteCase.name).toBe(true)
@@ -108,6 +108,9 @@ describe('arquitetura procedural do mundo', () => {
     expect(firstBounds.min.toArray()).toEqual(repeatedBounds.min.toArray())
     expect(firstBounds.max.toArray()).toEqual(repeatedBounds.max.toArray())
     expect(first.spots.npcs[0]).toEqual({ x: X + 4, z: Z + 1, y: terrain.heightAt(X + 4, Z + 1) })
+    expect(first.spots.houses.length).toBeGreaterThan(0)
+    expect(first.spots.houses[0].id).toBe('house-1')
+    expect([first.spots.houses[0].x, first.spots.houses[0].y, first.spots.houses[0].z].every(Number.isFinite)).toBe(true)
     expect(first.spots.enemies).toHaveLength(3)
     expect(first.spots.chests[0]).toMatchObject({ x: X + 9, z: Z + 13, tier: 1 })
 

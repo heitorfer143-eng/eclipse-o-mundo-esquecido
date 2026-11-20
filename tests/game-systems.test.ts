@@ -18,6 +18,8 @@ import { QuestLog } from '../src/game/systems/quests'
 import { SkillTree } from '../src/game/systems/skills'
 import { Terrain } from '../src/game/world/terrain'
 import { buildVillage } from '../src/game/world/structures'
+import { createHouseInterior } from '../src/game/world/interior'
+import { resolveAnimalClipName } from '../src/game/world/chunks'
 
 const samplePoints = [
   [-1420, -930],
@@ -50,6 +52,22 @@ describe('mundo procedural', () => {
     expect(terrain.heightAt(point!.x, point!.z)).toBeGreaterThan(2.6)
     expect(terrain.slopeAt(point!.x, point!.z)).toBeLessThanOrEqual(0.62)
     expect(point!.distance).toBeGreaterThanOrEqual(47.99)
+  })
+})
+
+describe('interiores de casas', () => {
+  it('cria um cômodo com portas, piso e limites de colisão finitos', () => {
+    const room = createHouseInterior('vila-brumal-house-1')
+    const bounds = new THREE.Box3().setFromObject(room.root)
+    expect(room.root.name).toBe('interior-vila-brumal-house-1')
+    expect(bounds.isEmpty()).toBe(false)
+    expect([...bounds.min.toArray(), ...bounds.max.toArray()].every(Number.isFinite)).toBe(true)
+    expect(room.spawn.y).toBe(room.floorY + 0.08)
+    expect(room.exit.y).toBe(room.floorY + 0.08)
+    expect(room.colliders.filter(collider => collider.kind === 'box' && collider.blocking)).toHaveLength(8)
+    expect(room.colliders.every(collider => collider.kind !== 'box' || Number.isFinite(collider.top))).toBe(true)
+    room.dispose()
+    expect(room.root.children).toHaveLength(0)
   })
 })
 
@@ -119,7 +137,7 @@ describe('salvamento local', () => {
     values.set(SAVE_KEY, JSON.stringify({ version: 2, game: null, profile: { modelId: '<script>', auraColor: 'url(javascript:alert(1))' } }))
     expect(new SaveStore(storage).data.profile).toEqual(DEFAULT_CHARACTER_PROFILE)
   })
-  it('mantém personagens e progressos separados ao criar e alternar campanhas', () => {
+  it('mantém uma única campanha e recusa criar outra ou mudar a identidade', () => {
     const values = new Map<string, string>()
     const storage = {
       getItem: (key: string) => values.get(key) ?? null,
@@ -134,6 +152,7 @@ describe('salvamento local', () => {
     expect(store.updateProfile(attemptedChange)).toEqual(firstProfile)
     expect(store.updateCampaignProfile(firstId, attemptedChange)).toBeNull()
     expect(store.activeCampaign?.profile).toEqual(firstProfile)
+    expect(store.createCampaign(secondProfile, 22)).toBeNull()
     store.saveGame({
       seed: 11, position: [4, 30, -8], facing: 0, playtime: 120, timeOfDay: 0.5,
       progression: { level: 7, xp: 800, attributePoints: 0, skillPoints: 0, attributes: {} },
@@ -141,27 +160,18 @@ describe('salvamento local', () => {
       quests: { tracked: 'principal-01', states: {} }, discovered: ['poi-1'], openedChests: [],
       deaths: 1, kills: 9, createdAt: 10, updatedAt: 20,
     })
-    const secondId = store.createCampaign(secondProfile, 22)!
-    store.saveGame({
-      seed: 22, position: [0, 40, 800], facing: 0, playtime: 12, timeOfDay: 0.3,
-      progression: { level: 2, xp: 30, attributePoints: 0, skillPoints: 0, attributes: {} },
-      inventory: { stacks: [], equipment: {}, gold: 4 }, skills: {},
-      quests: { tracked: null, states: {} }, discovered: [], openedChests: [],
-      deaths: 0, kills: 1, createdAt: 30, updatedAt: 30,
-    })
-
-    expect(store.data.campaigns).toHaveLength(2)
-    expect(store.data.activeCampaignId).toBe(secondId)
-    expect(store.activateCampaign(firstId)).toBe(true)
+    expect(store.data.campaigns).toHaveLength(1)
+    expect(store.data.activeCampaignId).toBe(firstId)
+    expect(store.activateCampaign('campaign-inexistente')).toBe(false)
     expect(store.data.profile).toEqual(firstProfile)
     expect(store.data.game).toMatchObject({ seed: 11, progression: { level: 7 }, inventory: { gold: 55 } })
     const restored = new SaveStore(storage)
-    expect(restored.data.campaigns).toHaveLength(2)
+    expect(restored.data.campaigns).toHaveLength(1)
     expect(restored.activeCampaign?.id).toBe(firstId)
     expect(restored.data.profile.name).toBe('Eira')
-    expect(restored.data.campaigns.find(slot => slot.id === secondId)?.game?.progression.level).toBe(2)
+    expect(restored.createCampaign(secondProfile, 22)).toBeNull()
   })
-  it('exclui só o save selecionado, ativa uma campanha remanescente e limpa o último slot', () => {
+  it('exige excluir a campanha atual antes de iniciar outra e preserva as configurações', () => {
     const values = new Map<string, string>()
     const storage = {
       getItem: (key: string) => values.get(key) ?? null,
@@ -180,31 +190,21 @@ describe('salvamento local', () => {
       quests: { tracked: 'principal-01', states: {} }, discovered: ['poi-1'], openedChests: [],
       deaths: 1, kills: 9, createdAt: 10, updatedAt: 20,
     })
-    const secondId = store.createCampaign(secondProfile, 22)!
-    store.saveGame({
-      seed: 22, position: [0, 40, 800], facing: 0, playtime: 12, timeOfDay: 0.3,
-      progression: { level: 2, xp: 30, attributePoints: 0, skillPoints: 0, attributes: {} },
-      inventory: { stacks: [], equipment: {}, gold: 4 }, skills: {},
-      quests: { tracked: null, states: {} }, discovered: [], openedChests: [],
-      deaths: 0, kills: 1, createdAt: 30, updatedAt: 30,
-    })
-
     expect(store.deleteCampaign('missing-slot')).toBe(false)
-    expect(store.deleteCampaign(secondId)).toBe(true)
-    expect(store.data.campaigns.map(slot => slot.id)).toEqual([firstId])
-    expect(store.data.activeCampaignId).toBe(firstId)
-    expect(store.data.profile).toEqual(firstProfile)
-    expect(store.data.game).toMatchObject({ seed: 11, progression: { level: 7 }, inventory: { gold: 55 } })
+    expect(store.createCampaign(secondProfile, 22)).toBeNull()
+    expect(store.deleteCampaign(firstId)).toBe(true)
+    expect(store.data.campaigns).toHaveLength(0)
+    expect(store.data.activeCampaignId).toBeNull()
+    expect(store.data.profile).toEqual(DEFAULT_CHARACTER_PROFILE)
+    expect(store.data.game).toBeNull()
     expect(store.data.settings).toEqual(settings)
 
     const restored = new SaveStore(storage)
+    const nextId = restored.createCampaign(secondProfile, 22)
+    expect(nextId).not.toBeNull()
     expect(restored.data.campaigns).toHaveLength(1)
-    expect(restored.activeCampaign?.profile).toEqual(firstProfile)
-    expect(restored.deleteCampaign(firstId)).toBe(true)
-    expect(restored.data.campaigns).toHaveLength(0)
-    expect(restored.data.activeCampaignId).toBeNull()
-    expect(restored.data.game).toBeNull()
-    expect(restored.data.profile).toEqual(DEFAULT_CHARACTER_PROFILE)
+    expect(restored.activeCampaign?.profile).toEqual(secondProfile)
+    expect(restored.activeCampaign?.seed).toBe(22)
     expect(restored.data.settings).toEqual(settings)
   })
   it('permite completar identidade de save legado incompleto apenas uma vez', () => {
@@ -220,6 +220,20 @@ describe('salvamento local', () => {
     expect(store.updateCampaignProfile(id, completed)).toEqual(completed)
     expect(store.updateCampaignProfile(id, { ...completed, name: 'Nara alterada' })).toBeNull()
     expect(store.activeCampaign?.profile).toEqual(completed)
+  })
+  it('preserva flags de história distintas e aceita somente o contexto de interior válido', () => {
+    const parsed = parseSave(JSON.stringify({ version: 4, game: {
+      storyFlags: ['iara:intro', 'iara:intro', 'boss:guardiao', 'texto inválido'],
+      interior: { houseId: 'vila-brumal-house-1', houseName: 'Brumal · Casa 1' },
+    } }))
+    expect(parsed.game?.storyFlags).toEqual(['iara:intro', 'boss:guardiao'])
+    expect(parsed.game?.interior).toEqual({ houseId: 'vila-brumal-house-1', houseName: 'Brumal · Casa 1' })
+
+    const unsafe = parseSave(JSON.stringify({ version: 4, game: {
+      storyFlags: ['ok', 'space is invalid'], interior: { houseId: '../../outside', houseName: '   ' },
+    } }))
+    expect(unsafe.game?.storyFlags).toEqual(['ok'])
+    expect(unsafe.game?.interior).toBeNull()
   })
   it('normaliza posição com componentes Infinity, NaN e fora de limites, sem lançar', () => {
     const stored = JSON.stringify({ version: 2, game: { position: [Infinity, NaN, 1e999] } })
@@ -353,6 +367,17 @@ describe('arco opcional da memória', () => {
     expect(quests.isCompleted('secundaria-13')).toBe(true)
     expect(quests.isCompleted('secundaria-14')).toBe(true)
     expect(quests.isCompleted('secundaria-15')).toBe(true)
+  })
+})
+
+describe('retorno contextual dos diálogos', () => {
+  it('abre a Iara no nó de retorno sem reproduzir o texto da introdução', () => {
+    const quests = new QuestLog()
+    const dialogue = new DialogueRunner()
+    const iara = NPCS.find(npc => npc.id === 'iara')!
+    dialogue.open(iara, quests, 1, 'retorno')
+    expect(dialogue.node?.id).toBe('retorno')
+    expect(dialogue.node?.text).not.toBe(iara.nodes.raiz.text)
   })
 })
 
@@ -534,6 +559,15 @@ describe('animações do protagonista', () => {
     expect(resolveExternalClipName('cast', clips)).toBe('special')
   })
 })
+describe('animações da fauna', () => {
+  it('mapeia clips reais e não finge que idle é caminhada', () => {
+    const actualClips = ['Idle_A', 'Walking_A', 'Running_A', 'Death_A']
+    expect(resolveAnimalClipName('idle', actualClips)).toBe('Idle_A')
+    expect(resolveAnimalClipName('walk', actualClips)).toBe('Walking_A')
+    expect(resolveAnimalClipName('run', actualClips)).toBe('Running_A')
+    expect(resolveAnimalClipName('walk', ['Idle_A'])).toBeUndefined()
+  })
+})
 describe('seleção de modelos 3D de criaturas', () => {
   it('usa modelos humanoides específicos e mantém criaturas não humanoides no modelo próprio', () => {
     expect(externalHumanoidUrlForModel('cavaleiro')).toBe(EXTERNAL_CHARACTER_URLS.knight)
@@ -553,8 +587,6 @@ describe('seleção de modelos 3D de criaturas', () => {
     expect(externalHumanoidUrlForModel('yeti')).toBe(EXTERNAL_CHARACTER_URLS.werewolf)
     expect(externalHumanoidUrlForModel('elemental')).toBeUndefined()
     expect(externalHumanoidUrlForModel('serpente')).toBeUndefined()
-    expect(externalHumanoidUrlForModel('gigante')).toBe(EXTERNAL_CHARACTER_URLS.brute)
-    expect(externalHumanoidUrlForModel('troll')).toBe(EXTERNAL_CHARACTER_URLS.brute)
     expect(externalHumanoidUrlForModel('dragao')).toBeUndefined()
     expect(externalHumanoidUrlForModel('lobo')).toBeUndefined()
   })

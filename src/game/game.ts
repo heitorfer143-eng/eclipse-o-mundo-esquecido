@@ -29,9 +29,10 @@ import { DialogueRunner } from './systems/dialogue'
 import { Shop, buyPrice, craft as craftRecipe, sellPrice, shopFor } from './systems/economy'
 import { bossLoot, rollLoot, type LootDrop } from './systems/loot'
 import { BIOMES } from './world/biomes'
-import type { Poi } from './world/poi'
+import type { HouseDoor, Poi } from './world/poi'
 import type { BiomeWaypoint } from './world/terrain'
 import type { World } from './world/world'
+import { createHouseInterior } from './world/interior'
 import type { Ui } from '../ui/ui'
 import type { HudAbility, HudPoi, HudSnapshot } from '../ui/hud'
 import type { PanelActions, PanelContext } from '../ui/panels'
@@ -63,6 +64,14 @@ type CombatTarget = {
   height: number
   alive: boolean
   takeDamage: (amount: number, options?: { element?: ElementId; crit?: boolean; knockback?: number; from?: THREE.Vector3 }) => { amount: number; crit: boolean; killed: boolean }
+}
+
+type HouseSession = {
+  houseId: string
+  houseName: string
+  returnPosition: THREE.Vector3
+  returnFacing: number
+  exitPosition: THREE.Vector3
 }
 
 /** Owns the simulation: player, creatures, bosses, loot, quests, NPCs and persistence. */
@@ -97,7 +106,9 @@ export class Game {
   private readonly discovered = new Set<string>()
   private readonly openedChests = new Set<string>()
   private readonly defeatedBosses = new Set<string>()
+  private readonly storyFlags = new Set<string>()
   private shop: Shop | null = null
+  private interior: HouseSession | null = null
   private autosave = 0
   private hitstop = 0
   private shakeCooldown = 0
@@ -129,7 +140,7 @@ export class Game {
         groundAt: (x, z, feetY) => this.world.groundAt(x, z, feetY),
         collidersNear: (x, z) => this.world.collidersNear(x, z),
         isWater: (x, z) => this.world.isWater(x, z),
-        slopeAt: (x, z) => this.world.terrain.slopeAt(x, z),
+        slopeAt: (x, z) => this.world.isInterior ? 0 : this.world.terrain.slopeAt(x, z),
       },
       spawn,
       this.pendingStats,
@@ -155,6 +166,9 @@ export class Game {
     this.discovered.clear()
     this.openedChests.clear()
     this.defeatedBosses.clear()
+    this.storyFlags.clear()
+    this.interior = null
+    this.world.exitInterior()
     this.spawner.clear()
     this.projectiles.clear()
     this.effects.clear()
@@ -172,13 +186,17 @@ export class Game {
     this.inventory.add('pocao-mana-1', 2)
     this.inventory.add('comida-pao', 2)
     if (saved) this.loadFrom(saved)
-    const shouldIntroduceIara = !this.quests.state('principal-01')
+    const shouldIntroduceIara = !this.storyFlags.has('iara-intro') && !this.quests.state('principal-01')
     if (shouldIntroduceIara) this.spawnPoint.copy(this.world.spawn)
     this.refreshStats()
     this.world.sky.timeOfDay = saved?.timeOfDay ?? 0.3
-    this.player.teleport(shouldIntroduceIara
-      ? this.world.spawn
-      : new THREE.Vector3(saved?.position[0] ?? this.spawnPoint.x, saved?.position[1] ?? this.spawnPoint.y, saved?.position[2] ?? this.spawnPoint.z))
+    const returnPosition = saved
+      ? new THREE.Vector3(saved.position[0], saved.position[1], saved.position[2])
+      : this.spawnPoint.clone()
+    this.player.teleport(shouldIntroduceIara ? this.world.spawn : returnPosition)
+    if (!shouldIntroduceIara && saved?.interior) {
+      this.enterHouse(saved.interior.houseId, saved.interior.houseName, returnPosition, saved.facing, false)
+    }
     this.camera.reset(this.player.position, this.player.facing)
     this.camera.update(0, this.player.position, { x: 0, y: 0 }, this.world, false, false)
     this.population.update(0, this.player.position)
@@ -248,12 +266,25 @@ export class Game {
       jumpPressed: input.jumpPressed,
       jumpHeld: input.jumpHeld,
       rollPressed: input.rollPressed,
-      attackPressed: input.attackPressed,
-      attackHeld: input.attackHeld,
-      blockHeld: input.blockHeld,
+      attackPressed: this.interior ? false : input.attackPressed,
+      attackHeld: this.interior ? false : input.attackHeld,
+      blockHeld: this.interior ? false : input.blockHeld,
     }
     this.player.step(sim, intent, this.camera.yaw, playerEvents)
     for (const event of playerEvents) this.onPlayerEvent(event)
+
+    if (this.interior) {
+      this.updateInteraction(input)
+      this.regen(sim)
+      this.player.render(sim)
+      this.updateHud(frame)
+      this.autosave += frame
+      if (this.autosave > AUTOSAVE_SECONDS) {
+        this.autosave = 0
+        this.saveGame(true)
+      }
+      return
+    }
 
     const ctx: EnemyContext = {
       playerPosition: this.player.position,
@@ -637,7 +668,7 @@ export class Game {
   }
 
   private onBossDeath(boss: Boss): void {
-    if (this.defeatedBosses.has(boss.def.id) && boss.finished) return
+    if (this.defeatedBosses.has(boss.def.id)) return
     this.defeatedBosses.add(boss.def.id)
     if (this.bossPoi) this.discovered.add(`boss:${this.bossPoi.id}`)
     this.kills += 1
@@ -652,6 +683,7 @@ export class Game {
     this.effects.explosion(boss.position.clone().setY(boss.position.y + 2), 8, '#ffd166')
     this.boss = null
     this.bossPoi = null
+    this.saveGame(true)
     if (boss.def.id === FINAL_BOSS) this.victory()
   }
 
@@ -754,7 +786,7 @@ export class Game {
   }
 
   castAbility(index: number): void {
-    if (this.mode !== 'playing') return
+    if (this.mode !== 'playing' || this.interior) return
     const ability = this.abilities()[index]
     if (!ability) return
     const error = this.player.canCast(ability)
@@ -915,17 +947,37 @@ export class Game {
     this.world.scene.add(boss.root)
     this.boss = boss
     this.bossPoi = poi
-    this.audio.play('boss')
-    this.ui.subtitle(boss.name, boss.def.lore, 6)
-    this.ui.toast(`${boss.name} — ${boss.title}`, 'warn')
-    this.camera.addShake(0.8)
+    const introFlag = `boss-intro:${def.id}`
+    if (!this.storyFlags.has(introFlag)) {
+      this.storyFlags.add(introFlag)
+      this.audio.play('boss')
+      this.ui.subtitle(boss.name, boss.def.lore, 6)
+      this.ui.toast(`${boss.name} — ${boss.title}`, 'warn')
+      this.camera.addShake(0.8)
+    }
+    this.saveGame(true)
   }
 
   private updateInteraction(input: GameInput): void {
+    if (this.interior) {
+      const distance = this.interior.exitPosition.distanceTo(this.player.position)
+      this.interactLabel = distance <= 1.65 ? `Sair de ${this.interior.houseName}` : undefined
+      if (input.interact && distance <= 1.65) this.exitHouse()
+      return
+    }
     const nearby = this.population.nearest(this.player.position, 3.4)
-    this.interactLabel = nearby?.label
-    if (!input.interact || !nearby) return
+    const door = this.world.nearestHouseDoor(this.player.position.x, this.player.position.z, 2.8)
+    const doorDistance = door ? Math.hypot(door.x - this.player.position.x, door.z - this.player.position.z) : Infinity
+    const nearbyDistance = nearby ? this.interactableDistance(nearby) : Infinity
+    const useDoor = Boolean(door && doorDistance <= nearbyDistance)
+    this.interactLabel = useDoor && door ? `Entrar em ${door.houseName}` : nearby?.label
+    if (!input.interact || (!nearby && !door)) return
     this.audio.play('ui')
+    if (useDoor && door) {
+      this.enterHouseFromDoor(door)
+      return
+    }
+    if (!nearby) return
     if (nearby.kind === 'npc') this.openNpcDialogue(nearby.npc.def.id)
     else if (nearby.kind === 'chest') {
       const loot = this.population.openChest(nearby.chest, this.skills.effects().lootBonus)
@@ -963,6 +1015,54 @@ export class Game {
     }
   }
 
+  private interactableDistance(target: NonNullable<ReturnType<Population['nearest']>>): number {
+    switch (target.kind) {
+      case 'npc': return target.npc.position.distanceTo(this.player.position)
+      case 'chest': return target.chest.position.distanceTo(this.player.position)
+      case 'resource': return target.node.position.distanceTo(this.player.position)
+      case 'station': return target.station.position.distanceTo(this.player.position)
+      case 'portal': return target.portal.position.distanceTo(this.player.position)
+    }
+  }
+
+  private enterHouseFromDoor(door: HouseDoor): void {
+    this.enterHouse(door.houseId, door.houseName, this.player.position.clone(), this.player.facing)
+  }
+
+  private enterHouse(houseId: string, houseName: string, returnPosition: THREE.Vector3, returnFacing: number, announce = true): void {
+    const room = createHouseInterior(houseId)
+    this.interior = {
+      houseId,
+      houseName,
+      returnPosition: returnPosition.clone(),
+      returnFacing,
+      exitPosition: room.exit.clone(),
+    }
+    this.world.enterInterior(room, this.player.root)
+    this.player.teleport(room.spawn)
+    this.player.facing = 0
+    this.interactLabel = undefined
+    this.camera.reset(this.player.position, this.player.facing)
+    this.camera.update(0, this.player.position, { x: 0, y: 0 }, this.world, false, false)
+    if (announce) this.ui.toast(`Você entrou em ${houseName}. Pressione E na porta para sair.`, 'item')
+    this.saveGame(true)
+  }
+
+  private exitHouse(): void {
+    const session = this.interior
+    if (!session) return
+    this.world.exitInterior()
+    this.interior = null
+    this.player.teleport(session.returnPosition)
+    this.player.facing = session.returnFacing
+    this.interactLabel = undefined
+    this.camera.reset(this.player.position, this.player.facing)
+    this.camera.update(0, this.player.position, { x: 0, y: 0 }, this.world, false, false)
+    this.audio.play('ui')
+    this.ui.toast(`Você saiu de ${session.houseName}.`, 'item')
+    this.saveGame(true)
+  }
+
   interactLabel: string | undefined
 
   markSavedChests(): void {
@@ -990,10 +1090,17 @@ export class Game {
     const def = npcById(npcId)
     if (!def) return
     this.population.npcs.find(npc => npc.def.id === npcId)?.setTalking(true)
-    this.dialogue.open(def, this.quests, this.progression.level)
+    const questState = this.quests.state('principal-01')
+    const firstMeeting = npcId === 'iara' && !this.storyFlags.has('iara-intro') && !questState
+    const startNode = npcId === 'iara' && !firstMeeting
+      ? questState?.status === 'concluida' ? 'aposMissao' : 'retorno'
+      : undefined
+    if (npcId === 'iara') this.storyFlags.add('iara-intro')
+    this.dialogue.open(def, this.quests, this.progression.level, startNode)
     this.quests.progress('falar', npcId)
     this.mode = 'paused'
     this.renderDialogue()
+    this.saveGame(true)
   }
 
   private renderDialogue(): void {
@@ -1315,15 +1422,18 @@ export class Game {
       weapon: this.inventory.weapon(),
       armor: Boolean(this.inventory.equipment.armadura),
       helmet: Boolean(this.inventory.equipment.capacete),
+      boots: Boolean(this.inventory.equipment.botas),
       rarity: this.inventory.equippedDef('arma')?.rarity,
     })
   }
 
   saveGame(quiet = false): void {
+    const savePosition = this.interior?.returnPosition ?? this.player.position
+    const saveFacing = this.interior?.returnFacing ?? this.player.facing
     const data: GameSave = {
       seed: this.world.seed,
-      position: [this.player.position.x, this.player.position.y, this.player.position.z],
-      facing: this.player.facing,
+      position: [savePosition.x, savePosition.y, savePosition.z],
+      facing: saveFacing,
       playtime: this.playtime,
       timeOfDay: this.world.sky.timeOfDay,
       progression: this.progression.toJSON(),
@@ -1332,6 +1442,8 @@ export class Game {
       quests: this.quests.toJSON(),
       discovered: [...this.discovered, ...[...this.defeatedBosses].map(id => `boss:${id}`)],
       openedChests: [...this.openedChests],
+      storyFlags: [...this.storyFlags],
+      interior: this.interior ? { houseId: this.interior.houseId, houseName: this.interior.houseName } : null,
       deaths: this.deaths,
       kills: this.kills,
       createdAt: this.save.data.game?.createdAt ?? Date.now(),
@@ -1346,6 +1458,8 @@ export class Game {
     this.inventory.load(data.inventory as unknown as Parameters<Inventory['load']>[0])
     this.skills.load(data.skills)
     this.quests.load(data.quests)
+    this.storyFlags.clear()
+    for (const flag of data.storyFlags ?? []) this.storyFlags.add(flag)
     this.discovered.clear()
     for (const id of data.discovered) {
       if (id.startsWith('boss:')) this.defeatedBosses.add(id.slice(5))

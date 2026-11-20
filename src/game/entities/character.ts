@@ -4,7 +4,8 @@ import { RARITY_COLOR } from '../data/itemData'
 import type { Rarity } from '../data/types'
 import { clamp, damp } from '../core/math'
 import { ExternalCharacter, EXTERNAL_CHARACTER_URLS, HUMANOID_VISUAL_SCALE, type ExternalAnimation } from './externalModels'
-import { characterModelUrlFor, type KayKitCharacterId } from './characterAssets'
+import type { CharacterModelId } from '../data/characterProfile'
+import { characterModelUrlFor } from './characterAssets'
 
 export type AnimMode =
   | 'idle'
@@ -199,8 +200,10 @@ export class CharacterModel {
   private appearance: Appearance
   private walkCycle = 0
   private blinkTimer = 2
+  private readonly skinMaterial: THREE.MeshStandardMaterial
   private readonly clothMaterial: THREE.MeshStandardMaterial
   private readonly leatherMaterial: THREE.MeshStandardMaterial
+  private readonly underwearMaterial: THREE.MeshStandardMaterial
   private readonly metalMaterial: THREE.MeshStandardMaterial
   private external?: ExternalCharacter
   private externalMode: ExternalAnimation = 'idle'
@@ -209,12 +212,15 @@ export class CharacterModel {
   private externalRequest = 0
   private disposed = false
   private auraColor = '#7fe3ff'
+  private survivorAppearance = false
 
   constructor(appearance: Partial<Appearance> = {}, externalUrl: string = EXTERNAL_CHARACTER_URLS.player, externalYaw = 0) {
     this.appearance = { ...DEFAULT_APPEARANCE, ...appearance }
     const skin = mat(this.appearance.skin, { roughness: 0.85 })
+    this.skinMaterial = skin
     this.clothMaterial = mat(this.appearance.cloth, { roughness: 0.9 })
     this.leatherMaterial = mat(this.appearance.leather, { roughness: 0.85 })
+    this.underwearMaterial = mat('#987957', { roughness: 0.98 })
     this.metalMaterial = mat('#a9b0bd', { roughness: 0.4, metalness: 0.75 })
     const accent = mat(this.appearance.clothAccent, { roughness: 0.6, metalness: 0.2 })
     const hair = mat(this.appearance.hair, { roughness: 0.95 })
@@ -328,6 +334,7 @@ export class CharacterModel {
     this.aura.position.y = 0.02
     this.root.add(this.aura)
 
+    // New campaigns use this local rig: bare skin and a simple loincloth, not a baked armour GLB.
     this.root.traverse(obj => {
       const mesh = obj as THREE.Mesh
       if (mesh.isMesh && mesh !== this.aura) {
@@ -335,6 +342,7 @@ export class CharacterModel {
         mesh.receiveShadow = true
       }
     })
+    if (!externalUrl) this.enableSurvivorAppearance()
     this.setExternalModelUrl(externalUrl, externalYaw)
   }
 
@@ -343,8 +351,41 @@ export class CharacterModel {
   }
 
   /** Swap a licensed model lazily; stale requests never replace the newest selection. */
-  setKayKitModel(id: KayKitCharacterId): void {
+  setKayKitModel(id: CharacterModelId): void {
+    if (id === 'Survivor') {
+      this.setProceduralAppearance()
+      return
+    }
     this.setExternalModelUrl(characterModelUrlFor(id), Math.PI)
+  }
+
+  private enableSurvivorAppearance(): void {
+    this.survivorAppearance = true
+    this.body.traverse(object => {
+      const mesh = object as THREE.Mesh
+      if (!mesh.isMesh) return
+      if (mesh.material === this.clothMaterial || mesh.material === this.leatherMaterial) mesh.material = this.skinMaterial
+    })
+    this.hipMesh.material = this.underwearMaterial
+    this.torsoMesh.material = this.skinMaterial
+    this.footL.material = this.skinMaterial
+    this.footR.material = this.skinMaterial
+    if (this.shoulderL) this.shoulderL.visible = false
+    if (this.shoulderR) this.shoulderR.visible = false
+    if (this.helmet) this.helmet.visible = false
+    this.hairMesh.visible = true
+    this.cape.visible = false
+  }
+
+  private setProceduralAppearance(): void {
+    if (this.disposed) return
+    this.externalRequest += 1
+    this.external?.dispose()
+    this.external = undefined
+    this.externalUrl = ''
+    this.body.visible = true
+    this.aura.visible = true
+    this.enableSurvivorAppearance()
   }
 
   private setExternalModelUrl(url: string, yaw: number): void {
@@ -358,6 +399,7 @@ export class CharacterModel {
       }
       this.external?.dispose()
       this.external = model
+      this.survivorAppearance = false
       this.body.visible = false
       this.aura.visible = true
       model.root.rotation.y = yaw
@@ -400,7 +442,8 @@ export class CharacterModel {
     }
     this.shoulderL.visible = options.armor === true
     this.shoulderR!.visible = options.armor === true
-    this.torsoMesh.material = options.armor ? this.metalMaterial : this.clothMaterial
+    this.torsoMesh.material = options.armor ? this.metalMaterial : this.survivorAppearance ? this.skinMaterial : this.clothMaterial
+    this.hipMesh.material = this.survivorAppearance ? this.underwearMaterial : this.leatherMaterial
     if (!this.helmet) {
       this.helmet = new THREE.Mesh(new THREE.SphereGeometry(0.215, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), this.metalMaterial)
       this.helmet.position.y = 0.03
@@ -408,7 +451,7 @@ export class CharacterModel {
     }
     this.helmet.visible = options.helmet === true
     this.hairMesh.visible = options.helmet !== true
-    const bootMaterial = options.boots ? this.metalMaterial : this.leatherMaterial
+    const bootMaterial = options.boots ? this.metalMaterial : this.survivorAppearance ? this.skinMaterial : this.leatherMaterial
     this.footL.material = bootMaterial
     this.footR.material = bootMaterial
     this.setAuraColor(options.auraColor ?? this.auraColor)
@@ -449,6 +492,7 @@ export class CharacterModel {
     this.shinR.rotation.set(0, 0, 0)
     this.cape.rotation.set(0, 0, 0)
     this.capeMesh.scale.set(1, 1, 1)
+    this.cape.visible = !this.survivorAppearance || state.mode === 'glide'
     this.aura.visible = false
 
     const breath = Math.sin(performance.now() * 0.0018) * 0.02

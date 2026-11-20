@@ -113,10 +113,10 @@ export class CharacterCustomizer {
           <button class="character-customizer__close" data-close type="button" aria-label="Fechar personalização">✕</button>
         </header>
         <div class="character-customizer__body scroll">
-          <p class="character-customizer__intro">Escolha o nome e o visual do protagonista. Essa identidade ficará fixa nesta campanha.</p>
+          <p class="character-customizer__intro">Escolha o nome e a aura do protagonista. A identidade ficará fixa; você começa como sobrevivente sem armadura e evolui explorando e fabricando equipamento.</p>
           <label class="character-customizer__section-title" for="campaign-player-name">Nome do jogador</label>
           <input class="character-customizer__name" id="campaign-player-name" data-player-name type="text" maxlength="24" autocomplete="nickname" placeholder="Digite o nome do personagem" required>
-          <p class="character-customizer__preview" aria-live="polite">${selectedModel.label} selecionado. A aparência pode ser escolhida antes de iniciar.</p>
+          <p class="character-customizer__preview" aria-live="polite">${selectedModel.label} selecionado. Sem armadura, capacete ou botas no início.</p>
           <h3 class="character-customizer__section-title">Visual</h3>
           <div class="character-customizer__models" role="group" aria-label="Modelos de personagem">
             ${CHARACTER_OPTIONS.map(option => `

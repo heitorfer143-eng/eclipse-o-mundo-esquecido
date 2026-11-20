@@ -28,6 +28,7 @@ export class AetherVfx {
   private readonly moteData: Mote[] = []
   private readonly follow = new THREE.Group()
   private readonly relic = new THREE.Group()
+  private readonly shards = new THREE.Group()
   private readonly halo: THREE.Mesh<THREE.TorusGeometry, THREE.MeshBasicMaterial>
   private readonly fallback: THREE.Mesh<THREE.OctahedronGeometry, THREE.MeshStandardMaterial>
   private readonly color = new THREE.Color()
@@ -37,6 +38,9 @@ export class AetherVfx {
   private relicBaseY = 0
 
   constructor(scene: THREE.Scene, seed: number, quality: Quality, relicModel?: THREE.Object3D) {
+    // The imported GLB has no clips and reads as an egg at plaza scale; retain the source file but
+    // use the deterministic angular relic below until that asset is replaced with a licensed shard.
+    void relicModel
     const touchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0
     this.count = quality === 'low' ? 16 : touchDevice ? 28 : quality === 'medium' ? 36 : 48
     this.motePositions = new Float32Array(this.count * 3)
@@ -77,7 +81,26 @@ export class AetherVfx {
     )
     this.fallback.material.transparent = true
     this.fallback.material.opacity = 0.86
+    this.fallback.scale.set(0.68, 1.12, 0.58)
     this.relic.add(this.fallback)
+    for (let i = 0; i < 3; i += 1) {
+      const material = new THREE.MeshStandardMaterial({
+        color: i === 1 ? '#c7a6ff' : '#83d8f0',
+        emissive: i === 1 ? '#7042b0' : '#2788bb',
+        emissiveIntensity: 1.05,
+        metalness: 0.28,
+        roughness: 0.3,
+        transparent: true,
+        opacity: 0.82,
+      })
+      const shard = new THREE.Mesh(new THREE.TetrahedronGeometry(0.29 + i * 0.035, 0), material)
+      shard.position.set(Math.cos(i * 2.1) * 0.42, (i - 1) * 0.2, Math.sin(i * 2.1) * 0.34)
+      shard.rotation.set(0.3 + i * 0.5, i * 1.7, 0.2 - i * 0.3)
+      shard.castShadow = false
+      shard.receiveShadow = false
+      this.shards.add(shard)
+    }
+    this.relic.add(this.shards)
     this.halo = new THREE.Mesh(
       new THREE.TorusGeometry(0.76, 0.025, 6, 40),
       new THREE.MeshBasicMaterial({ color: '#ffd889', transparent: true, opacity: 0.62, blending: THREE.AdditiveBlending, depthWrite: false }),
@@ -86,7 +109,6 @@ export class AetherVfx {
     this.halo.position.y = -0.18
     this.relic.add(this.halo)
     scene.add(this.relic)
-    this.loadModel(relicModel)
     this.relicBaseY = this.relic.position.y
   }
 
@@ -121,32 +143,8 @@ export class AetherVfx {
     this.halo.material.opacity = 0.38 + (0.5 + Math.sin(this.time * 1.8) * 0.5) * 0.32
     this.fallback.rotation.y -= step * 0.38
     this.fallback.rotation.x = Math.sin(this.time * 0.65) * 0.14
-  }
-
-  private loadModel(source?: THREE.Object3D): void {
-    if (!source) return
-    const model = source.clone(true)
-    const bounds = new THREE.Box3().setFromObject(model)
-    const size = new THREE.Vector3()
-    const center = new THREE.Vector3()
-    bounds.getSize(size)
-    bounds.getCenter(center)
-    const extent = Math.max(size.x, size.y, size.z)
-    if (!Number.isFinite(extent) || extent <= 0) return
-    model.position.sub(center)
-    const normalized = new THREE.Group()
-    normalized.scale.setScalar(0.9 / extent)
-    normalized.add(model)
-    model.traverse(node => {
-      if (node instanceof THREE.Mesh) {
-        node.castShadow = false
-        node.receiveShadow = false
-      }
-    })
-    this.relic.remove(this.fallback)
-    this.fallback.geometry.dispose()
-    this.fallback.material.dispose()
-    this.relic.add(normalized)
+    this.shards.rotation.y += step * 0.27
+    this.shards.rotation.x = Math.sin(this.time * 0.48) * 0.12
   }
 }
 
