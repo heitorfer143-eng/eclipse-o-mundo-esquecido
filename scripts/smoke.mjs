@@ -19,10 +19,11 @@ const browser = await chromium.launch({
 })
 const page = await browser.newPage({ viewport: { width: 800, height: 600 } })
 const errors = []
+const pageErrors = []
 page.on('console', message => {
   if (message.type() === 'error') errors.push(message.text())
 })
-page.on('pageerror', error => errors.push(`pageerror: ${error.message}`))
+page.on('pageerror', error => { pageErrors.push(error.message); errors.push(`pageerror: ${error.message}`) })
 
 await page.goto(URL, { waitUntil: 'domcontentloaded' })
 await page.waitForTimeout(12000)
@@ -369,3 +370,4 @@ await mobilePage.close()
 
 console.log('errors:', errors.slice(0, 20))
 await browser.close()
+if (pageErrors.length) throw new Error(`Erros fatais de JavaScript durante o smoke test: ${pageErrors.join(' | ')}`)
