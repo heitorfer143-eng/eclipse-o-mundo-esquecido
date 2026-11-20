@@ -10,7 +10,6 @@ import { SEA_LEVEL, Terrain } from './terrain'
 import { Water } from './water'
 import { Weather } from './weather'
 import { AetherVfx } from './aetherVfx'
-import { WildlifeManager } from './wildlife'
 
 const VIEW_RADIUS: Record<Quality, number> = { low: 3, medium: 4, high: 5 }
 
@@ -24,7 +23,6 @@ export class World {
   readonly water: Water
   readonly weather: Weather
   readonly aetherVfx: AetherVfx
-  readonly wildlife: WildlifeManager
   readonly spawn = new THREE.Vector3()
   private readonly colliders: Collider[] = []
   private colliderX = Number.NaN
@@ -35,9 +33,8 @@ export class World {
   constructor(readonly seed: number, quality: Quality, relicModel?: THREE.Object3D, houseModels: readonly THREE.Object3D[] = []) {
     this.terrain = new Terrain(seed)
     this.pois = new PoiManager(this.terrain, seed, houseModels)
-    this.wildlife = new WildlifeManager(this.terrain, seed, (x, z) => this.pois.isBlocked(x, z))
     this.chunks = new ChunkManager(this.terrain, (x, z) => this.pois.isBlocked(x, z), VIEW_RADIUS[quality])
-    this.scene.add(this.chunks.group, this.pois.group, this.wildlife.group)
+    this.scene.add(this.chunks.group, this.pois.group)
     this.sky = new Sky(this.scene)
     this.water = new Water(this.scene)
     this.weather = new Weather(this.scene)
@@ -159,7 +156,6 @@ export class World {
     this.weather.update(dt, camera, biome, this.sky.night)
     this.sky.setWeather(this.weather.fog, this.weather.state === 'limpo' ? null : this.weather.tintColor)
     this.water.update(dt, camera, this.sky.sunDirection, this.sky.sun.color, this.sky.night, this.sky.horizonColor)
-    this.wildlife.update(dt, player)
   }
 
   /** Cosmetic motes and relic remain animated in menus, dialogue and paused scenes. */
