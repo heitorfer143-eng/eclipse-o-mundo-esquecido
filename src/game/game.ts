@@ -47,6 +47,7 @@ export type GameDeps = {
   audio: Audio
   save: SaveStore
   onQuit: () => void
+  onPauseRequest?: () => void
   onResumeRequest: () => void
 }
 
@@ -603,9 +604,14 @@ export class Game {
     this.ui.toast(`+${xp} XP · +${gold} de ouro`, 'info')
     const drops = rollLoot(enemy.def.loot, this.skills.effects().lootBonus)
     this.giveLoot(drops)
-    this.quests.progress('matar', enemy.def.id)
+    const progressedQuests = this.quests.progress('matar', enemy.def.id)
     this.quests.syncInventory(this.inventory)
     this.checkQuestReady()
+    if (progressedQuests.length) {
+      this.updateNpcQuestMarkers()
+      this.ui.refreshPanels()
+      this.saveGame(true)
+    }
     this.effects.explosion(enemy.position.clone().setY(enemy.position.y + 0.8), 1.6, enemy.def.colors.glow ?? '#c9b6ff')
   }
 
@@ -1099,7 +1105,9 @@ export class Game {
     this.dialogue.open(def, this.quests, this.progression.level, startNode)
     this.quests.progress('falar', npcId)
     this.mode = 'paused'
+    this.onModeChange?.(this.mode)
     this.renderDialogue()
+    this.deps.onPauseRequest?.()
     this.saveGame(true)
   }
 
@@ -1195,10 +1203,19 @@ export class Game {
     }
     this.grantXp(reward.xp)
     this.inventory.gold += reward.gold
+    let firstArmorEquipped = false
     for (const item of reward.items ?? []) {
       const def = itemById(item.itemId)
       this.inventory.add(item.itemId, item.count)
       this.ui.toast(`+ ${def?.name ?? item.itemId} ×${item.count}`, 'item')
+      if (item.itemId === 'armadura-andarilho' && !this.inventory.equipment.armadura) {
+        const armorIndex = this.inventory.stacks.findIndex(stack => stack.id === item.itemId)
+        if (armorIndex >= 0 && !this.inventory.equipIndex(armorIndex, this.progression.level)) firstArmorEquipped = true
+      }
+    }
+    if (firstArmorEquipped) {
+      this.refreshStats()
+      this.ui.toast('Seu primeiro manto foi vestido: o Sobrevivente agora tem proteção visível.', 'item')
     }
     this.audio.play('win')
     this.ui.toast(`Missão concluída: ${quest.name} · +${reward.xp} XP · +${reward.gold} ouro`, 'level')
@@ -1423,6 +1440,7 @@ export class Game {
       armor: Boolean(this.inventory.equipment.armadura),
       helmet: Boolean(this.inventory.equipment.capacete),
       boots: Boolean(this.inventory.equipment.botas),
+      armorStyle: this.inventory.equippedDef('armadura')?.set,
       rarity: this.inventory.equippedDef('arma')?.rarity,
     })
   }

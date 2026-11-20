@@ -8,9 +8,10 @@ import { ENEMIES } from '../src/game/data/enemyData'
 import { Boss } from '../src/game/entities/boss'
 import { ENEMY_VISUAL_LIMITS, Enemy } from '../src/game/entities/enemy'
 import { pickEnemyFor } from '../src/game/entities/spawner'
-import { externalAnimationFor, type AnimState } from '../src/game/entities/character'
+import { CharacterModel, externalAnimationFor, type AnimState } from '../src/game/entities/character'
 import { externalHumanoidUrlForModel, EXTERNAL_CHARACTER_URLS, resolveExternalClipName, type ExternalAnimation } from '../src/game/entities/externalModels'
 import { NPCS } from '../src/game/data/npcData'
+import { itemById } from '../src/game/data/itemData'
 import { QUESTS, questById } from '../src/game/data/questData'
 import { DialogueRunner } from '../src/game/systems/dialogue'
 import { Inventory } from '../src/game/systems/inventory'
@@ -417,6 +418,7 @@ describe('abertura da campanha', () => {
       items: [
         { itemId: 'pocao-vida-1', count: 2 },
         { itemId: 'comida-pao', count: 3 },
+        { itemId: 'armadura-andarilho', count: 1 },
       ],
     })
     expect(quests.nextMainQuest()?.id).toBe('principal-02')
@@ -450,6 +452,57 @@ describe('abertura da campanha', () => {
     expect(village.spots.resources.filter(resource => resource.kind === 'erva')).toHaveLength(3)
     expect(quest.objectives.find(objective => objective.target === 'lobo-sombrio')?.count).toBe(3)
     expect(quest.objectives.find(objective => objective.target === 'mat-erva')?.count).toBe(3)
+  })
+
+  it('conta lobos sombrios abatidos na missão ativa e limita o progresso ao objetivo', () => {
+    const quests = new QuestLog()
+    expect(quests.accept('principal-01', 1)).toBeNull()
+
+    expect(quests.progress('matar', 'lobo-da-nevoa')).toEqual([])
+    expect(quests.objectiveProgress('principal-01', 'obj-p01-1')).toBe(0)
+    expect(quests.progress('matar', 'lobo-sombrio')).toEqual(['principal-01'])
+    expect(quests.objectiveProgress('principal-01', 'obj-p01-1')).toBe(1)
+    quests.progress('matar', 'lobo-sombrio', 5)
+    expect(quests.objectiveProgress('principal-01', 'obj-p01-1')).toBe(3)
+    expect(quests.ready('principal-01')).toBe(false)
+  })
+})
+
+describe('aparência de progressão do protagonista', () => {
+  it('começa como sobrevivente simples e revela peitoral, ombreira, placas e braçadeira ao equipar couro', () => {
+    const model = new CharacterModel({}, '')
+    try {
+      expect(model.visibleGearState).toEqual({ survivor: true, armor: false, helmet: false, boots: false })
+      const partNames: string[] = []
+      model.root.traverse(object => { if (object.name.startsWith('equipment-')) partNames.push(object.name) })
+      expect(partNames).toEqual(expect.arrayContaining([
+        'equipment-armor-torso', 'equipment-breastplate', 'equipment-pauldron-left',
+        'equipment-tasset', 'equipment-bracer-plate-left', 'equipment-greave-plate-left',
+      ]))
+
+      model.setEquipment({ armor: true, armorStyle: 'andarilho' })
+      expect(model.visibleGearState).toEqual({ survivor: true, armor: true, helmet: false, boots: false })
+      const cuirass = model.root.getObjectByName('equipment-cuirass-shell') as THREE.Mesh
+      expect((cuirass.material as THREE.MeshStandardMaterial).color.getHexString()).toBe('765238')
+
+      model.setEquipment({ armor: true, armorStyle: 'sentinela' })
+      expect((cuirass.material as THREE.MeshStandardMaterial).color.getHexString()).toBe('b9c2cb')
+      model.setEquipment({ armor: false, helmet: false, boots: false, armorStyle: 'andarilho' })
+      expect(model.visibleGearState).toEqual({ survivor: true, armor: false, helmet: false, boots: false })
+    } finally {
+      model.dispose()
+    }
+  })
+
+  it('libera o Manto do Andarilho no primeiro nível somente como recompensa da missão inicial', () => {
+    const quest = questById('principal-01')!
+    expect(quest.rewards.items).toContainEqual({ itemId: 'armadura-andarilho', count: 1 })
+    expect(itemById('armadura-andarilho')?.level).toBe(1)
+    const inventory = new Inventory()
+    inventory.add('armadura-andarilho', 1)
+    expect(inventory.equipment.armadura).toBeNull()
+    expect(inventory.equipIndex(0, 1)).toBeNull()
+    expect(inventory.equipment.armadura?.id).toBe('armadura-andarilho')
   })
 })
 

@@ -147,3 +147,13 @@ H poção · Tab inventário · K habilidades · M mapa · L missões · Esc pau
 ## Texturas e navegação de NPCs (20 nov 2026)
 - [x] Aplicar mapas leves de madeira, pedra, reboco e telhas aos materiais sem textura dos GLBs Shuriken; preservar mapas originais e fallbacks, gerar UVs ausentes e validar os quatro tipos em 2.352 materiais carregados no smoke mobile/desktop.
 - [x] Manter NPCs fora das casas ao iniciar e durante a rotina autônoma, usando exclusões por POI e colisores locais; validar caminhada simulada sem entrada em casa e confirmar no smoke que jogador ainda abre, retoma e sai do interior.
+
+## Roupa, noite e contagem de lobos (20 nov 2026)
+- [x] Iniciar como Sobrevivente sem armadura, capacete ou botas, usando roupa simples de tecido; tornar o equipamento modular e visualmente evidente ao obter a primeira armadura pela progressão, preservando o mesmo protagonista/rig.
+- [x] Entregar o Manto do Andarilho ao concluir O Despertar, permitir equipá-lo no nível 1 e equipá-lo automaticamente como primeira armadura; validar a troca visual sem mudar a identidade da campanha.
+- [x] Clarear a iluminação ambiente e a névoa da noite, mantendo o céu noturno escuro/azulado e os níveis do meio-dia; validar dia/noite em browser.
+- [x] Contar mortes de lobos sombrios em objetivos ativos, atualizar o diário e os marcadores de NPC e persistir o progresso do abate; validar um lobo real no smoke.
+- [x] Passar `pnpm typecheck`, 42 testes, `pnpm build` e o smoke desktop/mobile sem erros de navegador.
+
+## Texturas do mundo (pendente)
+- [ ] Integrar ao terreno, árvores e castelo as imagens existentes `public/assets/textures/world/grass-meadow.png`, `public/assets/textures/tree-leaves.png` e `public/assets/textures/castle-stone.png`, mantendo desempenho mobile e fallbacks; obter ou criar textura de casca de árvore antes de marcá-la pronta (`tree-bark.png` não foi produzida).

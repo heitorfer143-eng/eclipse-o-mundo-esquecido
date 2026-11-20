@@ -88,6 +88,47 @@ function mat(color: string, opts: { roughness?: number; metalness?: number; emis
   })
 }
 
+type ArmorVisualStyle = 'andarilho' | 'sentinela' | 'eclipse' | 'aetherion'
+type ArmorPalette = { main: string; trim: string; accent: string; roughness: number; metalness: number; glow: string; glowIntensity: number }
+
+const ARMOR_PALETTES: Record<ArmorVisualStyle, ArmorPalette> = {
+  andarilho: { main: '#765238', trim: '#3b2b21', accent: '#c08b49', roughness: 0.88, metalness: 0.08, glow: '#000000', glowIntensity: 0 },
+  sentinela: { main: '#b9c2cb', trim: '#4b5360', accent: '#d4b86b', roughness: 0.34, metalness: 0.8, glow: '#000000', glowIntensity: 0 },
+  eclipse: { main: '#30283f', trim: '#17131f', accent: '#aa6cf2', roughness: 0.38, metalness: 0.62, glow: '#6e36a8', glowIntensity: 0.5 },
+  aetherion: { main: '#c4a253', trim: '#3c4d56', accent: '#79dce7', roughness: 0.32, metalness: 0.78, glow: '#3baebb', glowIntensity: 0.42 },
+}
+
+function armorPlateGeometry(width: number, height: number, depth: number): THREE.BufferGeometry {
+  const shape = new THREE.Shape()
+  shape.moveTo(-width * 0.46, height * 0.44)
+  shape.lineTo(width * 0.46, height * 0.44)
+  shape.lineTo(width * 0.42, height * 0.02)
+  shape.lineTo(width * 0.2, -height * 0.34)
+  shape.lineTo(0, -height * 0.5)
+  shape.lineTo(-width * 0.2, -height * 0.34)
+  shape.lineTo(-width * 0.42, height * 0.02)
+  shape.closePath()
+  return new THREE.ExtrudeGeometry(shape, {
+    depth,
+    steps: 1,
+    bevelEnabled: true,
+    bevelSegments: 1,
+    bevelSize: 0.008,
+    bevelThickness: 0.008,
+  })
+}
+
+function loinclothGeometry(): THREE.BufferGeometry {
+  const shape = new THREE.Shape()
+  shape.moveTo(-0.15, 0.08)
+  shape.lineTo(0.15, 0.08)
+  shape.lineTo(0.11, -0.05)
+  shape.lineTo(0, -0.24)
+  shape.lineTo(-0.11, -0.05)
+  shape.closePath()
+  return new THREE.ShapeGeometry(shape)
+}
+
 /** Builds the weapon mesh for a weapon family, pointing along -Z from the grip. */
 export function buildWeapon(kind: WeaponKind, rarity: Rarity = 'comum'): THREE.Group {
   const group = new THREE.Group()
@@ -204,7 +245,15 @@ export class CharacterModel {
   private readonly clothMaterial: THREE.MeshStandardMaterial
   private readonly leatherMaterial: THREE.MeshStandardMaterial
   private readonly underwearMaterial: THREE.MeshStandardMaterial
-  private readonly metalMaterial: THREE.MeshStandardMaterial
+  private readonly armorMaterial: THREE.MeshStandardMaterial
+  private readonly armorTrimMaterial: THREE.MeshStandardMaterial
+  private readonly armorAccentMaterial: THREE.MeshStandardMaterial
+  private readonly armorTorsoGroup = new THREE.Group()
+  private readonly armorWaistGroup = new THREE.Group()
+  private readonly forearmArmorL = new THREE.Group()
+  private readonly forearmArmorR = new THREE.Group()
+  private readonly bootArmorL = new THREE.Group()
+  private readonly bootArmorR = new THREE.Group()
   private external?: ExternalCharacter
   private externalMode: ExternalAnimation = 'idle'
   private externalActionTime = 0
@@ -213,6 +262,7 @@ export class CharacterModel {
   private disposed = false
   private auraColor = '#7fe3ff'
   private survivorAppearance = false
+  private armorStyle: ArmorVisualStyle = 'andarilho'
 
   constructor(appearance: Partial<Appearance> = {}, externalUrl: string = EXTERNAL_CHARACTER_URLS.player, externalYaw = 0) {
     this.appearance = { ...DEFAULT_APPEARANCE, ...appearance }
@@ -220,8 +270,11 @@ export class CharacterModel {
     this.skinMaterial = skin
     this.clothMaterial = mat(this.appearance.cloth, { roughness: 0.9 })
     this.leatherMaterial = mat(this.appearance.leather, { roughness: 0.85 })
-    this.underwearMaterial = mat('#987957', { roughness: 0.98 })
-    this.metalMaterial = mat('#a9b0bd', { roughness: 0.4, metalness: 0.75 })
+    this.underwearMaterial = mat('#613d2d', { roughness: 0.98 })
+    this.armorMaterial = mat('#765238', { roughness: 0.88, metalness: 0.08 })
+    this.armorTrimMaterial = mat('#3b2b21', { roughness: 0.72, metalness: 0.12 })
+    this.armorAccentMaterial = mat('#c08b49', { roughness: 0.42, metalness: 0.68 })
+    this.applyArmorStyle('andarilho')
     const accent = mat(this.appearance.clothAccent, { roughness: 0.6, metalness: 0.2 })
     const hair = mat(this.appearance.hair, { roughness: 0.95 })
     this.eyeMaterial = mat('#8fe8ff', { roughness: 0.2, emissive: '#6fe0ff', emissiveIntensity: 1.4 })
@@ -316,6 +369,16 @@ export class CharacterModel {
     this.shinL.add(this.footL)
     this.shinR.add(this.footR)
 
+    const loinclothFront = new THREE.Mesh(loinclothGeometry(), this.underwearMaterial)
+    loinclothFront.name = 'survivor-loincloth-front'
+    loinclothFront.position.set(0, -0.015, -0.155)
+    loinclothFront.rotation.y = Math.PI
+    const loinclothBack = new THREE.Mesh(loinclothGeometry(), this.underwearMaterial)
+    loinclothBack.name = 'survivor-loincloth-back'
+    loinclothBack.position.set(0, -0.015, 0.155)
+    this.hips.add(loinclothFront, loinclothBack)
+    this.buildArmorMeshes()
+
     // Cape / cloak that also acts as the glide surface.
     this.cape.position.set(0, 0.48, 0.19)
     this.torso.add(this.cape)
@@ -348,6 +411,15 @@ export class CharacterModel {
 
   get hands(): THREE.Object3D {
     return this.weaponSlot
+  }
+
+  get visibleGearState(): Readonly<{ survivor: boolean; armor: boolean; helmet: boolean; boots: boolean }> {
+    return {
+      survivor: this.survivorAppearance,
+      armor: this.armorTorsoGroup.visible,
+      helmet: this.helmet?.visible ?? false,
+      boots: this.bootArmorL.visible && this.bootArmorR.visible,
+    }
   }
 
   /** Swap a licensed model lazily; stale requests never replace the newest selection. */
@@ -418,8 +490,120 @@ export class CharacterModel {
     ;(this.aura.material as THREE.MeshBasicMaterial).color.set(color)
   }
 
+  private buildArmorMeshes(): void {
+    this.armorTorsoGroup.name = 'equipment-armor-torso'
+    this.armorTorsoGroup.visible = false
+    this.torso.add(this.armorTorsoGroup)
+    const cuirass = new THREE.Mesh(new THREE.CapsuleGeometry(0.282, 0.37, 4, 10), this.armorMaterial)
+    cuirass.name = 'equipment-cuirass-shell'
+    cuirass.position.y = 0.3
+    cuirass.scale.set(1.06, 1.02, 0.94)
+    this.armorTorsoGroup.add(cuirass)
+
+    const breastplate = new THREE.Mesh(armorPlateGeometry(0.39, 0.41, 0.035), this.armorMaterial)
+    breastplate.name = 'equipment-breastplate'
+    breastplate.position.set(0, 0.3, -0.238)
+    breastplate.rotation.y = Math.PI
+    const breastInset = new THREE.Mesh(armorPlateGeometry(0.23, 0.25, 0.016), this.armorTrimMaterial)
+    breastInset.name = 'equipment-breastplate-inset'
+    breastInset.position.set(0, 0.31, -0.275)
+    breastInset.rotation.y = Math.PI
+    const crest = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.2, 0.016), this.armorAccentMaterial)
+    crest.name = 'equipment-breastplate-crest'
+    crest.position.set(0, 0.31, -0.294)
+    const medallion = new THREE.Mesh(new THREE.IcosahedronGeometry(0.045, 0), this.armorAccentMaterial)
+    medallion.name = 'equipment-breastplate-medallion'
+    medallion.position.set(0, 0.39, -0.3)
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.135, 0.022, 5, 12), this.armorTrimMaterial)
+    collar.name = 'equipment-collar'
+    collar.rotation.x = Math.PI / 2
+    collar.position.y = 0.68
+    this.armorTorsoGroup.add(breastplate, breastInset, crest, medallion, collar)
+
+    this.shoulderL = new THREE.Mesh(new THREE.SphereGeometry(0.145, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.66), this.armorMaterial)
+    this.shoulderL.name = 'equipment-pauldron-left'
+    this.shoulderL.position.set(-0.33, 0.53, 0)
+    this.shoulderL.scale.set(1.18, 0.9, 1.14)
+    this.shoulderR = this.shoulderL.clone()
+    this.shoulderR.name = 'equipment-pauldron-right'
+    this.shoulderR.position.x = 0.33
+    const pauldronRidgeL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.025, 0.16), this.armorAccentMaterial)
+    pauldronRidgeL.position.set(0, 0.055, -0.025)
+    const pauldronRidgeR = pauldronRidgeL.clone()
+    this.shoulderL.add(pauldronRidgeL)
+    this.shoulderR.add(pauldronRidgeR)
+    this.armorTorsoGroup.add(this.shoulderL, this.shoulderR)
+
+    this.armorWaistGroup.name = 'equipment-armor-waist'
+    this.armorWaistGroup.visible = false
+    this.hips.add(this.armorWaistGroup)
+    const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.075, 10), this.armorTrimMaterial)
+    belt.name = 'equipment-armor-belt'
+    belt.position.y = 0.13
+    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.035), this.armorAccentMaterial)
+    buckle.name = 'equipment-armor-buckle'
+    buckle.position.set(0, 0.13, -0.255)
+    this.armorWaistGroup.add(belt, buckle)
+    for (const x of [-0.12, 0, 0.12]) {
+      const tasset = new THREE.Mesh(armorPlateGeometry(0.15, 0.24, 0.022), this.armorMaterial)
+      tasset.name = 'equipment-tasset'
+      tasset.position.set(x, -0.075, -0.155)
+      tasset.rotation.y = Math.PI
+      this.armorWaistGroup.add(tasset)
+    }
+
+    this.forearmArmorL.name = 'equipment-forearm-left'
+    this.forearmArmorR.name = 'equipment-forearm-right'
+    this.forearmArmorL.visible = false
+    this.forearmArmorR.visible = false
+    this.foreL.add(this.forearmArmorL)
+    this.foreR.add(this.forearmArmorR)
+    for (const [group, side] of [[this.forearmArmorL, 'left'], [this.forearmArmorR, 'right']] as const) {
+      const bracer = new THREE.Mesh(new THREE.CapsuleGeometry(0.074, 0.15, 3, 8), this.armorMaterial)
+      bracer.name = `equipment-bracer-${side}`
+      bracer.position.y = -0.13
+      const plate = new THREE.Mesh(armorPlateGeometry(0.085, 0.13, 0.018), this.armorAccentMaterial)
+      plate.name = `equipment-bracer-plate-${side}`
+      plate.position.set(0, -0.13, -0.061)
+      plate.rotation.y = Math.PI
+      group.add(bracer, plate)
+    }
+
+    this.bootArmorL.name = 'equipment-greave-left'
+    this.bootArmorR.name = 'equipment-greave-right'
+    this.bootArmorL.visible = false
+    this.bootArmorR.visible = false
+    this.shinL.add(this.bootArmorL)
+    this.shinR.add(this.bootArmorR)
+    for (const [group, side] of [[this.bootArmorL, 'left'], [this.bootArmorR, 'right']] as const) {
+      const greave = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.105, 0.3, 8), this.armorMaterial)
+      greave.name = `equipment-greave-shell-${side}`
+      greave.position.y = -0.18
+      const plate = new THREE.Mesh(armorPlateGeometry(0.11, 0.25, 0.02), this.armorAccentMaterial)
+      plate.name = `equipment-greave-plate-${side}`
+      plate.position.set(0, -0.18, -0.075)
+      plate.rotation.y = Math.PI
+      group.add(greave, plate)
+    }
+  }
+
+  private applyArmorStyle(requestedStyle?: string): void {
+    const style = requestedStyle && requestedStyle in ARMOR_PALETTES
+      ? requestedStyle as ArmorVisualStyle
+      : this.armorStyle
+    this.armorStyle = style
+    const palette = ARMOR_PALETTES[style]
+    this.armorMaterial.color.set(palette.main)
+    this.armorMaterial.roughness = palette.roughness
+    this.armorMaterial.metalness = palette.metalness
+    this.armorTrimMaterial.color.set(palette.trim)
+    this.armorAccentMaterial.color.set(palette.accent)
+    this.armorAccentMaterial.emissive.set(palette.glow)
+    this.armorAccentMaterial.emissiveIntensity = palette.glowIntensity
+  }
+
   /** Visible equipment: weapon model, armour plating, helmet and boots. */
-  setEquipment(options: { weapon?: WeaponKind; rarity?: Rarity; armor?: boolean; helmet?: boolean; boots?: boolean; auraColor?: string }): void {
+  setEquipment(options: { weapon?: WeaponKind; rarity?: Rarity; armor?: boolean; helmet?: boolean; boots?: boolean; armorStyle?: string; auraColor?: string }): void {
     if (this.weapon) {
       this.weaponSlot.remove(this.weapon)
       this.weapon.traverse(obj => {
@@ -432,26 +616,34 @@ export class CharacterModel {
       this.weapon = buildWeapon(options.weapon, options.rarity ?? 'comum')
       this.weaponSlot.add(this.weapon)
     }
-    if (!this.shoulderL) {
-      this.shoulderL = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.6), this.metalMaterial)
-      this.shoulderL.position.set(-0.31, 0.54, 0)
-      this.shoulderL.scale.set(1.1, 0.8, 1)
-      this.shoulderR = this.shoulderL.clone()
-      this.shoulderR.position.x = 0.31
-      this.torso.add(this.shoulderL, this.shoulderR)
-    }
-    this.shoulderL.visible = options.armor === true
-    this.shoulderR!.visible = options.armor === true
-    this.torsoMesh.material = options.armor ? this.metalMaterial : this.survivorAppearance ? this.skinMaterial : this.clothMaterial
+    this.applyArmorStyle(options.armorStyle)
+    const armorVisible = options.armor === true
+    this.armorTorsoGroup.visible = armorVisible
+    this.armorWaistGroup.visible = armorVisible
+    this.forearmArmorL.visible = armorVisible
+    this.forearmArmorR.visible = armorVisible
+    this.shoulderL!.visible = armorVisible
+    this.shoulderR!.visible = armorVisible
+    this.torsoMesh.material = this.survivorAppearance ? this.skinMaterial : this.clothMaterial
     this.hipMesh.material = this.survivorAppearance ? this.underwearMaterial : this.leatherMaterial
     if (!this.helmet) {
-      this.helmet = new THREE.Mesh(new THREE.SphereGeometry(0.215, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), this.metalMaterial)
+      this.helmet = new THREE.Mesh(new THREE.SphereGeometry(0.215, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), this.armorMaterial)
+      this.helmet.name = 'equipment-helmet'
       this.helmet.position.y = 0.03
+      const visor = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.035, 0.035), this.armorTrimMaterial)
+      visor.name = 'equipment-helmet-visor'
+      visor.position.set(0, -0.015, -0.18)
+      const crest = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.15, 4), this.armorAccentMaterial)
+      crest.name = 'equipment-helmet-crest'
+      crest.position.set(0, 0.16, -0.02)
+      this.helmet.add(visor, crest)
       this.head.add(this.helmet)
     }
     this.helmet.visible = options.helmet === true
     this.hairMesh.visible = options.helmet !== true
-    const bootMaterial = options.boots ? this.metalMaterial : this.survivorAppearance ? this.skinMaterial : this.leatherMaterial
+    this.bootArmorL.visible = options.boots === true
+    this.bootArmorR.visible = options.boots === true
+    const bootMaterial = options.boots ? this.armorMaterial : this.survivorAppearance ? this.skinMaterial : this.leatherMaterial
     this.footL.material = bootMaterial
     this.footR.material = bootMaterial
     this.setAuraColor(options.auraColor ?? this.auraColor)

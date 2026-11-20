@@ -49,6 +49,39 @@ await page.getByRole('button', { name: 'Encerrar conversa' }).click()
 await page.waitForFunction(() => window.__eclipse.game.mode === 'playing' && window.__eclipse.game.quests.tracked === 'principal-01')
 await page.waitForTimeout(1000)
 
+const lighting = await page.evaluate(() => {
+  const g = window.__eclipse.game
+  const sky = g.world.sky
+  const originalTime = sky.timeOfDay
+  sky.timeOfDay = 0.5
+  sky.update(0, g.camera.camera, g.player.position)
+  const day = { sun: sky.sun.intensity, hemi: sky.hemi.intensity, ambient: sky.ambient.intensity }
+  sky.timeOfDay = 0.99
+  sky.update(0, g.camera.camera, g.player.position)
+  const night = { level: sky.night, sun: sky.sun.intensity, hemi: sky.hemi.intensity, ambient: sky.ambient.intensity, fogDensity: window.__eclipse.game.world.scene.fog.density }
+  sky.timeOfDay = originalTime
+  sky.update(0, g.camera.camera, g.player.position)
+  return { day, night }
+})
+console.log('day/night lighting:', lighting)
+if (lighting.day.sun < 2.6 || lighting.day.hemi < 0.72 || lighting.day.ambient < 0.34
+  || lighting.night.level < 0.99 || lighting.night.sun < 0.39 || lighting.night.hemi < 0.77
+  || lighting.night.ambient < 0.57 || lighting.night.fogDensity > 0.0028) {
+  throw new Error(`A iluminação noturna segue escura ou a luz do dia foi alterada: ${JSON.stringify(lighting)}`)
+}
+await page.evaluate(() => {
+  const g = window.__eclipse.game
+  g.world.sky.timeOfDay = 0.99
+  g.world.sky.update(0, g.camera.camera, g.player.position)
+})
+await page.waitForTimeout(150)
+await captureScreenshot(page, 'night-lighting.png')
+await page.evaluate(() => {
+  const g = window.__eclipse.game
+  g.world.sky.timeOfDay = 0.3
+  g.world.sky.update(0, g.camera.camera, g.player.position)
+})
+
 const openingState = await page.evaluate(() => {
   const g = window.__eclipse.game
   const iara = g.population.npcs.find(npc => npc.def.id === 'iara')
@@ -68,6 +101,7 @@ const openingState = await page.evaluate(() => {
     tracked: g.quests.tracked,
     storyFlags: g.save.data.game?.storyFlags ?? [],
     armorEquipped: Boolean(equipment.armadura || equipment.capacete || equipment.botas),
+    visualGear: g.player.model.visibleGearState,
     activeCampaigns: g.save.data.campaigns.length,
   }
 })
@@ -81,6 +115,33 @@ if (openingState.profile?.name !== 'Teste Eclipse' || openingState.profile.model
 if (openingState.armorEquipped || openingState.activeCampaigns !== 1 || !openingState.storyFlags.includes('iara-intro')) {
   throw new Error('A campanha não começou com uma identidade única, sem armadura e com a introdução marcada.')
 }
+if (!openingState.visualGear.survivor || openingState.visualGear.armor || openingState.visualGear.helmet || openingState.visualGear.boots) {
+  throw new Error(`O rig não começou visualmente como Sobrevivente sem armadura: ${JSON.stringify(openingState.visualGear)}`)
+}
+await captureScreenshot(page, 'character-unarmored.png')
+const equippedLook = await page.evaluate(() => {
+  const model = window.__eclipse.game.player.model
+  model.setEquipment({ armor: true, armorStyle: 'andarilho' })
+  const state = model.visibleGearState
+  const visibleParts = []
+  model.root.traverse(object => {
+    if (['equipment-cuirass-shell', 'equipment-breastplate', 'equipment-pauldron-left', 'equipment-tasset', 'equipment-bracer-plate-left'].includes(object.name)) {
+      visibleParts.push({ name: object.name, visible: object.visible })
+    }
+  })
+  return { state, visibleParts }
+})
+if (!equippedLook.state.survivor || !equippedLook.state.armor || equippedLook.visibleParts.length < 5
+  || equippedLook.visibleParts.some(part => !part.visible)) {
+  throw new Error(`O Manto do Andarilho não apareceu em camadas no rig: ${JSON.stringify(equippedLook)}`)
+}
+await page.waitForTimeout(200)
+await captureScreenshot(page, 'character-first-armor.png')
+const restoredLook = await page.evaluate(() => {
+  window.__eclipse.game.refreshStats()
+  return window.__eclipse.game.player.model.visibleGearState
+})
+if (restoredLook.armor) throw new Error(`A validação visual alterou o equipamento inicial: ${JSON.stringify(restoredLook)}`)
 if (openingState.distanceToIara > 3.4 || openingState.iaraCameraSide >= 0) throw new Error('Iara não está acessível ou ficou entre a câmera e o jogador.')
 if (openingState.maxEnemyHeight > 2.45) throw new Error(`Mob maior que o limite: ${openingState.maxEnemyHeight} m.`)
 
@@ -271,6 +332,66 @@ const recreated = await page.evaluate(() => ({
 if (recreated.count !== 1 || recreated.name !== 'Nara Eclipse' || recreated.model !== 'Survivor') {
   throw new Error(`Após excluir, a campanha única não pôde ser recriada corretamente: ${JSON.stringify(recreated)}`)
 }
+await page.getByRole('button', { name: 'Aceitar missão: O Despertar' }).click()
+await page.getByRole('button', { name: 'Encerrar conversa' }).click()
+await page.keyboard.press('l')
+await page.locator('.quest-detail__obj').first().waitFor()
+const wolfKill = await page.evaluate(() => {
+  const g = window.__eclipse.game
+  const wolf = g.spawner.enemies.find(enemy => enemy.def.id === 'lobo-sombrio' && enemy.alive)
+  if (!wolf) throw new Error('Não há lobo sombrio próximo para testar a missão.')
+  g.damageArea(wolf.position.clone(), 0.2, 100000, 'fogo')
+  return {
+    dead: wolf.dead,
+    counted: wolf.counted,
+    progress: g.quests.objectiveProgress('principal-01', 'obj-p01-1'),
+    savedProgress: g.save.data.game?.quests?.states?.['principal-01']?.progress?.['obj-p01-1'] ?? 0,
+  }
+})
+const visibleWolfProgress = await page.locator('.quest-detail__obj').first().textContent()
+console.log('real wolf kill progress:', { ...wolfKill, visibleWolfProgress })
+if (!wolfKill.dead || !wolfKill.counted || wolfKill.progress !== 1 || wolfKill.savedProgress !== 1
+  || !visibleWolfProgress?.includes('1/3')) {
+  throw new Error(`O abate real não contou/salvou/atualizou o diário: ${JSON.stringify({ wolfKill, visibleWolfProgress })}`)
+}
+await page.locator('.panel__close').evaluate(button => button.click())
+await page.waitForFunction(() => window.__eclipse.game.mode === 'playing')
+const preparedTurnIn = await page.evaluate(() => {
+  const g = window.__eclipse.game
+  g.quests.progress('matar', 'lobo-sombrio', 2)
+  g.inventory.add('mat-erva', 3)
+  g.quests.syncInventory(g.inventory)
+  g.quests.progress('falar', 'velho-thom', 1)
+  g.quests.progress('chefe', 'guardiao-floresta-corrompido', 1)
+  return { ready: g.quests.ready('principal-01'), progress: g.quests.state('principal-01')?.progress }
+})
+if (!preparedTurnIn.ready) throw new Error(`A missão inicial não ficou pronta para entrega: ${JSON.stringify(preparedTurnIn)}`)
+await page.evaluate(() => window.__eclipse.game.openNpcDialogue('iara'))
+const turnInButton = page.getByRole('button', { name: 'Concluir missão: O Despertar' })
+const dialoguePointerUnlocked = await page.evaluate(() => document.pointerLockElement !== document.querySelector('#game'))
+if (!dialoguePointerUnlocked) throw new Error('A conversa com NPC manteve o pointer lock e bloqueou as opções clicáveis.')
+const turnInHitTarget = await turnInButton.evaluate(button => {
+  const rect = button.getBoundingClientRect()
+  const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+  return hit === button || button.contains(hit)
+})
+if (!turnInHitTarget) throw new Error('O botão Concluir missão está encoberto na interface.')
+await turnInButton.click()
+const armorAfterMission = await page.evaluate(() => {
+  const g = window.__eclipse.game
+  return {
+    quest: g.quests.state('principal-01')?.status,
+    equipped: g.inventory.equipment.armadura?.id ?? null,
+    visual: g.player.model.visibleGearState,
+  }
+})
+console.log('first armor progression:', armorAfterMission)
+if (armorAfterMission.quest !== 'concluida' || armorAfterMission.equipped !== 'armadura-andarilho'
+  || !armorAfterMission.visual.survivor || !armorAfterMission.visual.armor) {
+  throw new Error(`A entrega da missão não vestiu a primeira armadura: ${JSON.stringify(armorAfterMission)}`)
+}
+await page.waitForTimeout(150)
+await captureScreenshot(page, 'character-after-mission.png')
 await page.getByRole('button', { name: 'Encerrar conversa' }).click()
 await page.keyboard.press('Escape')
 await page.waitForFunction(() => window.__eclipse.game.mode === 'paused' && document.pointerLockElement === null)

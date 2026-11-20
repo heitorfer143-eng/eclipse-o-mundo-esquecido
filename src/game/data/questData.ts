@@ -35,6 +35,7 @@ export const QUESTS: QuestDef[] = [
       items: [
         { itemId: 'pocao-vida-1', count: 2 },
         { itemId: 'comida-pao', count: 3 },
+        { itemId: 'armadura-andarilho', count: 1 },
       ],
     },
     next: 'principal-02',

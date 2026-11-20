@@ -167,6 +167,7 @@ async function boot(): Promise<void> {
       ui.showTitle()
       input.unlockPointer()
     },
+    onPauseRequest: () => input.unlockPointer(),
     onResumeRequest: () => {
       audio.unlock()
       input.lockPointer()

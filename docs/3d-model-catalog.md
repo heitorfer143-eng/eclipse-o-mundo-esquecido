@@ -31,6 +31,12 @@ Os três modelos Shuriken selecionados são estáticos (sem clips de animação)
 
 As três fontes tipográficas locais são servidas pelo build do Vite com caminho relativo, preservam as licenças OFL e não adicionam dependência de rede em runtime. A família MedievalSharp foi avaliada, mas não foi copiada.
 
+## Protagonista: roupa inicial e progressão visual
+
+O mesmo rig procedural (`src/game/entities/character.ts`) mantém a identidade do personagem: começa como Sobrevivente sem armadura, com roupa simples de tecido, e revela camadas modulares de couro/armadura ao receber equipamento. A primeira missão entrega o Manto do Andarilho, que o jogo equipa automaticamente; não foi necessário baixar outro modelo nem duplicar o protagonista.
+
+O snapshot `catalog-20260924-japan-characters-scene-removal-v1` retornou “Animated Characters Survivors” da Kenney, mas os metadados descrevem personagens zumbis, sem confirmar um par humano compatível do mesmo personagem sem/com armadura; por isso não foi integrado. A página registrada para conferência futura é https://kenney.nl/assets/animated-characters-survivors (não houve download). A [Quaternius](https://quaternius.com/) também foi consultada, mas nenhum par compatível foi confirmado nem selecionado. Nenhum arquivo dessas buscas foi copiado para o build.
+
 ## Critérios para futuras integrações
 
 Antes de incluir qualquer outro arquivo, confirmar a licença do pacote/asset específico (não apenas a página do catálogo), decidir se os termos autorizam a forma de distribuição do jogo, conferir estilo, escala, animações e custo de download, e adicionar a atribuição exigida. Itens ambíguos permanecem fora do diretório público. Assets remotos já existentes devem conservar seus fallbacks e a origem/licença deve ser revista se os termos mudarem.

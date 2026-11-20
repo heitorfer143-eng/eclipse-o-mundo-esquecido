@@ -166,7 +166,7 @@ const ARMOR_SETS: { id: string; rarity: Rarity; level: number; pieces: SetPiece[
   {
     id: 'andarilho',
     rarity: 'incomum',
-    level: 3,
+    level: 1,
     pieces: [
       { slot: 'armadura', name: 'Manto do Andarilho', defense: 6, stats: { vida: 20, stamina: 6 }, description: 'Couro curtido com resina de pinheiro; cheira a floresta.' },
       { slot: 'capacete', name: 'Capuz do Andarilho', defense: 3, stats: { mana: 8 }, description: 'Sombra para os olhos e chuva fora do rosto.' },
