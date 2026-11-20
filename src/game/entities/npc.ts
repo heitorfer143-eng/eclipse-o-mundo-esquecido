@@ -51,12 +51,17 @@ export class Npc {
       leather: palette.leather,
       hair: palette.hair,
     }
-    const modelUrl = def.role === 'guarda' ? EXTERNAL_CHARACTER_URLS.guard
+    const modelUrl = def.name.includes('Capit') ? EXTERNAL_CHARACTER_URLS.knightCaptain
+      : def.role === 'guarda' ? EXTERNAL_CHARACTER_URLS.guard
       : def.role === 'ferreiro' ? EXTERNAL_CHARACTER_URLS.blacksmith
-      : def.role === 'mercador' || def.role === 'taverneiro' ? EXTERNAL_CHARACTER_URLS.merchant
-      : def.role === 'mago' || def.role === 'alquimista' || def.role === 'sacerdote' ? EXTERNAL_CHARACTER_URLS.mage
+      : def.role === 'mercador' ? EXTERNAL_CHARACTER_URLS.merchant
+      : def.role === 'taverneiro' ? EXTERNAL_CHARACTER_URLS.bartender
+      : def.role === 'mago' ? EXTERNAL_CHARACTER_URLS.mage
+      : def.role === 'alquimista' ? EXTERNAL_CHARACTER_URLS.witch
+      : def.role === 'sacerdote' ? EXTERNAL_CHARACTER_URLS.priestess
       : def.role === 'anciao' ? EXTERNAL_CHARACTER_URLS.king
       : def.role === 'cacador' ? EXTERNAL_CHARACTER_URLS.archer
+      : def.role === 'campones' ? EXTERNAL_CHARACTER_URLS.farmer
       : EXTERNAL_CHARACTER_URLS.villager
     this.model = new CharacterModel(appearance, modelUrl)
     this.model.setEquipment({ weapon: def.role === 'guarda' ? 'lanca' : def.role === 'cacador' ? 'arco' : undefined, armor: def.role === 'guarda', helmet: def.role === 'guarda' })
