@@ -4,7 +4,7 @@ import { clamp, damp, dampAngle } from '../core/math'
 import { ELEMENTS, damageAfterDefense, elementalMultiplier } from '../combat/damage'
 import { buildEnemyVisual, disposeEnemyVisual, fitEnemyVisual, type EnemyVisual, type EnemyVisualBounds } from './enemyModels'
 import type { EnemyContext } from './enemy'
-import { ExternalCharacter, EXTERNAL_CHARACTER_URLS, type ExternalAnimation } from './externalModels'
+import { ExternalCharacter, externalHumanoidUrlForModel, type ExternalAnimation } from './externalModels'
 
 export type BossEvent =
   | { type: 'aoe'; center: THREE.Vector3; radius: number; damage: number; element?: ElementId; name: string }
@@ -69,13 +69,7 @@ export class Boss {
     this.visualBounds = fitEnemyVisual(this.visual, MAX_BOSS_HEIGHT, MAX_BOSS_FOOTPRINT)
     this.root.add(this.visual.root)
     this.root.position.copy(this.position)
-    const externalBossUrl = def.model === 'cavaleiro' ? EXTERNAL_CHARACTER_URLS.knight
-      : def.model === 'esqueleto' || def.model === 'mumia' ? EXTERNAL_CHARACTER_URLS.mummy
-      : def.model === 'goblin' || def.model === 'diabrete' ? EXTERNAL_CHARACTER_URLS.orc
-      : def.model === 'golem' || def.model === 'gigante' || def.model === 'troll' ? EXTERNAL_CHARACTER_URLS.brute
-      : def.model === 'espectro' ? EXTERNAL_CHARACTER_URLS.ghost
-      : def.model === 'yeti' ? EXTERNAL_CHARACTER_URLS.werewolf
-      : def.model === 'elemental' ? EXTERNAL_CHARACTER_URLS.witch : undefined
+    const externalBossUrl = externalHumanoidUrlForModel(def.model)
     if (externalBossUrl) {
       void ExternalCharacter.load(externalBossUrl, this.visual.height).then(model => {
         if (this.finished) { model.dispose(); return }
