@@ -124,7 +124,7 @@ export class Enemy {
     this.attackArea.position.y = 0.055
     this.attackArea.visible = false
     this.root.add(this.attackArea, this.attackWarning)
-    const externalEnemyUrl = externalHumanoidUrlForModel(this.def.model)
+    const externalEnemyUrl = externalHumanoidUrlForModel(this.def.model, this.def.id)
     if (externalEnemyUrl) {
       // ExternalCharacter normaliza o GLB para a altura final já calculada pelo rig procedural.
       void ExternalCharacter.load(externalEnemyUrl, this.visual.height).then(model => {
