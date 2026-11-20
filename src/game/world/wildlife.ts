@@ -57,7 +57,7 @@ function normalize(scene: THREE.Group, targetHeight: number): void {
     if (!mesh.isMesh) return
     mesh.castShadow = true
     mesh.receiveShadow = false
-    if (mesh.isSkinnedMesh) mesh.frustumCulled = false
+    if ((object as THREE.SkinnedMesh).isSkinnedMesh) object.frustumCulled = false
   })
 }
 
