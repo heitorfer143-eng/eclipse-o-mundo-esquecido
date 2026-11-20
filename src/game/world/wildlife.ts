@@ -168,14 +168,14 @@ export class WildlifeManager {
         animal.root.position.x += dx / length * step
         animal.root.position.z += dz / length * step
         animal.root.position.y = this.terrain.heightAt(animal.root.position.x, animal.root.position.z) + 0.03
-        animal.root.rotation.y = Math.atan2(-dx, -dz)
+        animal.root.rotation.y = Math.atan2(dx, dz)
       }
-      animal.phase += dt * (moving ? 24 : 1.2)
+      animal.phase += dt
       if (animal.mixer) {
         // Gobkit packs bake idle (0–29) and walk (90–119) into one 24 fps clip.
         const segmentStart = moving ? 90 / 24 : 0
         const segmentDuration = 30 / 24
-        const local = (animal.phase / (moving ? 1 : 1.8)) % segmentDuration
+        const local = (animal.phase * (moving ? 1 : 0.55)) % segmentDuration
         animal.mixer.setTime(segmentStart + local)
       }
     }
