@@ -146,6 +146,18 @@ export class ExternalCharacter {
   }
 }
 
+/** Select a licensed humanoid replacement; non-humanoid creatures keep their bespoke procedural silhouette. */
+export function externalHumanoidUrlForModel(model: string): string | undefined {
+  if (model === 'cavaleiro') return EXTERNAL_CHARACTER_URLS.knight
+  if (model === 'esqueleto' || model === 'mumia') return EXTERNAL_CHARACTER_URLS.mummy
+  if (model === 'goblin' || model === 'diabrete') return EXTERNAL_CHARACTER_URLS.orc
+  if (model === 'golem' || model === 'gigante' || model === 'troll') return EXTERNAL_CHARACTER_URLS.brute
+  if (model === 'espectro') return EXTERNAL_CHARACTER_URLS.ghost
+  if (model === 'yeti') return EXTERNAL_CHARACTER_URLS.werewolf
+  if (model === 'elemental') return EXTERNAL_CHARACTER_URLS.witch
+  return undefined
+}
+
 export const EXTERNAL_CHARACTER_URLS = {
   player: 'https://gobkit.com/freebies/human003/HeavyWarrior.glb',
   guard: 'https://gobkit.com/freebies/human003/Footman.glb',
