@@ -7,11 +7,14 @@ import { Panels, type DialogueChoiceView, type PanelContext } from './panels'
 import { TitleScreen } from './title'
 import { CharacterCustomizer } from './characterCustomizer'
 import { CampaignIntro } from './campaignIntro'
+import { OpeningIntro } from './openingIntro'
 import { TouchControls, type TouchAction } from './touch'
 
 export type UiCallbacks = {
   onNewGame: (profile: CharacterProfile) => void
   onContinue: (campaignId: string) => void
+  onOpeningPlay: () => void
+  onOpeningStop: () => void
   onSettingsChanged?: (settings: Settings) => void
   onCharacterProfileChanged?: (profile: CharacterProfile) => void
 }
@@ -25,6 +28,7 @@ export class Ui {
   private readonly settingsOverlay = document.createElement('div')
   private readonly characterCustomizer: CharacterCustomizer
   private readonly campaignIntro: CampaignIntro
+  private readonly openingIntro: OpeningIntro
   private readonly save: SaveStore
   private readonly onSettingsChanged?: (settings: Settings) => void
   private readonly onCharacterProfileChanged?: (profile: CharacterProfile) => void
@@ -51,7 +55,20 @@ export class Ui {
         this.syncTouch()
       },
       onContinue: campaignId => this.continueCampaign(campaignId, callbacks.onContinue),
+      onIntro: () => {
+        this.title.hide()
+        this.openingIntro.open()
+        this.syncTouch()
+      },
       onSettings: () => this.openSettings(),
+    })
+    this.openingIntro = new OpeningIntro(root, {
+      onPlay: callbacks.onOpeningPlay,
+      onStop: callbacks.onOpeningStop,
+      onClose: () => {
+        this.title.show()
+        this.syncTouch()
+      },
     })
     this.settingsOverlay.className = 'overlay hidden'
     root.appendChild(this.settingsOverlay)
@@ -59,7 +76,7 @@ export class Ui {
   }
 
   get blocking(): boolean {
-    return this.panels.isOpen || this.panels.dialogueOpen || this.title.visible || this.campaignIntro.visible || !this.settingsOverlay.classList.contains('hidden') || this.characterCustomizer.visible
+    return this.panels.isOpen || this.panels.dialogueOpen || this.title.visible || this.campaignIntro.visible || this.openingIntro.visible || !this.settingsOverlay.classList.contains('hidden') || this.characterCustomizer.visible
   }
 
   get characterCustomizationVisible(): boolean {
@@ -68,12 +85,14 @@ export class Ui {
 
   showTitle(): void {
     this.hud.show(false)
+    this.openingIntro.close(false)
     this.campaignIntro.close(false)
     this.title.show()
     this.syncTouch()
   }
 
   showGame(): void {
+    this.openingIntro.close(false)
     this.campaignIntro.close(false)
     this.title.hide()
     this.hud.show(true)

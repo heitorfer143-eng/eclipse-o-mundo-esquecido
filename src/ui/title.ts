@@ -4,6 +4,7 @@ import { formatTime } from './panels'
 export type TitleCallbacks = {
   onNew: () => void
   onContinue: (campaignId: string) => void
+  onIntro: () => void
   onSettings: () => void
 }
 
@@ -49,12 +50,18 @@ export class TitleScreen {
     this.newButton.textContent = 'Criar personagem'
     this.newButton.addEventListener('click', () => callbacks.onNew())
 
+    const introButton = document.createElement('button')
+    introButton.type = 'button'
+    introButton.className = 'btn btn--ghost'
+    introButton.textContent = 'Assistir à introdução'
+    introButton.addEventListener('click', () => callbacks.onIntro())
+
     const settingsButton = document.createElement('button')
     settingsButton.type = 'button'
     settingsButton.className = 'btn btn--ghost'
     settingsButton.textContent = 'Configurações'
     settingsButton.addEventListener('click', () => callbacks.onSettings())
-    menu.append(this.campaigns, this.continueButton, this.newButton, settingsButton)
+    menu.append(this.campaigns, this.continueButton, this.newButton, introButton, settingsButton)
     this.meta = this.root.querySelector<HTMLDivElement>('.title__meta')!
     parent.appendChild(this.root)
   }

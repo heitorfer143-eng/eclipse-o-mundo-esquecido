@@ -34,6 +34,13 @@ await page.waitForTimeout(2500)
 await captureScreenshot(page, '01-title.png')
 console.log('game object:', await page.evaluate(() => Boolean(window.__eclipse?.game)))
 
+await page.getByRole('button', { name: 'Assistir à introdução' }).click()
+await page.locator('.opening-intro').waitFor({ state: 'visible' })
+const openingTitle = await page.locator('.opening-intro__title').textContent()
+if (openingTitle !== 'O amanhecer foi partido.') throw new Error(`A introdução não abriu no primeiro quadro: ${openingTitle}`)
+await page.getByRole('button', { name: 'Pular introdução' }).click()
+await page.locator('.opening-intro').waitFor({ state: 'hidden' })
+
 // New-game flow: exactly one identity, saved before the first story dialogue.
 await page.getByRole('button', { name: 'Criar personagem', exact: true }).click()
 await page.locator('.campaign-intro').waitFor({ state: 'visible' })
@@ -251,17 +258,18 @@ if (houseTextureStatus.loadedMaps < 4 || ['madeira', 'pedra', 'reboco', 'telhas'
 const npcNavigation = await page.evaluate(() => {
   const g = window.__eclipse.game
   const npc = g.population.npcs.find(candidate => candidate.root.userData.poiId === 'vila-brumal')
+  const aura = npc?.model.root.getObjectByName('character-aura')
   const houses = g.world.pois.collidersOf('vila-brumal').filter(collider => collider.npcBlocking)
   if (!npc || houses.length === 0) return { available: false }
   const isInside = () => houses.some(collider => npc.position.x >= collider.minX && npc.position.x <= collider.maxX
     && npc.position.z >= collider.minZ && npc.position.z <= collider.maxZ)
   const startedInside = isInside()
   for (let step = 0; step < 1200; step += 1) npc.update(0.1, { x: 10000, y: 0, z: 10000 }, false)
-  return { available: true, startedInside, endedInside: isInside() }
+  return { available: true, startedInside, endedInside: isInside(), auraVisible: aura?.visible ?? null }
 })
 console.log('NPC house navigation:', npcNavigation)
-if (!npcNavigation.available || npcNavigation.startedInside || npcNavigation.endedInside) {
-  throw new Error(`A rotina autônoma colocou um NPC dentro de uma casa: ${JSON.stringify(npcNavigation)}`)
+if (!npcNavigation.available || npcNavigation.startedInside || npcNavigation.endedInside || npcNavigation.auraVisible !== false) {
+  throw new Error(`Navegação ou remoção de aura do NPC falhou: ${JSON.stringify(npcNavigation)}`)
 }
 const houseEntry = await page.evaluate(() => {
   const g = window.__eclipse.game

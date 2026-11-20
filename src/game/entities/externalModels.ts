@@ -5,6 +5,38 @@ import { clone } from 'three/addons/utils/SkeletonUtils.js'
 const loader = new GLTFLoader()
 const cache = new Map<string, Promise<{ scene: THREE.Group; animations: THREE.AnimationClip[] }>>()
 
+export type ExternalMaterialPalette = Partial<Record<
+  'skin' | 'face' | 'hair' | 'shirt' | 'pants' | 'belt' | 'main' | 'black' | 'darkgreen'
+  | 'helmet' | 'armor' | 'armorDark' | 'detail' | 'red', string
+>>
+
+const MATERIAL_PALETTE_KEYS: Record<string, keyof ExternalMaterialPalette> = {
+  skin: 'skin', face: 'face', hair: 'hair', shirt: 'shirt', pants: 'pants', belt: 'belt',
+  main: 'main', black: 'black', darkgreen: 'darkgreen', helmet: 'helmet', armor: 'armor',
+  armordark: 'armorDark', detail: 'detail', red: 'red',
+}
+
+function applyMaterialPalette(scene: THREE.Group, palette?: ExternalMaterialPalette): void {
+  if (!palette) return
+  const copies = new Map<THREE.Material, THREE.Material>()
+  scene.traverse(object => {
+    const mesh = object as THREE.Mesh
+    if (!mesh.isMesh) return
+    const tint = (material: THREE.Material): THREE.Material => {
+      let copy = copies.get(material)
+      if (!copy) {
+        copy = material.clone()
+        copies.set(material, copy)
+        const key = MATERIAL_PALETTE_KEYS[material.name.toLowerCase().replace(/[^a-z]/g, '')]
+        const color = key ? palette[key] : undefined
+        if (color && 'color' in copy) (copy as THREE.MeshStandardMaterial).color.set(color)
+      }
+      return copy
+    }
+    mesh.material = Array.isArray(mesh.material) ? mesh.material.map(tint) : tint(mesh.material)
+  })
+}
+
 function stripRootMotion(clip: THREE.AnimationClip): THREE.AnimationClip {
   clip.tracks = clip.tracks.filter(track => {
     const split = track.name.lastIndexOf('.')
@@ -74,13 +106,14 @@ export class ExternalCharacter {
   private deathElapsed = 0
   private fallbackPoseActive = false
 
-  private constructor(scene: THREE.Group, clips: THREE.AnimationClip[], targetHeight: number) {
+  private constructor(scene: THREE.Group, clips: THREE.AnimationClip[], targetHeight: number, palette?: ExternalMaterialPalette) {
     const bounds = new THREE.Box3().setFromObject(scene)
     const size = bounds.getSize(new THREE.Vector3())
     const height = Math.max(0.001, size.y)
     scene.scale.setScalar(targetHeight / height)
     const scaledBounds = new THREE.Box3().setFromObject(scene)
     scene.position.y -= scaledBounds.min.y
+    applyMaterialPalette(scene, palette)
     // Gobkit models are authored facing +Z; keep their original forward direction.
     scene.traverse(object => {
       const mesh = object as THREE.Mesh
@@ -115,7 +148,7 @@ export class ExternalCharacter {
     this.play('idle')
   }
 
-  static async load(url: string, targetHeight: number): Promise<ExternalCharacter> {
+  static async load(url: string, targetHeight: number, palette?: ExternalMaterialPalette): Promise<ExternalCharacter> {
     let pending = cache.get(url)
     if (!pending) {
       pending = loader.loadAsync(url).then(gltf => ({
@@ -130,7 +163,7 @@ export class ExternalCharacter {
     // Without this, clone-first bounds can collapse to ~0.001 and inflate the model footprint.
     new THREE.Box3().setFromObject(asset.scene)
     const scene = clone(asset.scene) as THREE.Group
-    return new ExternalCharacter(scene, asset.animations, targetHeight)
+    return new ExternalCharacter(scene, asset.animations, targetHeight, palette)
   }
 
   play(mode: ExternalAnimation, force = false, actionDuration?: number): void {

@@ -148,6 +148,11 @@ async function boot(): Promise<void> {
 
   let game!: Game
   const ui = new Ui(uiRoot, save, {
+    onOpeningPlay: () => {
+      audio.unlock()
+      void audio.playOpening(`${import.meta.env.BASE_URL}assets/audio/eclipse-opening.mp3`)
+    },
+    onOpeningStop: () => audio.stopOpening(),
     onNewGame: profile => {
       const campaignId = save.createCampaign(profile, createWorldSeed())
       if (!campaignId) {
@@ -208,6 +213,7 @@ async function boot(): Promise<void> {
   let suppressAutomaticPauseUntil = 0
   const startGame = (fresh: boolean, requestPointerLock = true): void => {
     audio.unlock()
+    audio.stopOpening()
     audio.startMusic()
     started = true
     suppressAutomaticPauseUntil = performance.now() + 1800

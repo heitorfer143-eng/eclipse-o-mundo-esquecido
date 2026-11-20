@@ -16,6 +16,9 @@ export class Audio {
   private musicOn = false
   private buffers = new Map<string, AudioBuffer>()
   private noiseBuffer: AudioBuffer
+  private openingSource?: AudioBufferSourceNode
+  private openingGain?: GainNode
+  private openingRequest = 0
 
   constructor() {
     this.ctx = new AudioContext()
@@ -63,6 +66,50 @@ export class Audio {
     src.connect(bus === 'music' ? this.music : this.sfx)
     src.start()
     return src
+  }
+
+  async playOpening(url: string): Promise<void> {
+    this.unlock()
+    this.stopOpening(0)
+    const request = ++this.openingRequest
+    try {
+      const buffer = await this.load(url)
+      if (request !== this.openingRequest || this.ctx.state !== 'running') return
+      const source = this.ctx.createBufferSource()
+      const gain = this.ctx.createGain()
+      source.buffer = buffer
+      gain.gain.setValueAtTime(0, this.ctx.currentTime)
+      gain.gain.linearRampToValueAtTime(0.78, this.ctx.currentTime + 1.2)
+      source.connect(gain).connect(this.music)
+      this.openingSource = source
+      this.openingGain = gain
+      source.onended = () => {
+        if (this.openingSource !== source) return
+        this.openingSource = undefined
+        this.openingGain = undefined
+      }
+      source.start()
+    } catch (error) {
+      console.warn('A trilha da introdução não pôde ser carregada:', error)
+    }
+  }
+
+  stopOpening(fadeSeconds = 0.8): void {
+    this.openingRequest += 1
+    const source = this.openingSource
+    const gain = this.openingGain
+    if (!source || !gain) return
+    this.openingSource = undefined
+    this.openingGain = undefined
+    const now = this.ctx.currentTime
+    const fade = Math.max(0, fadeSeconds)
+    gain.gain.cancelScheduledValues(now)
+    gain.gain.setValueAtTime(gain.gain.value, now)
+    if (fade === 0) source.stop()
+    else {
+      gain.gain.linearRampToValueAtTime(0, now + fade)
+      source.stop(now + fade + 0.03)
+    }
   }
 
   private noise(duration: number, volume: number, frequency: number, q = 1, type: BiquadFilterType = 'bandpass', delay = 0): void {

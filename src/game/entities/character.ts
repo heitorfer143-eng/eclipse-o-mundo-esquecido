@@ -3,7 +3,7 @@ import type { WeaponKind } from '../data/types'
 import { RARITY_COLOR } from '../data/itemData'
 import type { Rarity } from '../data/types'
 import { clamp, damp } from '../core/math'
-import { ExternalCharacter, EXTERNAL_CHARACTER_URLS, HUMANOID_VISUAL_SCALE, type ExternalAnimation } from './externalModels'
+import { ExternalCharacter, EXTERNAL_CHARACTER_URLS, HUMANOID_VISUAL_SCALE, type ExternalAnimation, type ExternalMaterialPalette } from './externalModels'
 import type { CharacterModelId } from '../data/characterProfile'
 import { characterModelUrlFor } from './characterAssets'
 
@@ -265,11 +265,14 @@ export class CharacterModel {
   private externalRequest = 0
   private disposed = false
   private auraColor = '#7fe3ff'
+  private auraEnabled = true
+  private readonly externalMaterialPalette?: ExternalMaterialPalette
   private survivorAppearance = false
   private armorStyle: ArmorVisualStyle = 'andarilho'
 
-  constructor(appearance: Partial<Appearance> = {}, externalUrl: string = EXTERNAL_CHARACTER_URLS.player, externalYaw = 0, selectedModelId?: CharacterModelId) {
+  constructor(appearance: Partial<Appearance> = {}, externalUrl: string = EXTERNAL_CHARACTER_URLS.player, externalYaw = 0, selectedModelId?: CharacterModelId, externalMaterialPalette?: ExternalMaterialPalette) {
     this.appearance = { ...DEFAULT_APPEARANCE, ...appearance }
+    this.externalMaterialPalette = externalMaterialPalette
     this.selectedModelId = selectedModelId ?? (externalUrl ? 'Knight' : 'Survivor')
     const skin = mat(this.appearance.skin, { roughness: 0.85 })
     this.skinMaterial = skin
@@ -398,6 +401,7 @@ export class CharacterModel {
       new THREE.RingGeometry(0.32, 0.46, 24),
       new THREE.MeshBasicMaterial({ color: '#7fe3ff', transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide }),
     )
+    this.aura.name = 'character-aura'
     this.aura.rotation.x = -Math.PI / 2
     this.aura.position.y = 0.02
     this.root.add(this.aura)
@@ -462,7 +466,7 @@ export class CharacterModel {
     this.external = undefined
     this.externalUrl = ''
     this.body.visible = true
-    this.aura.visible = true
+    this.aura.visible = this.auraEnabled
     this.enableSurvivorAppearance()
   }
 
@@ -470,7 +474,7 @@ export class CharacterModel {
     if (this.disposed || !url || url === this.externalUrl) return
     this.externalUrl = url
     const request = ++this.externalRequest
-    void ExternalCharacter.load(url, 1.85).then(model => {
+    void ExternalCharacter.load(url, 1.85, this.externalMaterialPalette).then(model => {
       if (this.disposed || request !== this.externalRequest) {
         model.dispose()
         return
@@ -479,7 +483,7 @@ export class CharacterModel {
       this.external = model
       this.survivorAppearance = false
       this.body.visible = false
-      this.aura.visible = true
+      this.aura.visible = this.auraEnabled
       model.root.rotation.y = yaw
       this.root.add(model.root)
       model.update(0, this.externalMode)
@@ -494,6 +498,11 @@ export class CharacterModel {
     if (!/^#[0-9a-f]{6}$/i.test(color)) return
     this.auraColor = color
     ;(this.aura.material as THREE.MeshBasicMaterial).color.set(color)
+  }
+
+  setAuraEnabled(enabled: boolean): void {
+    this.auraEnabled = enabled
+    if (!enabled) this.aura.visible = false
   }
 
   private buildArmorMeshes(): void {
@@ -763,7 +772,7 @@ export class CharacterModel {
         this.legR.rotation.x = 0.1
         this.cape.rotation.x = 1.25
         this.capeMesh.scale.set(2.6, 1.15, 1)
-        this.aura.visible = true
+        this.aura.visible = this.auraEnabled
         break
       }
       case 'roll': {
@@ -834,7 +843,7 @@ export class CharacterModel {
           this.armR.rotation.z = -0.7
           this.torso.rotation.y = 0.6
           this.body.position.y = -0.06
-          this.aura.visible = true
+          this.aura.visible = this.auraEnabled
           ;(this.aura.material as THREE.MeshBasicMaterial).color.set('#ffcf6a')
         }
         this.legL.rotation.x = -0.25
@@ -852,7 +861,7 @@ export class CharacterModel {
         this.armL.rotation.z = 0.35
         this.torso.rotation.x = -0.12 * raise
         this.head.rotation.x = -0.15 * raise
-        this.aura.visible = true
+        this.aura.visible = this.auraEnabled
         break
       }
       case 'block': {
