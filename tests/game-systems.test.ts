@@ -522,6 +522,17 @@ describe('animações do protagonista', () => {
     ]
     for (const [mode, clip] of expectations) expect(resolveExternalClipName(mode, actualClips)).toBe(clip)
   })
+
+  it('reconhece os clips nomeados dos personagens Gobkit sem quebrar os clips KayKit', () => {
+    const clips = ['idle', 'walk', 'run', 'attack', 'dead', 'hit', 'special']
+    expect(resolveExternalClipName('idle', clips)).toBe('idle')
+    expect(resolveExternalClipName('walk', clips)).toBe('walk')
+    expect(resolveExternalClipName('run', clips)).toBe('run')
+    expect(resolveExternalClipName('attack', clips)).toBe('attack')
+    expect(resolveExternalClipName('death', clips)).toBe('dead')
+    expect(resolveExternalClipName('hit', clips)).toBe('hit')
+    expect(resolveExternalClipName('cast', clips)).toBe('special')
+  })
 })
 describe('seleção de modelos 3D de criaturas', () => {
   it('usa modelos humanoides específicos e mantém criaturas não humanoides no modelo próprio', () => {
