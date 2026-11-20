@@ -130,6 +130,15 @@ export class TouchControls {
     })
   }
 
+  setInteractLabel(label: string | undefined): void {
+    const button = this.root.querySelector<HTMLButtonElement>('[data-action="interact"]')
+    if (!button) return
+    const mounted = label === 'Desmontar'
+    const mounting = label?.startsWith('Montar ')
+    button.textContent = mounted ? 'Desm.' : mounting ? 'Montar' : 'E'
+    button.setAttribute('aria-label', label ? `${label}; tocar para interagir` : 'Interagir')
+  }
+
   private capturePointer(element: HTMLElement, pointerId: number): void {
     try {
       element.setPointerCapture(pointerId)

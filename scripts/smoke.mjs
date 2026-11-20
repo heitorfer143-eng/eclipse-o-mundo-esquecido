@@ -256,6 +256,76 @@ await page.waitForFunction(() => window.__eclipse.game.mode === 'playing')
 await page.locator('.quest__locator:not(.hidden)').waitFor({ state: 'visible' })
 const liveLocator = await page.locator('.quest__locator').textContent()
 if (!liveLocator?.includes('Lobo Sombrio') && !liveLocator?.includes('Zona de caça')) throw new Error(`A HUD não mostrou o localizador: ${liveLocator}`)
+const activeQuestTarget = await page.evaluate(() => {
+  const g = window.__eclipse.game
+  const target = g.panelContext().questTarget
+  return {
+    target,
+    markerName: g.questMarker.name,
+    markerVisible: g.questMarker.visible,
+    markerPosition: { x: g.questMarker.position.x, z: g.questMarker.position.z },
+  }
+})
+console.log('active quest map/world target:', activeQuestTarget)
+if (!activeQuestTarget.target || activeQuestTarget.markerName !== 'quest-world-marker' || !activeQuestTarget.markerVisible
+  || Math.hypot(activeQuestTarget.target.x - activeQuestTarget.markerPosition.x, activeQuestTarget.target.z - activeQuestTarget.markerPosition.z) > 0.01) {
+  throw new Error(`O destino atual não foi conectado ao mapa e ao marcador do mundo: ${JSON.stringify(activeQuestTarget)}`)
+}
+const collectionTarget = await page.evaluate(() => {
+  const g = window.__eclipse.game
+  const previous = g.quests.toJSON()
+  const resource = g.population.nearestResource('mat-erva', g.player.position)
+  g.quests.states.set('secundaria-02', { status: 'ativa', progress: {} })
+  g.quests.tracked = 'secundaria-02'
+  g.update(1 / 60, { moveX: 0, moveY: 0, sprint: false, jumpPressed: false, jumpHeld: false, rollPressed: false,
+    attackPressed: false, attackHeld: false, blockHeld: false, lookX: 0, lookY: 0, interact: false })
+  const target = g.panelContext().questTarget
+  const locator = document.querySelector('.quest__locator')?.textContent ?? ''
+  g.quests.load(previous)
+  g.update(1 / 60, { moveX: 0, moveY: 0, sprint: false, jumpPressed: false, jumpHeld: false, rollPressed: false,
+    attackPressed: false, attackHeld: false, blockHeld: false, lookX: 0, lookY: 0, interact: false })
+  return { resource: resource && { x: resource.position.x, z: resource.position.z }, target, locator }
+})
+console.log('active collection resource target:', collectionTarget)
+if (!collectionTarget.resource || !collectionTarget.target || collectionTarget.target.name !== 'Erva Curativa'
+  || Math.hypot(collectionTarget.resource.x - collectionTarget.target.x, collectionTarget.resource.z - collectionTarget.target.z) > 0.01
+  || !collectionTarget.locator.includes('Erva Curativa')) {
+  throw new Error(`O objetivo de coleta aponta ao local errado: ${JSON.stringify(collectionTarget)}`)
+}
+const mountCycle = await page.evaluate(() => {
+  const g = window.__eclipse.game
+  const animal = g.world.chunks.wildlifeAgents().find(candidate => !candidate.dead && !candidate.mounted)
+  if (!animal) return { available: false }
+  // Use a loaded glTF as a deterministic interaction fixture; species eligibility is covered by unit tests.
+  animal.mountable = true
+  const x = g.player.position.x + 0.55
+  const z = g.player.position.z
+  g.world.chunks.relocateMountedAnimal(animal, x, g.world.terrain.heightAt(x, z), z)
+  const neutral = { moveX: 0, moveY: 0, sprint: false, jumpPressed: false, jumpHeld: false, rollPressed: false,
+    attackPressed: false, attackHeld: false, blockHeld: false, lookX: 0, lookY: 0, interact: false }
+  g.update(1 / 60, { ...neutral, interact: true })
+  g.update(1 / 60, neutral)
+  const mounted = g.player.mounted && animal.mounted
+  const mountPrompt = g.interactLabel
+  const touchLabelWhileMounted = document.querySelector('[data-action="interact"]')?.textContent ?? ''
+  g.update(1 / 60, { ...neutral, interact: true })
+  g.update(1 / 60, neutral)
+  return {
+    available: true,
+    mounted,
+    mountPrompt,
+    touchLabelWhileMounted,
+    dismounted: !g.player.mounted && !animal.mounted,
+    touchLabelAfterDismount: document.querySelector('[data-action="interact"]')?.textContent ?? '',
+    retainedInWorld: g.world.chunks.wildlifeAgents().includes(animal),
+  }
+})
+console.log('mount/dismount interaction:', mountCycle)
+if (!mountCycle.available || !mountCycle.mounted || mountCycle.mountPrompt !== 'Desmontar'
+  || mountCycle.touchLabelWhileMounted !== 'Desm.' || !mountCycle.dismounted
+  || !mountCycle.touchLabelAfterDismount.startsWith('Montar') || !mountCycle.retainedInWorld) {
+  throw new Error(`Montar/desmontar ou prompt touch falhou: ${JSON.stringify(mountCycle)}`)
+}
 
 // Existing CC0 house GLBs must appear in streamed settlements; the nearby door must be usable.
 await page.waitForFunction(() => {

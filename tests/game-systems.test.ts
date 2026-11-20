@@ -21,7 +21,8 @@ import { SkillTree } from '../src/game/systems/skills'
 import { Terrain } from '../src/game/world/terrain'
 import { buildVillage } from '../src/game/world/structures'
 import { createHouseInterior } from '../src/game/world/interior'
-import { resolveAnimalClipName } from '../src/game/world/chunks'
+import { resolveAnimalClipName, selectWildlifeForBiome, wildlifeCanBeMounted, wildlifeOptionsForBiome } from '../src/game/world/chunks'
+import { npcAmbientLine, npcDailyDestination } from '../src/game/entities/npcRoutines'
 import { grassGeometry, rockGeometry, treeGeometries } from '../src/game/world/props'
 import { ABILITIES, abilityUnlocked, ELEMENTAL_MASTERY_LEVEL } from '../src/game/combat/abilities'
 import { shopFor } from '../src/game/systems/economy'
@@ -720,5 +721,59 @@ describe('seleção de modelos 3D de criaturas', () => {
     expect(externalHumanoidUrlForModel('serpente')).toBeUndefined()
     expect(externalHumanoidUrlForModel('dragao')).toBeUndefined()
     expect(externalHumanoidUrlForModel('lobo')).toBeUndefined()
+  })
+})
+
+describe('fauna rara e montarias', () => {
+  it('restringe o cavalo branco raro aos habitats frios e permite montar cavalos e burros', () => {
+    expect(wildlifeOptionsForBiome('neve').map(animal => animal.id)).toContain('cavalo-branco')
+    expect(wildlifeOptionsForBiome('deserto').map(animal => animal.id)).not.toContain('cavalo-branco')
+    expect(selectWildlifeForBiome('neve', 0, 0)).toBe('cavalo-branco')
+    expect(wildlifeCanBeMounted('cavalo')).toBe(true)
+    expect(wildlifeCanBeMounted('burro')).toBe(true)
+    expect(wildlifeCanBeMounted('cervo-real')).toBe(false)
+  })
+})
+
+describe('rotinas e falas ambientais de NPCs', () => {
+  it('desloca ferreiros de dia, recolhe-os à noite/temporal e adapta falas ao clima/horário', () => {
+    const home = new THREE.Vector3(12, 4, -8)
+    const daytime = npcDailyDestination(home, 'forja', 'day', false)
+    expect(daytime.toArray()).toEqual([13.1, 4, -8.6])
+    expect(npcDailyDestination(home, 'forja', 'night', false).toArray()).toEqual(home.toArray())
+    expect(npcDailyDestination(home, 'forja', 'day', true).toArray()).toEqual(home.toArray())
+    expect(npcAmbientLine([], { timeOfDay: 0.5, weather: 'chuva' })).toBe('A chuva não vai parar tão cedo.')
+    expect(npcAmbientLine([], { timeOfDay: 0.93, weather: 'limpo' })).toBe('A noite esconde mais do que devia.')
+  })
+})
+
+describe('avisos telegráficos dos inimigos', () => {
+  it('mostra setor melee com alcance do acerto e sinaliza ataques à distância', () => {
+    const camera = new THREE.PerspectiveCamera()
+    const meleeDef = ENEMIES.find(definition => definition.behavior === 'corpo-a-corpo')!
+    const melee = new Enemy({ def: meleeDef, level: 2, x: 0, z: 0 })
+    try {
+      melee.state = 'windup'
+      melee.render(0.1, camera)
+      expect(melee.attackWarningVisible).toBe(true)
+      expect(melee.attackAreaVisible).toBe(true)
+      const area = (melee as unknown as { attackArea: THREE.Mesh }).attackArea
+      const parameters = (area.geometry as THREE.RingGeometry).parameters
+      expect(area.scale.x).toBeCloseTo(meleeDef.attackRange + 1.2)
+      expect(parameters.thetaLength).toBeCloseTo(2)
+    } finally {
+      melee.dispose()
+    }
+
+    const rangedDef = ENEMIES.find(definition => definition.behavior === 'distancia')!
+    const ranged = new Enemy({ def: rangedDef, level: 2, x: 0, z: 0 })
+    try {
+      ranged.state = 'windup'
+      ranged.render(0.1, camera)
+      expect(ranged.attackWarningVisible).toBe(true)
+      expect(ranged.attackAreaVisible).toBe(false)
+    } finally {
+      ranged.dispose()
+    }
   })
 })

@@ -43,6 +43,7 @@ export type PanelContext = {
   bonus: Record<string, number>
   pois: Poi[]
   player: { x: number; z: number; yaw: number }
+  questTarget?: { x: number; z: number; name: string } | null
   mapCanvas: HTMLCanvasElement | null
   settings: Settings
   actions: PanelActions
@@ -537,6 +538,25 @@ function drawMapOverlay(ctx: CanvasRenderingContext2D, size: number, context: Pa
   // Player marker
   const px = toX(context.player.x)
   const py = toY(context.player.z)
+  if (context.questTarget) {
+    const tx = toX(context.questTarget.x)
+    const ty = toY(context.questTarget.z)
+    ctx.fillStyle = '#ffcf65'
+    ctx.strokeStyle = 'rgba(28,20,12,0.9)'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.arc(tx, ty, 10, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+    ctx.fillStyle = '#24180d'
+    ctx.font = '700 13px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('!', tx, ty + 1)
+    ctx.fillStyle = '#fff0c5'
+    ctx.font = '700 13px system-ui, sans-serif'
+    ctx.fillText(context.questTarget.name, tx, ty - 17)
+  }
   ctx.save()
   ctx.translate(px, py)
   ctx.rotate(-context.player.yaw)

@@ -197,7 +197,7 @@ export class World {
   }
 
   /** One render-frame update: stream chunks and settlements, move the sky and weather. */
-  update(dt: number, camera: THREE.PerspectiveCamera, player: THREE.Vector3): void {
+  update(dt: number, camera: THREE.PerspectiveCamera, player: THREE.Vector3, retainedMount?: { chunkOriginX: number; chunkOriginZ: number }): void {
     this.playerX = player.x
     this.playerZ = player.z
     if (this.interiorRoom) return
@@ -205,7 +205,10 @@ export class World {
     // Build at most one chunk and one settlement per 0.1 s to avoid frame spikes.
     if (this.streamTimer > 0.08) {
       this.streamTimer = 0
-      this.chunks.update(player.x, player.z, 1)
+      this.chunks.update(player.x, player.z, 1, retainedMount ? {
+        x: Math.floor(retainedMount.chunkOriginX / CHUNK_SIZE),
+        z: Math.floor(retainedMount.chunkOriginZ / CHUNK_SIZE),
+      } : undefined)
       this.pois.update(player.x, player.z, 1)
     }
     this.chunks.updateWildlife(dt, player)

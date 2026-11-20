@@ -19,6 +19,7 @@ import {
   STRUCTURE_MATERIALS,
   type SiteResult,
 } from '../src/game/world/structures'
+import { PoiManager, SPAWN_POINT } from '../src/game/world/poi'
 
 const SEED = 73_102
 const X = 18
@@ -232,5 +233,18 @@ describe('arquitetura procedural do mundo', () => {
     expect(floor).toBeGreaterThan(ground)
     expect(floor).toBeCloseTo(ground + 0.23, 5)
     disposeSite(site)
+  })
+})
+
+describe('destino de exploração inicial', () => {
+  it('posiciona as Ruínas da Vigília perto de Brumal e gera baús de nível 1 e 2', () => {
+    const terrain = new Terrain(SEED)
+    const pois = new PoiManager(terrain, SEED)
+    const ruins = pois.byId('ruinas-vigilia')!
+    expect(Math.hypot(ruins.x - SPAWN_POINT.x, ruins.z - SPAWN_POINT.z)).toBeLessThan(300)
+    for (let attempt = 0; attempt < 10 && !pois.spotsOf(ruins.id); attempt += 1) {
+      pois.update(ruins.x, ruins.z, 20)
+    }
+    expect(pois.spotsOf(ruins.id)?.chests.map(chest => chest.tier)).toEqual([1, 2])
   })
 })

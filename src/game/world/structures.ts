@@ -748,7 +748,7 @@ export function buildTemple(terrain: Terrain, x: number, z: number, seed: number
   return { group, colliders: b.colliders, spots: b.spots }
 }
 
-export function buildRuins(terrain: Terrain, x: number, z: number, seed: number): SiteResult {
+export function buildRuins(terrain: Terrain, x: number, z: number, seed: number, enemyCount = 5, chestTiers: [number, number] = [2, 3]): SiteResult {
   const y = terrain.heightAt(x, z)
   const b = new StructureBuilder(x, z, y, paletteForBiome(terrain.biomeAt(x, z, y)))
   const rng = mulberry32(seed)
@@ -765,9 +765,9 @@ export function buildRuins(terrain: Terrain, x: number, z: number, seed: number)
   }
   arch(b, x, z, y, 8, 6)
   b.box(x + 8, y + 0.6, z - 6, 6, 1.2, 4, 'pedra', 0, true, true)
-  b.spots.chests.push({ x: x - 10, z: z + 8, y: terrain.heightAt(x - 10, z + 8), tier: 2 })
-  b.spots.chests.push({ x: x + 12, z: z + 10, y: terrain.heightAt(x + 12, z + 10), tier: 3 })
-  for (let i = 0; i < 5; i += 1) {
+  b.spots.chests.push({ x: x - 10, z: z + 8, y: terrain.heightAt(x - 10, z + 8), tier: chestTiers[0] })
+  b.spots.chests.push({ x: x + 12, z: z + 10, y: terrain.heightAt(x + 12, z + 10), tier: chestTiers[1] })
+  for (let i = 0; i < enemyCount; i += 1) {
     const ex = x + (rng() - 0.5) * 30
     const ez = z + (rng() - 0.5) * 30
     b.spots.enemies.push({ x: ex, z: ez, y: terrain.heightAt(ex, ez) })

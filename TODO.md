@@ -178,3 +178,10 @@ H poção · Tab inventário · K habilidades · M mapa · L missões · Esc pau
 - [x] Conduzir a nova campanha pela introdução cinematográfica de quatro quadros com trilha original, CTA para pular direto à criação e continuidade até o prólogo; iniciar a faixa pelo gesto do jogador e retomar a música ambiente ao fim.
 - [x] Aplicar a textura clara `stone-blocks.webp` às rochas separadamente das muralhas, mantendo UVs e tons legíveis; aumentar o spawn para 2–3 animais por chunk habitável.
 - [x] Validar modelos, aura, textura de rochas, fauna e fluxo da campanha; `pnpm typecheck`, 51 testes, `pnpm build` e smoke desktop/mobile sem erros de navegador.
+
+## Melhorias de exploração, NPCs, combate e fauna (20 nov 2026)
+- [x] Tornar a próxima missão difícil de perder: destacar o objetivo atual, mostrar marcador no mapa e no mundo e indicar claramente para onde ir; smoke confirma destino real da missão no mapa/localizador e marcador 3D até cerca de 1.200 m, incluindo alvo de coleta na erva física.
+- [x] Dar mais vida aos NPCs: falas curtas quando o jogador passar perto, rotinas diárias e reações ao clima ou ao horário; rotinas e seletores de fala cobertos por testes unitários, com integração ao subtitle da HUD.
+- [x] Melhorar o combate com avisos visuais antes dos ataques inimigos, dando tempo para esquivar ou bloquear; windup/indicadores cobertos por testes unitários e integrados ao ciclo de combate.
+- [x] Dar mais utilidade aos animais: permitir montar alguns e encontrar animais raros em regiões específicas; smoke desktop/mobile completa montar/desmontar e valida retenção do animal no mundo, com regras por habitat/raridade cobertas por testes.
+- [x] Criar destinos de exploração — masmorras pequenas e ruínas com recompensas que incentivem sair da vila; Ruínas da Vigília e baús/recompensa extra cobertos por testes de estruturas e integração do mundo.

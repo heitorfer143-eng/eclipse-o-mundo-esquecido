@@ -122,6 +122,17 @@ export class Game {
   private frameEnemies: CombatTarget[] = []
   private compassTimer = 0
   private huntWaypointCache: { targetId: string; originX: number; originZ: number; waypoint: BiomeWaypoint | null } | null = null
+  private mountedAnimal: WildlifeAgent | null = null
+  private readonly questMarker = new THREE.Group()
+  private readonly questMarkerRing = new THREE.Mesh(
+    new THREE.RingGeometry(0.72, 0.9, 32),
+    new THREE.MeshBasicMaterial({ color: '#ffd166', transparent: true, opacity: 0.92, side: THREE.DoubleSide, depthTest: false, depthWrite: false }),
+  )
+  private readonly questMarkerArrow = new THREE.Mesh(
+    new THREE.ConeGeometry(0.42, 1.15, 6),
+    new THREE.MeshBasicMaterial({ color: '#ffe5a3', depthTest: false, depthWrite: false, toneMapped: false }),
+  )
+  private questWorldTarget: { x: number; z: number; name: string } | null = null
 
   constructor(deps: GameDeps) {
     this.deps = deps
@@ -131,6 +142,15 @@ export class Game {
     this.audio = deps.audio
     this.save = deps.save
     this.effects = new Effects(this.world.scene)
+    this.questMarker.name = 'quest-world-marker'
+    this.questMarkerRing.rotation.x = -Math.PI / 2
+    this.questMarkerRing.position.y = 0.12
+    this.questMarkerRing.renderOrder = 20
+    this.questMarkerArrow.position.y = 5.2
+    this.questMarkerArrow.renderOrder = 20
+    this.questMarker.add(this.questMarkerRing, this.questMarkerArrow)
+    this.questMarker.visible = false
+    this.world.scene.add(this.questMarker)
     this.projectiles = new Projectiles(this.world.scene, this.effects)
     this.spawner = new Spawner(this.world.scene, this.save.data.settings.quality)
     this.population = new Population(this.world.scene, this.world, this.world.pois, this.spawner)
@@ -169,6 +189,7 @@ export class Game {
     this.openedChests.clear()
     this.defeatedBosses.clear()
     this.storyFlags.clear()
+    this.dismountAnimal(false)
     this.interior = null
     this.world.exitInterior()
     this.spawner.clear()
@@ -201,7 +222,7 @@ export class Game {
     }
     this.camera.reset(this.player.position, this.player.facing)
     this.camera.update(0, this.player.position, { x: 0, y: 0 }, this.world, false, false)
-    this.population.update(0, this.player.position)
+    this.population.update(0, this.player.position, { timeOfDay: this.world.sky.timeOfDay, weather: this.world.weather.state })
     this.updateNpcQuestMarkers()
     this.ui.showGame()
     this.ui.closePanels()
@@ -254,7 +275,7 @@ export class Game {
     this.shakeCooldown = Math.max(0, this.shakeCooldown - frame)
     const sim = this.hitstop > 0 ? frame * 0.25 : frame
 
-    this.world.update(sim, this.camera.camera, this.player.position)
+    this.world.update(sim, this.camera.camera, this.player.position, this.mountedAnimal ?? undefined)
     this.camera.update(sim, this.player.position, { x: input.lookX, y: input.lookY }, {
       groundAt: (x, z, y) => this.world.groundAt(x, z, y),
       collidersNear: (x, z) => this.world.collidersNear(x, z),
@@ -265,14 +286,15 @@ export class Game {
       moveX: input.moveX,
       moveY: input.moveY,
       sprint: input.sprint,
-      jumpPressed: input.jumpPressed,
-      jumpHeld: input.jumpHeld,
-      rollPressed: input.rollPressed,
-      attackPressed: this.interior ? false : input.attackPressed,
-      attackHeld: this.interior ? false : input.attackHeld,
-      blockHeld: this.interior ? false : input.blockHeld,
+      jumpPressed: this.mountedAnimal ? false : input.jumpPressed,
+      jumpHeld: this.mountedAnimal ? false : input.jumpHeld,
+      rollPressed: this.mountedAnimal ? false : input.rollPressed,
+      attackPressed: this.interior || this.mountedAnimal ? false : input.attackPressed,
+      attackHeld: this.interior || this.mountedAnimal ? false : input.attackHeld,
+      blockHeld: this.interior || this.mountedAnimal ? false : input.blockHeld,
     }
     this.player.step(sim, intent, this.camera.yaw, playerEvents)
+    this.syncMountedAnimal()
     for (const event of playerEvents) this.onPlayerEvent(event)
 
     if (this.interior) {
@@ -347,7 +369,12 @@ export class Game {
     })
 
     this.effects.update(sim)
-    this.population.update(sim, this.player.position)
+    this.population.update(
+      sim,
+      this.player.position,
+      { timeOfDay: this.world.sky.timeOfDay, weather: this.world.weather.state },
+      (npc, line) => this.ui.subtitle(npc.def.name, line, 3.2),
+    )
     this.updateNpcQuestMarkers()
     this.markSavedChests()
     this.spawner.update(sim, {
@@ -838,7 +865,7 @@ export class Game {
   }
 
   castAbility(index: number): void {
-    if (this.mode !== 'playing' || this.interior) return
+    if (this.mode !== 'playing' || this.interior || this.mountedAnimal) return
     const ability = this.abilities()[index]
     if (!ability) return
     const error = this.player.canCast(ability)
@@ -975,16 +1002,19 @@ export class Game {
   // ── world interactions ───────────────────────────────────────────────────
   private updateDiscovery(dt: number): void {
     this.compassTimer -= dt
+    let newlyDiscovered = false
     for (const poi of this.world.pois.list()) {
       const distance = Math.hypot(poi.x - this.player.position.x, poi.z - this.player.position.z)
       if (poi.discovered || distance > poi.radius + 30) continue
       poi.discovered = true
       this.discovered.add(poi.id)
+      newlyDiscovered = true
       this.ui.toast(`Descoberto: ${poi.name}`, 'quest')
       this.audio.play('quest')
       this.quests.progress('chegar', poi.id)
       this.checkQuestReady()
     }
+    if (newlyDiscovered) this.saveGame(true)
   }
 
   private updateBossSpawn(dt: number): void {
@@ -1020,18 +1050,32 @@ export class Game {
   private updateInteraction(input: GameInput): void {
     if (this.interior) {
       const distance = this.interior.exitPosition.distanceTo(this.player.position)
-      this.interactLabel = distance <= 1.65 ? `Sair de ${this.interior.houseName}` : undefined
+      this.setInteractionPrompt(distance <= 1.65 ? `Sair de ${this.interior.houseName}` : undefined)
       if (input.interact && distance <= 1.65) this.exitHouse()
       return
     }
+    if (this.mountedAnimal) {
+      this.setInteractionPrompt('Desmontar')
+      if (input.interact) this.dismountAnimal()
+      return
+    }
     const nearby = this.population.nearest(this.player.position, 3.4)
+    const mount = this.nearestMountable()
+    const mountDistance = mount ? Math.hypot(mount.worldPosition.x - this.player.position.x, mount.worldPosition.z - this.player.position.z) : Infinity
     const door = this.world.nearestHouseDoor(this.player.position.x, this.player.position.z, 2.8)
     const doorDistance = door ? Math.hypot(door.x - this.player.position.x, door.z - this.player.position.z) : Infinity
     const nearbyDistance = nearby ? this.interactableDistance(nearby) : Infinity
     const useDoor = Boolean(door && doorDistance <= nearbyDistance)
-    this.interactLabel = useDoor && door ? `Entrar em ${door.houseName}` : nearby?.label
-    if (!input.interact || (!nearby && !door)) return
+    const useMount = Boolean(mount && mountDistance < Math.min(nearbyDistance, doorDistance))
+    this.setInteractionPrompt(useDoor && door ? `Entrar em ${door.houseName}`
+      : useMount && mount ? `Montar ${mount.name}` : nearby?.label)
+    if (!input.interact || (!nearby && !door && !useMount)) return
     this.audio.play('ui')
+    if (useMount && mount) {
+      if (this.player.inCombat) this.ui.toast('Afaste os inimigos antes de montar.', 'warn')
+      else this.mountAnimal(mount)
+      return
+    }
     if (useDoor && door) {
       this.enterHouseFromDoor(door)
       return
@@ -1040,14 +1084,17 @@ export class Game {
     if (nearby.kind === 'npc') this.openNpcDialogue(nearby.npc.def.id)
     else if (nearby.kind === 'chest') {
       const loot = this.population.openChest(nearby.chest, this.skills.effects().lootBonus)
+      const firstVigiliaChest = nearby.chest.id === 'ruinas-vigilia-bau-0'
       this.openedChests.add(nearby.chest.id)
-      this.inventory.gold += loot.gold
-      this.giveLoot(loot.items)
+      this.inventory.gold += loot.gold + (firstVigiliaChest ? 24 : 0)
+      this.giveLoot(firstVigiliaChest ? [...loot.items, { itemId: 'pocao-vida-1', count: 2 }] : loot.items)
       this.audio.play('open')
       this.ui.toast(`Baú aberto: +${loot.gold} de ouro`, 'item')
+      if (firstVigiliaChest) this.ui.toast('Tesouro da Vigília: +24 ouro e 2 poções de vida.', 'quest')
       const poiId = nearby.chest.id.split('-bau-')[0]
       this.quests.progress('interagir', poiId)
       this.checkQuestReady()
+      this.saveGame(true)
     } else if (nearby.kind === 'resource') {
       const requiredTool = nearby.node.kind === 'madeira'
         ? 'tool-machado'
@@ -1085,6 +1132,70 @@ export class Game {
     }
   }
 
+  private setInteractionPrompt(label: string | undefined): void {
+    this.interactLabel = label
+    this.ui.touch.setInteractLabel(label)
+  }
+
+  private nearestMountable(): WildlifeAgent | null {
+    let nearest: WildlifeAgent | null = null
+    let bestDistance = 3.4
+    for (const animal of this.world.chunks.wildlifeAgents()) {
+      if (animal.dead || !animal.mountable || animal.mounted) continue
+      const distance = Math.hypot(animal.worldPosition.x - this.player.position.x, animal.worldPosition.z - this.player.position.z)
+      if (distance >= bestDistance) continue
+      nearest = animal
+      bestDistance = distance
+    }
+    return nearest
+  }
+
+  private mountAnimal(animal: WildlifeAgent): void {
+    if (animal.dead || !animal.mountable || this.player.inCombat) return
+    this.mountedAnimal = animal
+    animal.mounted = true
+    this.player.setMounted(true, animal.height)
+    this.syncMountedAnimal()
+    this.ui.toast(`Montado em ${animal.name}. Use E para desmontar.`, 'info')
+  }
+
+  private dismountAnimal(announce = true): void {
+    const animal = this.mountedAnimal
+    if (!animal) return
+    animal.mounted = false
+    animal.state = 'idle'
+    animal.target.copy(animal.position)
+    animal.active?.fadeOut(0.12)
+    animal.active = undefined
+    this.mountedAnimal = null
+    this.player.setMounted(false)
+    if (announce) this.ui.toast('Você desmontou.', 'info')
+  }
+
+  private syncMountedAnimal(): void {
+    const animal = this.mountedAnimal
+    if (!animal || animal.dead) {
+      if (animal) this.dismountAnimal(false)
+      return
+    }
+    const x = this.player.position.x
+    const z = this.player.position.z
+    const y = this.world.terrain.heightAt(x, z)
+    this.world.chunks.relocateMountedAnimal(animal, x, y, z)
+    animal.root.rotation.y = this.player.facing + Math.PI
+    animal.direction.set(Math.sin(animal.root.rotation.y), 0, Math.cos(animal.root.rotation.y))
+    const speed = Math.hypot(this.player.velocity.x, this.player.velocity.z)
+    animal.state = speed > 5 ? 'run' : speed > 0.45 ? 'walk' : 'idle'
+    const action = animal.state === 'run' ? animal.actions.run ?? animal.actions.walk
+      : animal.state === 'walk' ? animal.actions.walk ?? animal.actions.run : animal.actions.idle
+    if (action && animal.active !== action) {
+      animal.active?.fadeOut(0.18)
+      action.reset().fadeIn(0.18).play()
+      animal.active = action
+    }
+    animal.mixer.update(0)
+  }
+
   private interactableDistance(target: NonNullable<ReturnType<Population['nearest']>>): number {
     switch (target.kind) {
       case 'npc': return target.npc.position.distanceTo(this.player.position)
@@ -1111,7 +1222,7 @@ export class Game {
     this.world.enterInterior(room, this.player.root)
     this.player.teleport(room.spawn)
     this.player.facing = 0
-    this.interactLabel = undefined
+    this.setInteractionPrompt(undefined)
     this.camera.reset(this.player.position, this.player.facing)
     this.camera.update(0, this.player.position, { x: 0, y: 0 }, this.world, false, false)
     if (announce) this.ui.toast(`Você entrou em ${houseName}. Pressione E na porta para sair.`, 'item')
@@ -1125,7 +1236,7 @@ export class Game {
     this.interior = null
     this.player.teleport(session.returnPosition)
     this.player.facing = session.returnFacing
-    this.interactLabel = undefined
+    this.setInteractionPrompt(undefined)
     this.camera.reset(this.player.position, this.player.facing)
     this.camera.update(0, this.player.position, { x: 0, y: 0 }, this.world, false, false)
     this.audio.play('ui')
@@ -1314,6 +1425,7 @@ export class Game {
       bonus: this.inventory.bonus() as unknown as Record<string, number>,
       pois: this.world.pois.list(),
       player: { x: this.player.position.x, z: this.player.position.z, yaw: this.camera.yaw },
+      questTarget: this.questWorldTarget,
       mapCanvas: this.mapCanvas,
       settings: this.save.data.settings,
       actions: this.panelActions,
@@ -1627,17 +1739,31 @@ export class Game {
     const huntLocator = objectiveEnemyType
       ? objectiveEnemy
         ? `${objectiveEnemy.displayName} mais próximo · ${Math.round(Math.hypot(objectiveEnemy.position.x - this.player.position.x, objectiveEnemy.position.z - this.player.position.z))} m`
-        : huntWaypoint
-          ? `Zona de caça · ${BIOMES[huntWaypoint.biome].name} · ${Math.round(Math.hypot(huntWaypoint.x - this.player.position.x, huntWaypoint.z - this.player.position.z))} m${objectiveEnemyType.nocturnal && this.world.sky.night < 0.45 ? ' · aparece à noite' : ''}`
-          : `Habitat: ${objectiveEnemyType.biomes.map(biomeId => BIOMES[biomeId].name).join(' ou ')}`
+      : huntWaypoint
+        ? `Zona de caça · ${BIOMES[huntWaypoint.biome].name} · ${Math.round(Math.hypot(huntWaypoint.x - this.player.position.x, huntWaypoint.z - this.player.position.z))} m${objectiveEnemyType.nocturnal && this.world.sky.night < 0.45 ? ' · aparece à noite' : ''}`
+        : `Habitat: ${objectiveEnemyType.biomes.map(biomeId => BIOMES[biomeId].name).join(' ou ')}`
+      : undefined
+    const objectiveResource = trackedObjective?.kind === 'coletar'
+      ? this.population.nearestResource(trackedObjective.target, this.player.position)
       : undefined
     const objectivePoiId = trackedObjective && ['interagir', 'chegar'].includes(trackedObjective.kind)
       ? trackedObjective.target
-      : tracked?.marker
+      : objectiveResource ? undefined : tracked?.marker
     const objectivePoi = trackedObjective?.kind === 'chefe'
       ? this.world.pois.list().find(poi => poi.bossId === trackedObjective.target)
       : objectivePoiId ? this.world.pois.list().find(poi => poi.id === objectivePoiId) : undefined
-    const questPoiId = questReady ? undefined : objectivePoi?.id ?? (!objectiveNpc && !objectiveEnemy && !huntWaypoint ? tracked?.marker : undefined) ?? recommendedPoi?.id
+    const locatorTarget = questReady ? questGiver?.position : objectiveNpc?.position ?? objectiveResource?.position ?? objectivePoi
+    const objectiveResourceName = objectiveResource && trackedObjective?.kind === 'coletar'
+      ? itemById(trackedObjective.target)?.name ?? 'Recurso'
+      : undefined
+    const locatorName = questReady ? questGiver?.def.name ?? 'Quem passou a missão'
+      : objectiveNpc?.def.name ?? objectiveResourceName ?? objectivePoi?.name ?? 'Destino'
+    const questLocator = huntLocator ?? (locatorTarget
+      ? `${locatorName} · ${Math.round(Math.hypot(locatorTarget.x - this.player.position.x, locatorTarget.z - this.player.position.z))} m`
+      : undefined)
+    const questPoiId = questReady ? undefined : objectivePoi?.id
+      ?? (!objectiveNpc && !objectiveEnemy && !objectiveResource && !huntWaypoint ? tracked?.marker : undefined)
+      ?? recommendedPoi?.id
     const quest = tracked
       ? {
         name: tracked.name,
@@ -1651,7 +1777,7 @@ export class Game {
           ? ` · ${tracked.rewards.items.map(item => `${item.count}× ${itemById(item.itemId)?.name ?? 'item'}`).join(' · ')}`
           : ''}`,
         ready: questReady,
-        locator: huntLocator,
+        locator: questLocator,
       }
       : recommendedChapter
         ? {
@@ -1707,6 +1833,16 @@ export class Game {
         boss: false,
         quest: true,
       })
+    } else if (tracked && objectiveResource && trackedObjective?.kind === 'coletar') {
+      questPois.push({
+        x: objectiveResource.position.x,
+        z: objectiveResource.position.z,
+        kind: 'quest-resource',
+        name: objectiveResourceName ?? 'Recurso',
+        discovered: true,
+        boss: false,
+        quest: true,
+      })
     } else if (tracked && objectivePoi) {
       questPois.push({
         x: objectivePoi.x,
@@ -1727,6 +1863,26 @@ export class Game {
         boss: Boolean(recommendedPoi.bossId),
         quest: true,
       })
+    }
+    const worldTarget = questReady && questGiver ? { x: questGiver.position.x, z: questGiver.position.z, name: questGiver.def.name }
+      : objectiveNpc ? { x: objectiveNpc.position.x, z: objectiveNpc.position.z, name: objectiveNpc.def.name }
+        : objectiveEnemy ? { x: objectiveEnemy.position.x, z: objectiveEnemy.position.z, name: objectiveEnemy.displayName }
+          : huntWaypoint ? { x: huntWaypoint.x, z: huntWaypoint.z, name: objectiveEnemyType?.name ?? 'Área de caça' }
+            : objectiveResource ? { x: objectiveResource.position.x, z: objectiveResource.position.z, name: objectiveResourceName ?? 'Recurso' }
+              : objectivePoi ? { x: objectivePoi.x, z: objectivePoi.z, name: objectivePoi.name }
+              : !tracked && recommendedPoi ? { x: recommendedPoi.x, z: recommendedPoi.z, name: recommendedPoi.name }
+                : null
+    this.questWorldTarget = worldTarget
+    const markerDistance = worldTarget
+      ? Math.hypot(worldTarget.x - this.player.position.x, worldTarget.z - this.player.position.z)
+      : Number.POSITIVE_INFINITY
+    this.questMarker.visible = Boolean(worldTarget && !this.interior && markerDistance < 1200)
+    if (worldTarget) {
+      const ground = this.world.terrain.heightAt(worldTarget.x, worldTarget.z)
+      this.questMarker.position.set(worldTarget.x, ground + 0.2 + Math.sin(this.playtime * 2.6) * 0.12, worldTarget.z)
+      const distanceScale = 1 + Math.min(markerDistance / 900, 1.1)
+      this.questMarkerRing.scale.setScalar((1 + Math.sin(this.playtime * 3.4) * 0.11) * distanceScale)
+      this.questMarkerArrow.scale.setScalar(1 + Math.min(markerDistance / 1000, 1))
     }
     const biome = this.world.biomeAt(this.player.position.x, this.player.position.z)
     const nearPoi = this.world.pois.nearest(this.player.position.x, this.player.position.z, poi => Math.hypot(poi.x - this.player.position.x, poi.z - this.player.position.z) < poi.radius + 20)

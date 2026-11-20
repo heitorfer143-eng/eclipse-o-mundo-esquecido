@@ -72,7 +72,12 @@ export class Population {
     scene.add(this.group)
   }
 
-  update(dt: number, playerPosition: THREE.Vector3): void {
+  update(
+    dt: number,
+    playerPosition: THREE.Vector3,
+    context: { timeOfDay: number; weather: string } = { timeOfDay: 0.32, weather: 'limpo' },
+    onBark?: (npc: Npc, line: string) => void,
+  ): void {
     for (const poi of this.pois.list()) {
       const spots = this.pois.spotsOf(poi.id)
       if (spots && !this.populated.has(poi.id)) this.populate(poi, spots)
@@ -81,7 +86,7 @@ export class Population {
     }
     for (const npc of this.npcs) {
       const near = Math.hypot(npc.position.x - playerPosition.x, npc.position.z - playerPosition.z) < 14
-      npc.update(dt, playerPosition, near)
+      npc.update(dt, playerPosition, near, context, onBark)
     }
     for (const node of this.nodes) {
       if (!node.depleted) continue
@@ -334,6 +339,26 @@ export class Population {
       }
     }
     return best
+  }
+
+  nearestResource(itemId: string, from: THREE.Vector3): ResourceNode | undefined {
+    let nearestAvailable: ResourceNode | undefined
+    let availableDistance = Number.POSITIVE_INFINITY
+    let nearestAny: ResourceNode | undefined
+    let anyDistance = Number.POSITIVE_INFINITY
+    for (const node of this.nodes) {
+      if (RESOURCE_INFO[node.kind].itemId !== itemId) continue
+      const distance = node.position.distanceToSquared(from)
+      if (distance < anyDistance) {
+        nearestAny = node
+        anyDistance = distance
+      }
+      if (!node.depleted && distance < availableDistance) {
+        nearestAvailable = node
+        availableDistance = distance
+      }
+    }
+    return nearestAvailable ?? nearestAny
   }
 
   openChest(chest: Chest, lootBonus = 0): { gold: number; items: LootDrop[] } {

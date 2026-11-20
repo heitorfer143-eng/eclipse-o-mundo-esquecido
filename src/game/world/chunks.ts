@@ -4,6 +4,7 @@ import { clone } from 'three/addons/utils/SkeletonUtils.js'
 import { hash2, mulberry32 } from '../core/rng'
 import { clamp } from '../core/math'
 import { BIOMES } from './biomes'
+import type { BiomeId } from '../data/types'
 import type { Collider } from './collision'
 import { grassGeometry, propMaterial, rockGeometry, treeGeometries } from './props'
 import { SEA_LEVEL, type Terrain } from './terrain'
@@ -29,6 +30,8 @@ type AnimalAsset = {
   url: string
   id: WildlifeKind
   name: string
+  rare?: boolean
+  mountable?: boolean
   health: number
   radius: number
   height: number
@@ -39,22 +42,49 @@ const animalDefinitions: Omit<AnimalAsset, 'url'>[] = [
   { file: 'Bull', id: 'touro', name: 'Touro', health: 82, radius: 0.76, height: 1.5, targetHeight: 1.5 },
   { file: 'Cow', id: 'vaca', name: 'Vaca', health: 62, radius: 0.68, height: 1.32, targetHeight: 1.32 },
   { file: 'Deer', id: 'cervo', name: 'Cervo', health: 38, radius: 0.52, height: 1.25, targetHeight: 1.25 },
-  { file: 'Donkey', id: 'burro', name: 'Burro', health: 52, radius: 0.58, height: 1.28, targetHeight: 1.28 },
+  { file: 'Donkey', id: 'burro', name: 'Burro', mountable: true, health: 52, radius: 0.58, height: 1.28, targetHeight: 1.28 },
   { file: 'Fox', id: 'raposa', name: 'Raposa', health: 24, radius: 0.38, height: 0.63, targetHeight: 0.63 },
-  { file: 'Horse', id: 'cavalo', name: 'Cavalo selvagem', health: 72, radius: 0.72, height: 1.55, targetHeight: 1.55 },
-  { file: 'Horse_White', id: 'cavalo-branco', name: 'Cavalo branco', health: 72, radius: 0.72, height: 1.55, targetHeight: 1.55 },
+  { file: 'Horse', id: 'cavalo', name: 'Cavalo selvagem', mountable: true, health: 72, radius: 0.72, height: 1.55, targetHeight: 1.55 },
+  { file: 'Horse_White', id: 'cavalo-branco', name: 'Cavalo branco raro', rare: true, mountable: true, health: 72, radius: 0.72, height: 1.55, targetHeight: 1.55 },
   { file: 'Husky', id: 'husky', name: 'Husky', health: 34, radius: 0.42, height: 0.62, targetHeight: 0.62 },
   { file: 'ShibaInu', id: 'shiba-inu', name: 'Shiba Inu', health: 28, radius: 0.34, height: 0.5, targetHeight: 0.52 },
-  { file: 'Stag', id: 'cervo-real', name: 'Cervo-real', health: 50, radius: 0.64, height: 1.42, targetHeight: 1.42 },
+  { file: 'Stag', id: 'cervo-real', name: 'Cervo-real raro', rare: true, health: 50, radius: 0.64, height: 1.42, targetHeight: 1.42 },
   { file: 'Wolf', id: 'lobo', name: 'Lobo', health: 48, radius: 0.45, height: 0.72, targetHeight: 0.72 },
 ]
 const animalAssets: AnimalAsset[] = animalDefinitions.map(species => ({
   ...species,
   url: `${import.meta.env.BASE_URL}assets/models/quaternius/animals/${species.file}.glb`,
 }))
+
+export function wildlifeOptionsForBiome(biome: BiomeId): readonly AnimalAsset[] {
+  if (biome === 'deserto') return animalAssets.filter(asset => ['Alpaca', 'Donkey', 'Fox'].includes(asset.file))
+  if (biome === 'neve' || biome === 'montanha') return animalAssets.filter(asset => ['Deer', 'Horse_White', 'Husky', 'Wolf', 'Stag'].includes(asset.file))
+  if (biome === 'praia' || biome === 'ilha') return animalAssets.filter(asset => ['Alpaca', 'Donkey', 'ShibaInu', 'Fox'].includes(asset.file))
+  if (biome === 'pantano') return animalAssets.filter(asset => ['Fox', 'Wolf', 'Deer'].includes(asset.file))
+  if (biome === 'floresta' || biome === 'floresta-densa') return animalAssets.filter(asset => ['Deer', 'Fox', 'Stag', 'Wolf', 'Husky', 'ShibaInu'].includes(asset.file))
+  return animalAssets
+}
+
+export function selectWildlifeForBiome(biome: BiomeId, rareRoll: number, speciesRoll: number): WildlifeKind {
+  const options = wildlifeOptionsForBiome(biome)
+  const rareOptions = options.filter(asset => asset.rare)
+  const commonOptions = options.filter(asset => !asset.rare)
+  const pool = rareOptions.length && rareRoll < 0.14 ? rareOptions : commonOptions.length ? commonOptions : options
+  const index = Math.min(pool.length - 1, Math.floor(clamp(speciesRoll, 0, 0.999999) * pool.length))
+  return pool[Math.max(0, index)].id
+}
+
+export function wildlifeCanBeMounted(kind: WildlifeKind): boolean {
+  return animalAssets.find(asset => asset.id === kind)?.mountable === true
+}
 export type WildlifeAgent = {
   id: WildlifeKind
   name: string
+  rare: boolean
+  mountable: boolean
+  mounted: boolean
+  chunkOriginX: number
+  chunkOriginZ: number
   root: THREE.Group
   model: THREE.Group
   mixer: THREE.AnimationMixer
@@ -103,8 +133,20 @@ export function applyChunkTextures(textures: ChunkTextureSet): void {
 function wildlifeKind(url: string): Omit<AnimalAsset, 'file' | 'url' | 'targetHeight'> {
   const species = animalAssets.find(asset => asset.url === url)
   if (!species) throw new Error(`Espécie de fauna não registrada: ${url}`)
-  const { id, name, health, radius, height } = species
-  return { id, name, health, radius, height }
+  const { id, name, rare, mountable, health, radius, height } = species
+  return { id, name, rare, mountable, health, radius, height }
+}
+
+function makeRareWildlifeMarker(): THREE.Mesh {
+  const marker = new THREE.Mesh(
+    new THREE.RingGeometry(0.68, 0.82, 24),
+    new THREE.MeshBasicMaterial({ color: '#ffd166', transparent: true, opacity: 0.88, side: THREE.DoubleSide, depthWrite: false }),
+  )
+  marker.name = 'rare-wildlife-marker'
+  marker.rotation.x = -Math.PI / 2
+  marker.position.y = 0.035
+  marker.renderOrder = 4
+  return marker
 }
 
 const animalCache = new Map<string, Promise<{ scene: THREE.Group; animations: THREE.AnimationClip[] }>>()
@@ -189,6 +231,16 @@ export class Chunk {
 
   wildlifeAgents(): WildlifeAgent[] {
     return this.wildlife
+  }
+
+  detachWildlife(agent: WildlifeAgent): void {
+    const index = this.wildlife.indexOf(agent)
+    if (index >= 0) this.wildlife.splice(index, 1)
+  }
+
+  adoptWildlife(agent: WildlifeAgent): void {
+    if (!this.wildlife.includes(agent)) this.wildlife.push(agent)
+    this.group.add(agent.root)
   }
 
   build(lod: Lod): void {
@@ -408,13 +460,10 @@ export class Chunk {
       if (y < SEA_LEVEL + 2 || this.terrainField.slopeAt(x, z) > 0.65 || this.blocked(x, z)) continue
       const biome = this.terrainField.biomeAt(x, z, y)
       if (biome === 'oceano' || biome === 'vulcanico' || biome === 'cinzas') continue
-      const options = biome === 'deserto' ? animalAssets.filter(asset => ['Alpaca', 'Donkey', 'Fox'].includes(asset.file))
-        : biome === 'neve' || biome === 'montanha' ? animalAssets.filter(asset => ['Deer', 'Horse_White', 'Husky', 'Wolf', 'Stag'].includes(asset.file))
-          : biome === 'praia' || biome === 'ilha' ? animalAssets.filter(asset => ['Alpaca', 'Donkey', 'ShibaInu', 'Fox'].includes(asset.file))
-            : biome === 'pantano' ? animalAssets.filter(asset => ['Fox', 'Wolf', 'Deer'].includes(asset.file))
-              : biome === 'floresta' || biome === 'floresta-densa' ? animalAssets.filter(asset => ['Deer', 'Fox', 'Stag', 'Wolf', 'Husky', 'ShibaInu'].includes(asset.file))
-                : animalAssets
-      const selected = options[Math.floor(random() * options.length)]
+      const options = wildlifeOptionsForBiome(biome)
+      const rareRoll = options.some(asset => asset.rare) ? random() : 1
+      const speciesRoll = random()
+      const selected = animalAssets.find(asset => asset.id === selectWildlifeForBiome(biome, rareRoll, speciesRoll))!
       const url = selected.url
       const localX = x - originX
       const localZ = z - originZ
@@ -422,6 +471,7 @@ export class Chunk {
       const target = new THREE.Vector3(8 + random() * (CHUNK_SIZE - 16), 0, 8 + random() * (CHUNK_SIZE - 16))
       const phase = random() * Math.PI * 2
       const timer = 1 + random() * 3
+      const species = wildlifeKind(url)
       void loadAnimal(url).then(source => {
         if (!group.parent) return
         const animal = clone(source.scene) as THREE.Group
@@ -442,6 +492,7 @@ export class Chunk {
         root.rotation.y = heading
         root.add(animal)
         group.add(root)
+        if (species.rare) root.add(makeRareWildlifeMarker())
         const animations = source.animations
         const names = animations.map(clip => clip.name)
         const findClip = (name: string | undefined): THREE.AnimationClip | undefined => name ? animations.find(clip => clip.name === name) : undefined
@@ -457,9 +508,13 @@ export class Chunk {
           action.clampWhenFinished = false
           return action
         }
-        const species = wildlifeKind(url)
         const agent: WildlifeAgent = {
           ...species,
+          rare: Boolean(species.rare),
+          mountable: Boolean(species.mountable),
+          mounted: false,
+          chunkOriginX: originX,
+          chunkOriginZ: originZ,
           root,
           model: animal,
           mixer,
@@ -512,6 +567,10 @@ export class Chunk {
     const originX = this.cx * CHUNK_SIZE
     const originZ = this.cz * CHUNK_SIZE
     for (const agent of this.wildlife) {
+      if (agent.mounted) {
+        agent.mixer.update(step)
+        continue
+      }
       if (agent.dead) {
         agent.deathTimer -= step
         if (agent.actions.death) agent.mixer.update(step)
@@ -539,7 +598,7 @@ export class Chunk {
       const awayX = worldX - player.x
       const awayZ = worldZ - player.z
       const playerDistance = Math.hypot(awayX, awayZ)
-      if (playerDistance < 9) {
+      if (playerDistance < 9 && !(agent.mountable && playerDistance < 3.5)) {
         const length = Math.max(0.001, playerDistance)
         agent.direction.set(awayX / length, 0, awayZ / length)
         agent.target.set(
@@ -622,11 +681,14 @@ export class Chunk {
   }
 
   private disposeWildlife(): void {
+    const mounted = this.wildlife.filter(agent => agent.mounted)
     for (const agent of this.wildlife) {
+      if (agent.mounted) continue
       agent.mixer.stopAllAction()
       agent.root.removeFromParent()
     }
     this.wildlife.length = 0
+    this.wildlife.push(...mounted)
   }
 
   dispose(): void {
@@ -663,6 +725,22 @@ export class ChunkManager {
     return [...this.chunks.values()].flatMap(chunk => chunk.wildlifeAgents())
   }
 
+  relocateMountedAnimal(agent: WildlifeAgent, x: number, y: number, z: number): void {
+    const target = this.chunkAt(x, z)
+    if (!target) return
+    const previous = this.chunkAt(agent.chunkOriginX, agent.chunkOriginZ)
+    if (previous !== target) {
+      previous?.detachWildlife(agent)
+      agent.chunkOriginX = target.cx * CHUNK_SIZE
+      agent.chunkOriginZ = target.cz * CHUNK_SIZE
+      target.adoptWildlife(agent)
+    }
+    target.group.add(agent.root)
+    agent.position.set(x - agent.chunkOriginX, y, z - agent.chunkOriginZ)
+    agent.worldPosition.set(x, y, z)
+    agent.root.position.copy(agent.position)
+  }
+
   /** Colliders from the chunks touching a world position (3x3 neighbourhood). */
   collidersNear(x: number, z: number, out: Collider[]): Collider[] {
     out.length = 0
@@ -678,14 +756,16 @@ export class ChunkManager {
   }
 
   /** Returns true when a chunk finished building this frame. */
-  update(px: number, pz: number, maxBuilds = 1): boolean {
+  update(px: number, pz: number, maxBuilds = 1, retainedChunk?: { x: number; z: number }): boolean {
     const pcx = Math.floor(px / CHUNK_SIZE)
     const pcz = Math.floor(pz / CHUNK_SIZE)
     const radius = this.viewRadius
     let built = false
     // Unload chunks outside the radius (plus one row of hysteresis).
     for (const [key, chunk] of this.chunks) {
-      if (Math.abs(chunk.cx - pcx) > radius + 1 || Math.abs(chunk.cz - pcz) > radius + 1) {
+      const retained = retainedChunk && chunk.cx === retainedChunk.x && chunk.cz === retainedChunk.z
+      const outside = Math.abs(chunk.cx - pcx) > radius + 1 || Math.abs(chunk.cz - pcz) > radius + 1
+      if (outside && !retained) {
         this.group.remove(chunk.group)
         chunk.dispose()
         this.chunks.delete(key)

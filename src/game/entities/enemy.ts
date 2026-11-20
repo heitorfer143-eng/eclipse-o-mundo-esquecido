@@ -45,7 +45,6 @@ export const ENEMY_VISUAL_LIMITS = {
   eliteFootprint: 2.8,
 } as const
 
-const ATTACK_TELEGRAPH_GEO = new THREE.RingGeometry(0.84, 1, 28, 1, -1, 2)
 const ATTACK_WARNING_GEO = new THREE.OctahedronGeometry(0.16, 0)
 
 /** A single living creature with a small but readable state-machine AI. */
@@ -118,9 +117,11 @@ export class Enemy {
     this.attackWarning.renderOrder = 12
     this.attackWarning.visible = false
     this.attackAreaMaterial = new THREE.MeshBasicMaterial({ color: '#ff5c50', transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false })
-    this.attackArea = new THREE.Mesh(ATTACK_TELEGRAPH_GEO, this.attackAreaMaterial)
+    const attackArc = this.def.behavior === 'bruto' ? 1.5 : 1
+    const telegraph = new THREE.RingGeometry(0.84, 1, 32, 1, Math.PI / 2 - attackArc, attackArc * 2)
+    this.attackArea = new THREE.Mesh(telegraph, this.attackAreaMaterial)
     this.attackArea.rotation.x = -Math.PI / 2
-    this.attackArea.scale.set(this.def.attackRange + 0.6, this.def.attackRange + 0.6, 1)
+    this.attackArea.scale.set(this.def.attackRange + 1.2, this.def.attackRange + 1.2, 1)
     this.attackArea.position.y = 0.055
     this.attackArea.visible = false
     this.root.add(this.attackArea, this.attackWarning)
@@ -319,7 +320,7 @@ export class Enemy {
         this.velocity.z = damp(this.velocity.z, 0, 8, dt)
         if (distance < this.def.attackRange && this.attackCooldown <= 0) {
           this.state = 'windup'
-          this.stateTimer = this.def.behavior === 'bruto' ? 0.95 : this.def.behavior === 'assassino' ? 0.4 : 0.6
+          this.stateTimer = this.def.behavior === 'bruto' ? 0.95 : this.def.behavior === 'assassino' ? 0.65 : 0.75
         }
         if (this.def.behavior === 'invocador') {
           this.summonTimer -= dt

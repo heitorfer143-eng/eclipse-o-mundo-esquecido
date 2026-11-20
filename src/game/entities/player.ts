@@ -94,6 +94,8 @@ export class Player {
   climbing = false
   sprinting = false
   inWater = false
+  mounted = false
+  private rideHeight = 0
   lastDamageAt = -100
   lastCombatAt = -100
   kills = 0
@@ -169,6 +171,11 @@ export class Player {
 
   get weaponProfile(): WeaponProfile {
     return weaponProfile(this.weapon)
+  }
+
+  setMounted(mounted: boolean, animalHeight = 0): void {
+    this.mounted = mounted
+    this.rideHeight = mounted ? Math.max(0.72, animalHeight * 0.62) : 0
   }
 
   /** Base stats adjusted by temporary buffs. */
@@ -460,7 +467,7 @@ export class Player {
     const canSprint = intent.sprint && this.stamina > 1 && wishLen > 0.2
     this.sprinting = canSprint
     const stats = this.effective
-    let speed = canSprint ? stats.moveSpeed * 1.72 : stats.moveSpeed
+    let speed = (canSprint ? stats.moveSpeed * 1.72 : stats.moveSpeed) * (this.mounted ? 1.65 : 1)
     if (this.blocking) speed *= 0.42
     if (this.inWater) speed *= 0.6
     if (canSprint) this.spendStamina(dt * 11)
@@ -707,7 +714,7 @@ export class Player {
       rollDirection,
     })
     // Model sits on the feet pivot; lean the whole root while swimming.
-    this.model.root.position.y = 0
+    this.model.root.position.y = this.rideHeight
     this.model.root.rotation.x = this.swimming ? -0.15 : 0
     this.model.root.visible = this.invulnerable <= 0 || this.animTime - this.lastDamageAt > 0.55 || Math.floor(this.animTime * 18) % 2 === 0
   }

@@ -5,6 +5,7 @@ import { CharacterModel, type Appearance } from './character'
 import { HUMANOID_VISUAL_SCALE } from './externalModels'
 import { characterModelUrlFor } from './characterAssets'
 import { npcAppearanceFor } from './npcAppearance'
+import { npcAmbientLine, npcDailyDestination } from './npcRoutines'
 import { resolveCircle, type Collider } from '../world/collision'
 
 const QUEST_MARKER_MATERIALS = {
@@ -25,6 +26,8 @@ export class Npc {
   private readonly home: THREE.Vector3
   private target = new THREE.Vector3()
   private wanderTimer = 2
+  private barkCooldown = 2 + Math.random() * 3
+  private scheduleKey = ''
   private animTime = Math.random() * 10
   private facing = 0
   private talking = false
@@ -86,20 +89,42 @@ export class Npc {
     this.turnInMarker.visible = visible && this.questMarkerKind === 'turnIn'
   }
 
-  update(dt: number, playerPosition: THREE.Vector3, playerNear: boolean): void {
+  update(
+    dt: number,
+    playerPosition: THREE.Vector3,
+    playerNear: boolean,
+    context: { timeOfDay: number; weather: string } = { timeOfDay: 0.32, weather: 'limpo' },
+    onBark?: (npc: Npc, line: string) => void,
+  ): void {
     this.animTime += dt
     const distanceToPlayer = Math.hypot(playerPosition.x - this.position.x, playerPosition.z - this.position.z)
     this.updateQuestMarkerVisibility(distanceToPlayer)
+    this.barkCooldown -= dt
+    if (!this.talking && distanceToPlayer < 5 && this.barkCooldown <= 0) {
+      const line = this.ambientLine(context)
+      if (line) onBark?.(this, line)
+      this.barkCooldown = 22 + Math.random() * 16
+    }
     let moving = false
     if (playerNear && distanceToPlayer < 5) {
       this.facing = dampAngle(this.facing, Math.atan2(-(playerPosition.x - this.position.x), -(playerPosition.z - this.position.z)), 6, dt)
     } else if (!this.talking) {
+      const hour = Math.floor(((context.timeOfDay % 1) + 1) % 1 * 24)
+      const daypart = hour < 6 || hour >= 21 ? 'night' : hour < 11 ? 'morning' : hour < 18 ? 'day' : 'evening'
+      const stormy = ['chuva', 'tempestade', 'neve', 'areia', 'cinzas'].includes(context.weather)
+      const schedule = `${daypart}:${stormy ? 'shelter' : 'open'}`
+      if (schedule !== this.scheduleKey) {
+        this.scheduleKey = schedule
+        this.target.copy(this.dailyDestination(daypart, stormy))
+        this.wanderTimer = 3 + Math.random() * 2
+      }
       this.wanderTimer -= dt
       if (this.wanderTimer <= 0) {
-        this.wanderTimer = 4 + Math.random() * 6
+        this.wanderTimer = 5 + Math.random() * 7
         const angle = Math.random() * Math.PI * 2
-        const radius = Math.random() * 3.5
-        this.target.set(this.home.x + Math.cos(angle) * radius, this.position.y, this.home.z + Math.sin(angle) * radius)
+        const radius = this.def.routine === 'sentar' || stormy ? 0.35 : 1.2 + Math.random() * 2.2
+        const center = this.dailyDestination(daypart, stormy)
+        this.target.set(center.x + Math.cos(angle) * radius, this.position.y, center.z + Math.sin(angle) * radius)
       }
       const toTarget = new THREE.Vector3(this.target.x - this.position.x, 0, this.target.z - this.position.z)
       if (toTarget.length() > 0.6) {
@@ -142,6 +167,14 @@ export class Npc {
     const material = this.label.material as THREE.SpriteMaterial
     material.opacity = clamp(1.2 - distanceToPlayer / 26, 0.15, 1)
     void this.animTime
+  }
+
+  private dailyDestination(daypart: string, stormy: boolean): THREE.Vector3 {
+    return npcDailyDestination(this.home, this.def.routine, daypart, stormy)
+  }
+
+  private ambientLine(context: { timeOfDay: number; weather: string }): string | undefined {
+    return npcAmbientLine(this.def.barks ?? [], context, Math.random())
   }
 
   dispose(): void {
