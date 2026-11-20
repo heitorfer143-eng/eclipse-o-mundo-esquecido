@@ -147,15 +147,33 @@ export class ExternalCharacter {
 }
 
 /** Select a licensed humanoid replacement; non-humanoid creatures keep their bespoke procedural silhouette. */
-export function externalHumanoidUrlForModel(model: string): string | undefined {
+export function externalHumanoidUrlForModel(model: string, variantId?: string): string | undefined {
+  // Named variants stop every goblin, guard and boss from sharing one identical silhouette.
+  const variants: Record<string, string> = {
+    'goblin-xama': EXTERNAL_CHARACTER_URLS.orcShaman,
+    'bandido-emboscador': EXTERNAL_CHARACTER_URLS.scout,
+    'cavaleiro-corrompido': EXTERNAL_CHARACTER_URLS.knight,
+    'cavaleiro-do-vazio': EXTERNAL_CHARACTER_URLS.juggernaut,
+    'mumia-errante': EXTERNAL_CHARACTER_URLS.mummy,
+    'esqueleto-guerreiro': EXTERNAL_CHARACTER_URLS.mummy,
+    'espectro-do-eclipse': EXTERNAL_CHARACTER_URLS.ghost,
+    'bruxa-do-lodo': EXTERNAL_CHARACTER_URLS.witch,
+    'diabrete-de-magma': EXTERNAL_CHARACTER_URLS.orcPyromancer,
+    'yeti-das-neves': EXTERNAL_CHARACTER_URLS.werewolf,
+    'sacerdote-corrompido': EXTERNAL_CHARACTER_URLS.priestess,
+    'tharwyn-raiz-esmagadora': EXTERNAL_CHARACTER_URLS.orcChampion,
+    'sarkhys-emboscada-areia': EXTERNAL_CHARACTER_URLS.vampire,
+    'hrimgar-punho-avalanche': EXTERNAL_CHARACTER_URLS.juggernaut,
+    'ignivar-bafo-magma': EXTERNAL_CHARACTER_URLS.orcPyromancer,
+  }
+  if (variantId && Object.hasOwn(variants, variantId)) return variants[variantId]
   if (model === 'cavaleiro') return EXTERNAL_CHARACTER_URLS.knight
   if (model === 'esqueleto' || model === 'mumia') return EXTERNAL_CHARACTER_URLS.mummy
   if (model === 'goblin') return EXTERNAL_CHARACTER_URLS.orc
-  if (model === 'diabrete') return EXTERNAL_CHARACTER_URLS.orcPyromancer
   if (model === 'gigante' || model === 'troll') return EXTERNAL_CHARACTER_URLS.brute
   if (model === 'espectro') return EXTERNAL_CHARACTER_URLS.ghost
   if (model === 'yeti') return EXTERNAL_CHARACTER_URLS.werewolf
-  if (model === 'elemental') return undefined
+  if (model === 'elemental' || model === 'golem' || model === 'serpente') return undefined
   return undefined
 }
 
