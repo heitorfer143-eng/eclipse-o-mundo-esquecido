@@ -156,6 +156,11 @@ describe('arquitetura procedural do mundo', () => {
     expect(villageModels.length).toBeGreaterThanOrEqual(7)
     expect(cityModels).toHaveLength(4)
     expect(portModels).toHaveLength(1)
+    expect(villageModels.some(model => model.name === 'house-model-cottage')).toBe(true)
+    expect(villageModels.filter(model => model.name === 'house-model-blacksmith')).toHaveLength(1)
+    expect(cityModels.filter(model => model.name === 'house-model-tavern')).toHaveLength(1)
+    expect(cityModels.filter(model => model.name === 'house-model-blacksmith')).toHaveLength(1)
+    expect(cityModels.filter(model => model.name === 'house-model-cottage')).toHaveLength(2)
     expect(village.spots).toEqual(proceduralVillage.spots)
     expect(city.spots).toEqual(proceduralCity.spots)
     expect(port.spots).toEqual(proceduralPort.spots)
@@ -171,6 +176,35 @@ describe('arquitetura procedural do mundo', () => {
 
     for (const site of [proceduralVillage, village, proceduralCity, city, proceduralPort, port]) disposeSite(site)
     sharedGeometry.dispose()
+  })
+
+  it('realoca a oficina para a área plana próxima e mantém a forja e o NPC junto da casa', () => {
+    const terrain = {
+      heightAt: (x: number, z: number) => x * 0.05 + z * 0.02,
+      biomeAt: () => 'pradera',
+      slopeAt: (x: number, z: number) => x >= X + 18 && x <= X + 22 && z >= Z - 14 && z <= Z - 10 ? 10 : 0,
+    } as unknown as Terrain
+    const template = new THREE.Group()
+    template.add(new THREE.Mesh(new THREE.BoxGeometry(4, 5, 3), new THREE.MeshStandardMaterial()))
+    const city = buildCity(terrain, X, Z, SEED, [template, template, template])
+    const blacksmith = city.spots.houses[2]
+    const forgeStation = city.spots.stations.find(station => station.kind === 'forja')!
+    const smithNpc = city.spots.npcs.find(npc => Math.abs(npc.x - (X + 28)) < 0.001
+      && Math.abs(npc.z - (Z - 4)) < 0.001)
+
+    expect(blacksmith.x).toBeCloseTo(X + 24, 5)
+    expect(forgeStation.x).toBeCloseTo(X + 28, 5)
+    expect(forgeStation.y).toBeCloseTo(blacksmith.y, 5)
+    expect(smithNpc).toBeDefined()
+    expect(smithNpc!.y).toBeCloseTo(terrain.heightAt(smithNpc!.x, smithNpc!.z), 5)
+    city.group.traverse(object => {
+      const mesh = object as THREE.Mesh
+      if (mesh.isMesh && mesh.userData.sharedHouseAsset !== true) mesh.geometry.dispose()
+    })
+    template.traverse(object => {
+      const mesh = object as THREE.Mesh
+      if (mesh.isMesh) mesh.geometry.dispose()
+    })
   })
 
   it('fornece piso suportado para a câmara da masmorra sem alterar o terreno ou o save', () => {

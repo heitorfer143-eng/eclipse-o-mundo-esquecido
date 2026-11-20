@@ -419,6 +419,16 @@ describe('abertura da campanha', () => {
         { itemId: 'comida-pao', count: 3 },
       ],
     })
+    expect(quests.nextMainQuest()?.id).toBe('principal-02')
+  })
+
+  it('recomenda primeiro Brumal e avança a Aster após os pré-requisitos da história', () => {
+    const quests = new QuestLog()
+    expect(quests.nextMainQuest()?.id).toBe('principal-01')
+    quests.states.set('principal-01', { status: 'concluida', progress: {} })
+    expect(quests.nextMainQuest()).toMatchObject({ id: 'principal-02', marker: 'cidade-aster', minLevel: 5 })
+    quests.states.set('principal-02', { status: 'concluida', progress: {} })
+    expect(quests.nextMainQuest()?.id).toBe('principal-03')
   })
 
   it('remove o rastreador fantasma de save antigo sem descartar missão já aceita', () => {

@@ -197,7 +197,7 @@ export class StructureBuilder {
   }
 }
 
-function addHouseModel(b: StructureBuilder, template: THREE.Object3D, index: number, x: number, z: number, y: number, w: number, d: number, h: number): boolean {
+function addHouseModel(b: StructureBuilder, template: THREE.Object3D, modelRole: string, x: number, z: number, y: number, w: number, d: number, h: number): boolean {
   const model = template.clone(true)
   model.updateMatrixWorld(true)
   const bounds = new THREE.Box3().setFromObject(model)
@@ -212,7 +212,7 @@ function addHouseModel(b: StructureBuilder, template: THREE.Object3D, index: num
   const height = sourceSize.y * scale
   model.scale.multiplyScalar(scale)
   model.position.set(x - center.x * scale, y - bounds.min.y * scale, z - center.z * scale)
-  model.name = `house-model-${index}`
+  model.name = `house-model-${modelRole}`
   model.traverse(object => {
     const mesh = object as THREE.Mesh
     if (!mesh.isMesh) return
@@ -236,14 +236,36 @@ function addHouseModel(b: StructureBuilder, template: THREE.Object3D, index: num
   return true
 }
 
-function house(b: StructureBuilder, x: number, z: number, y: number, w: number, d: number, h: number, rng: () => number, roofColor: MaterialKey = 'telhado', houseModels: readonly THREE.Object3D[] = []): void {
+function house(b: StructureBuilder, x: number, z: number, y: number, w: number, d: number, h: number, rng: () => number, roofColor: MaterialKey = 'telhado', houseModels: readonly (THREE.Object3D | null)[] = [], modelRole: 'cottage' | 'tavern' | 'blacksmith' = 'cottage', terrain?: Terrain): { x: number; z: number; y: number } {
   // Retain the three historical random draws so mob/resource coordinates after buildings stay unchanged.
   const rolls = [rng(), rng(), rng()]
+  if (terrain) {
+    // Buildings are rigid; pick the nearest flatter patch and seat them on the local mean ground.
+    const candidates = [{ x, z }, ...Array.from({ length: 8 }, (_, i) => {
+      const angle = i * Math.PI / 4
+      return { x: x + Math.cos(angle) * 4, z: z + Math.sin(angle) * 4 }
+    })]
+    let best = candidates[0]
+    let bestScore = Infinity
+    for (const candidate of candidates) {
+      const heights = [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) => terrain.heightAt(candidate.x + sx * w * 0.42, candidate.z + sz * d * 0.42))
+      const relief = Math.max(...heights) - Math.min(...heights)
+      const slope = typeof terrain.slopeAt === 'function' ? terrain.slopeAt(candidate.x, candidate.z) : 0
+      const score = slope + relief * 0.12 + Math.hypot(candidate.x - x, candidate.z - z) * 0.012
+      if (score < bestScore) { best = candidate; bestScore = score }
+    }
+    x = best.x
+    z = best.z
+    const corners = [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) => terrain.heightAt(x + sx * w * 0.42, z + sz * d * 0.42))
+    y = corners.reduce((sum, value) => sum + value, 0) / corners.length
+  }
   const doorIndex = b.spots.houses.length + 1
   b.spots.houses.push({ id: `house-${doorIndex}`, x, z: z + d / 2 + 1.15, y })
   if (houseModels.length) {
-    const index = Math.min(houseModels.length - 1, Math.floor(rolls[0] * houseModels.length))
-    if (addHouseModel(b, houseModels[index], index, x, z, y, w, d, h)) return
+    const roleIndex = { cottage: 0, tavern: 1, blacksmith: 2 }[modelRole]
+    const fallback = houseModels[3 + roleIndex] ?? houseModels.find(model => model !== null)
+    const template = houseModels[roleIndex] ?? fallback
+    if (template && addHouseModel(b, template, modelRole, x, z, y, w, d, h)) return { x, z, y }
   }
   const wall = 0.32
   const frontZ = z + d / 2
@@ -285,6 +307,7 @@ function house(b: StructureBuilder, x: number, z: number, y: number, w: number, 
   // Keep the prior walkable roof footprint; the decorative roof itself remains lightweight.
   b.addCollider(x - w / 2 - 0.5, x + w / 2 + 0.5, z - d / 2 - 0.5, z + d / 2 + 0.5, roofY + 0.5, roofY, true, true)
   b.box(x + w * 0.27, roofY + roofRise * 0.55, z - d * 0.08, 0.62, 1.5, 0.62, 'pedra-escura')
+  return { x, z, y }
 }
 
 function fence(b: StructureBuilder, x1: number, z1: number, x2: number, z2: number, y: number): void {
@@ -396,7 +419,7 @@ function footpath(b: StructureBuilder, terrain: Terrain, x1: number, z1: number,
 export type SiteResult = { group: THREE.Group; colliders: Collider[]; spots: Spots }
 
 /** A village of timber houses around a well, with a forge, shrine and fields. */
-export function buildVillage(terrain: Terrain, x: number, z: number, seed: number, name: string, houseModels: readonly THREE.Object3D[] = []): SiteResult {
+export function buildVillage(terrain: Terrain, x: number, z: number, seed: number, name: string, houseModels: readonly (THREE.Object3D | null)[] = []): SiteResult {
   const y = terrain.heightAt(x, z)
   const b = new StructureBuilder(x, z, y, paletteForBiome(terrain.biomeAt(x, z, y)))
   const rng = mulberry32(seed)
@@ -410,21 +433,21 @@ export function buildVillage(terrain: Terrain, x: number, z: number, seed: numbe
     const hx = x + Math.cos(angle) * radius
     const hz = z + Math.sin(angle) * radius
     const hy = terrain.heightAt(hx, hz)
-    house(b, hx, hz, hy, 5.5 + rng() * 2.5, 5 + rng() * 2, 3.2 + rng() * 0.9, rng, 'telhado', houseModels)
-    b.spots.npcs.push({ x: hx + 2.6, z: hz + 2.6, y: terrain.heightAt(hx + 2.6, hz + 2.6) })
+    const home = house(b, hx, hz, hy, 5.5 + rng() * 2.5, 5 + rng() * 2, 3.2 + rng() * 0.9, rng, 'telhado', houseModels, 'cottage', terrain)
+    b.spots.npcs.push({ x: home.x + 2.6, z: home.z + 2.6, y: terrain.heightAt(home.x + 2.6, home.z + 2.6) })
   }
   // Forge with an anvil and a crafting station.
   const fx = x + 13
   const fz = z - 9
   const fy = terrain.heightAt(fx, fz)
-  house(b, fx, fz, fy, 6, 5, 3.2, rng, 'telhado', houseModels)
-  b.box(fx - 1.9, fy + 2.1, fz - 1.3, 0.8, 2.1, 0.8, 'pedra-escura')
-  b.cone(fx - 1.9, fy + 3.4, fz - 1.3, 0.55, 1.1, 'pedra-escura', 6)
-  b.box(fx + 1.6, fy + 1.05, fz + 1.2, 0.9, 0.6, 0.5, 'metal')
-  b.box(fx - 1.4, fy + 0.8, fz + 1.4, 1.2, 0.8, 0.9, 'pedra-escura')
-  b.lights.push({ x: fx, y: fy + 2.4, z: fz + 2, color: '#ff8a3c', intensity: 5, distance: 12 })
-  b.spots.stations.push({ x: fx + 3.4, z: fz + 2.6, y: fy, kind: 'forja' })
-  b.spots.npcs.push({ x: fx + 3.4, z: fz + 3.6, y: fy })
+  const forge = house(b, fx, fz, fy, 6, 5, 3.2, rng, 'telhado', houseModels, 'blacksmith', terrain)
+  b.box(forge.x - 1.9, forge.y + 2.1, forge.z - 1.3, 0.8, 2.1, 0.8, 'pedra-escura')
+  b.cone(forge.x - 1.9, forge.y + 3.4, forge.z - 1.3, 0.55, 1.1, 'pedra-escura', 6)
+  b.box(forge.x + 1.6, forge.y + 1.05, forge.z + 1.2, 0.9, 0.6, 0.5, 'metal')
+  b.box(forge.x - 1.4, forge.y + 0.8, forge.z + 1.4, 1.2, 0.8, 0.9, 'pedra-escura')
+  b.lights.push({ x: forge.x, y: forge.y + 2.4, z: forge.z + 2, color: '#ff8a3c', intensity: 5, distance: 12 })
+  b.spots.stations.push({ x: forge.x + 3.4, z: forge.z + 2.6, y: forge.y, kind: 'forja' })
+  b.spots.npcs.push({ x: forge.x + 3.4, z: forge.z + 3.6, y: terrain.heightAt(forge.x + 3.4, forge.z + 3.6) })
   // Alchemy bench under a canopy.
   const ax = x - 14
   const az = z + 10
@@ -475,7 +498,7 @@ export function buildVillage(terrain: Terrain, x: number, z: number, seed: numbe
 }
 
 /** The great city of Aster: walls, gate, keep, market square and every shop. */
-export function buildCity(terrain: Terrain, x: number, z: number, seed: number, houseModels: readonly THREE.Object3D[] = []): SiteResult {
+export function buildCity(terrain: Terrain, x: number, z: number, seed: number, houseModels: readonly (THREE.Object3D | null)[] = []): SiteResult {
   const y = terrain.heightAt(x, z)
   const b = new StructureBuilder(x, z, y, paletteForBiome(terrain.biomeAt(x, z, y)))
   const rng = mulberry32(seed)
@@ -514,8 +537,8 @@ export function buildCity(terrain: Terrain, x: number, z: number, seed: number, 
     b.box(cx, y + 15.55, z - 21.7, 1.15, 0.75, 1.2, 'pedra')
   }
   // Great hall / tavern.
-  house(b, x - 24, z + 6, y, 14, 10, 5.2, rng, 'telhado', houseModels)
-  house(b, x + 26, z + 4, y, 12, 9, 4.8, rng, 'telhado', houseModels)
+  house(b, x - 24, z + 6, y, 14, 10, 5.2, rng, 'telhado', houseModels, 'tavern', terrain)
+  house(b, x + 26, z + 4, y, 12, 9, 4.8, rng, 'telhado', houseModels, 'cottage', terrain)
   // Market square: stalls around a fountain.
   b.cylinder(x, y + 0.5, z + 6, 6, 0.8, 'pedra', 14, false)
   b.cylinder(x, y + 0.9, z + 6, 5.2, 0.25, 'agua', 14)
@@ -530,13 +553,13 @@ export function buildCity(terrain: Terrain, x: number, z: number, seed: number, 
     b.spots.npcs.push({ x: x + Math.cos(angle) * 16, z: z + 6 + Math.sin(angle) * 14, y })
   }
   // Blacksmith, alchemy and temple.
-  house(b, x + 20, z - 12, y, 12, 9, 5.8, rng, 'telhado', houseModels)
-  b.box(x + 16, y + 1.4, z - 8, 1.6, 1, 1.2, 'metal')
-  b.box(x + 20, y + 1.2, z - 6.8, 0.7, 0.18, 1.4, 'metal-dourado')
-  b.lights.push({ x: x + 20, y: y + 3.6, z: z - 8, color: '#ff8a3c', intensity: 7, distance: 16 })
-  b.spots.stations.push({ x: x + 24, z: z - 6, y, kind: 'forja' })
-  b.spots.npcs.push({ x: x + 24, z: z - 4, y })
-  house(b, x - 20, z - 12, y, 9, 8, 5.2, rng, 'telhado', houseModels)
+  const cityForge = house(b, x + 20, z - 12, y, 12, 9, 5.8, rng, 'telhado', houseModels, 'blacksmith', terrain)
+  b.box(cityForge.x - 4, cityForge.y + 1.4, cityForge.z + 4, 1.6, 1, 1.2, 'metal')
+  b.box(cityForge.x, cityForge.y + 1.2, cityForge.z + 5.2, 0.7, 0.18, 1.4, 'metal-dourado')
+  b.lights.push({ x: cityForge.x, y: cityForge.y + 3.6, z: cityForge.z + 4, color: '#ff8a3c', intensity: 7, distance: 16 })
+  b.spots.stations.push({ x: cityForge.x + 4, z: cityForge.z + 6, y: cityForge.y, kind: 'forja' })
+  b.spots.npcs.push({ x: cityForge.x + 4, z: cityForge.z + 8, y: terrain.heightAt(cityForge.x + 4, cityForge.z + 8) })
+  house(b, x - 20, z - 12, y, 9, 8, 5.2, rng, 'telhado', houseModels, 'cottage', terrain)
   b.spots.stations.push({ x: x - 17, z: z - 7, y, kind: 'alquimia' })
   b.spots.npcs.push({ x: x - 15, z: z - 7, y })
   // Temple of the Seven with statues.
@@ -790,7 +813,7 @@ export function buildTower(terrain: Terrain, x: number, z: number, seed: number)
   return { group, colliders: b.colliders, spots: b.spots }
 }
 
-export function buildPort(terrain: Terrain, x: number, z: number, seed: number, houseModels: readonly THREE.Object3D[] = []): SiteResult {
+export function buildPort(terrain: Terrain, x: number, z: number, seed: number, houseModels: readonly (THREE.Object3D | null)[] = []): SiteResult {
   const y = terrain.heightAt(x, z)
   const b = new StructureBuilder(x, z, y, paletteForBiome(terrain.biomeAt(x, z, y)))
   const rng = mulberry32(seed)
@@ -805,7 +828,7 @@ export function buildPort(terrain: Terrain, x: number, z: number, seed: number, 
   b.beam(x - 13, y + 0.78, z + 13.4, x - 13, y + 4.7, z + 13.4, 0.1, 'madeira')
   b.box(x - 13, y + 2.8, z + 13.35, 2.6, 3.3, 0.1, 'tecido-azul')
   b.beam(x - 13, y + 0.7, z + 16, x - 13, y + 0.7, z + 19, 0.06, 'metal-dourado')
-  house(b, x + 10, z - 2, y, 10, 8, 4.1, rng, 'telhado', houseModels)
+  house(b, x + 10, z - 2, y, 10, 8, 4.1, rng, 'telhado', houseModels, 'cottage', terrain)
   b.beam(x + 1, y + 0.65, z + 6, x + 3, y + 0.65, z + 6, 0.08, 'madeira-clara')
   b.box(x + 2, y + 1.05, z + 6, 2, 0.8, 0.65, 'metal-dourado')
   b.spots.npcs.push({ x: x + 6, z: z + 2, y: terrain.heightAt(x + 6, z + 2) })

@@ -78,7 +78,7 @@ function siteName(rng: () => number, kind: PoiKind): string {
   return `${prefix}${base}${suffix}`
 }
 
-function buildSite(poi: Poi, terrain: Terrain, houseModels: readonly THREE.Object3D[]): SiteResult {
+function buildSite(poi: Poi, terrain: Terrain, houseModels: readonly (THREE.Object3D | null)[]): SiteResult {
   switch (poi.kind) {
     case 'vila': return buildVillage(terrain, poi.x, poi.z, poi.seed, poi.name, houseModels)
     case 'cidade': return buildCity(terrain, poi.x, poi.z, poi.seed, houseModels)
@@ -107,7 +107,7 @@ export class PoiManager {
   private readonly cellRadius = 3
   private built = 0
 
-  constructor(private readonly terrain: Terrain, private readonly seed: number, private readonly houseModels: readonly THREE.Object3D[] = []) {
+  constructor(private readonly terrain: Terrain, private readonly seed: number, private readonly houseModels: readonly (THREE.Object3D | null)[] = []) {
     this.group.name = 'pois'
     for (const fixed of FIXED_POIS) this.addFixed(fixed)
     this.rebuildBlocked()

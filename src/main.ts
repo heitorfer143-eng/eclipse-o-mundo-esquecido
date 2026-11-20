@@ -20,6 +20,9 @@ const TIPS = [
   'Cada arma tem um ritmo. A adaga pune pelas costas, o espadão pune a paciência.',
 ]
 const HOUSE_MODEL_ASSETS = [
+  'assets/models/houses/shuriken-cottage.glb',
+  'assets/models/houses/shuriken-tavern.glb',
+  'assets/models/houses/shuriken-blacksmith.glb',
   'assets/models/houses/low-poly-medieval-house.glb',
   'assets/models/houses/low-poly-city-house-building-low.glb',
   'assets/models/houses/gable-house.glb',
@@ -76,7 +79,7 @@ async function boot(): Promise<void> {
 
   setProgress(0.2, 'Acordando o fragmento de Aether')
   const assets = new Assets()
-  let houseModels: THREE.Object3D[] = []
+  let houseModels: (THREE.Object3D | null)[] = []
   const stopAssetProgress = assets.onProgress(progress => {
     setProgress(0.2 + progress * 0.28, `Carregando modelos ${Math.round(progress * 100)}%`)
   })
@@ -88,7 +91,7 @@ async function boot(): Promise<void> {
         return null
       }))
     const loadedModels = await Promise.all(housePromises)
-    houseModels = loadedModels.filter((model): model is THREE.Object3D => model !== null)
+    houseModels = loadedModels
   } finally {
     stopAssetProgress()
   }

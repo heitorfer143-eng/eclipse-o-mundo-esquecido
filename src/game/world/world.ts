@@ -35,7 +35,7 @@ export class World {
   private previousBackground: THREE.Color | THREE.Texture | null = null
   private previousFog: THREE.Fog | THREE.FogExp2 | null = null
 
-  constructor(readonly seed: number, quality: Quality, relicModel?: THREE.Object3D, houseModels: readonly THREE.Object3D[] = []) {
+  constructor(readonly seed: number, quality: Quality, relicModel?: THREE.Object3D, houseModels: readonly (THREE.Object3D | null)[] = []) {
     this.terrain = new Terrain(seed)
     this.pois = new PoiManager(this.terrain, seed, houseModels)
     this.chunks = new ChunkManager(this.terrain, (x, z) => this.pois.isBlocked(x, z), VIEW_RADIUS[quality])

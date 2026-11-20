@@ -1512,6 +1512,11 @@ export class Game {
     }))
     const trackedId = this.quests.tracked
     const tracked = trackedId && this.quests.state(trackedId)?.status === 'ativa' ? questById(trackedId) : undefined
+    const recommendedChapter = !tracked ? this.quests.nextMainQuest() : undefined
+    const recommendedPoi = recommendedChapter?.marker ? this.world.pois.byId(recommendedChapter.marker) : undefined
+    const recommendedDistance = recommendedPoi
+      ? Math.round(Math.hypot(recommendedPoi.x - this.player.position.x, recommendedPoi.z - this.player.position.z))
+      : undefined
     const questReady = tracked ? this.quests.ready(tracked.id) : false
     const questGiver = tracked ? this.population.npcs.find(npc => npc.def.id === tracked.giver) : undefined
     const trackedObjectiveIndex = tracked
@@ -1550,7 +1555,7 @@ export class Game {
     const objectivePoi = trackedObjective?.kind === 'chefe'
       ? this.world.pois.list().find(poi => poi.bossId === trackedObjective.target)
       : objectivePoiId ? this.world.pois.list().find(poi => poi.id === objectivePoiId) : undefined
-    const questPoiId = questReady ? undefined : objectivePoi?.id ?? (!objectiveNpc && !objectiveEnemy && !huntWaypoint ? tracked?.marker : undefined)
+    const questPoiId = questReady ? undefined : objectivePoi?.id ?? (!objectiveNpc && !objectiveEnemy && !huntWaypoint ? tracked?.marker : undefined) ?? recommendedPoi?.id
     const quest = tracked
       ? {
         name: tracked.name,
@@ -1566,7 +1571,20 @@ export class Game {
         ready: questReady,
         locator: huntLocator,
       }
-      : undefined
+      : recommendedChapter
+        ? {
+          name: `Próxima jornada · ${recommendedChapter.name}`,
+          progress: recommendedChapter.minLevel && this.progression.level < recommendedChapter.minLevel
+            ? `Preparação · Nv ${this.progression.level}/${recommendedChapter.minLevel}`
+            : 'Destino principal disponível',
+          objective: recommendedChapter.minLevel && this.progression.level < recommendedChapter.minLevel
+            ? `Explore a região e alcance o nível ${recommendedChapter.minLevel}; depois siga para ${recommendedPoi?.name ?? 'o próximo marco'}.`
+            : `Siga para ${recommendedPoi?.name ?? 'o próximo marco'} para continuar a campanha.`,
+          reward: '',
+          ready: false,
+          locator: recommendedPoi && recommendedDistance !== undefined ? `${recommendedPoi.name} · ${recommendedDistance} m` : undefined,
+        }
+        : undefined
     const questPois: HudPoi[] = this.world.pois.list().map(poi => ({
       x: poi.x,
       z: poi.z,
@@ -1574,7 +1592,7 @@ export class Game {
       name: poi.name,
       discovered: poi.discovered || Boolean(tracked && poi.id === questPoiId),
       boss: Boolean(poi.bossId),
-      quest: Boolean(tracked && poi.id === questPoiId),
+      quest: Boolean(poi.id === questPoiId && (tracked || recommendedChapter)),
     }))
     const waypointNpc = questReady ? questGiver : objectiveNpc
     if (tracked && waypointNpc) {
@@ -1615,6 +1633,16 @@ export class Game {
         name: objectivePoi.name,
         discovered: true,
         boss: Boolean(objectivePoi.bossId),
+        quest: true,
+      })
+    } else if (!tracked && recommendedPoi) {
+      questPois.push({
+        x: recommendedPoi.x,
+        z: recommendedPoi.z,
+        kind: recommendedPoi.kind,
+        name: recommendedPoi.name,
+        discovered: true,
+        boss: Boolean(recommendedPoi.bossId),
         quest: true,
       })
     }

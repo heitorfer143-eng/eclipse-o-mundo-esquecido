@@ -125,8 +125,10 @@ H poção · Tab inventário · K habilidades · M mapa · L missões · Esc pau
 - [x] Começar com o protagonista em aparência simples, sem armadura/capacete/botas; manter a identidade fixa e permitir obter/equipar armadura pela progressão e crafting sem deixar a campanha inicial visualmente de cavaleiro.
 
 ## Novos modelos 3D indicados pelo jogador (19 nov 2026)
-- [ ] Auditar individualmente as fontes fornecidas: 13/18 auditorias concluídas; faltam Poly Haven, ambientCG e as fontes Google Fonts Cinzel, Alegreya SC e MedievalSharp. Confirmar termos, licença e permissão de uso/redistribuição antes de baixar modelos; não tratar “grátis para baixar” como autorização automática para incluir arquivos no repositório.
-- [ ] Integrar apenas assets licenciados e úteis ao jogo; documentar nome, função no gameplay, procedência/licença, escala, clips disponíveis, mapeamento de animação e fallback, mantendo a bundle e o streaming dentro de limites.
+- [x] Auditar individualmente as 18 fontes indicadas, separando permissão de download, uso no jogo e redistribuição; manter fora do build arquivos pagos, restritos ou com termos ambíguos.
+- [x] Integrar somente assets úteis e compatíveis: três casas Shuriken incorporadas no jogo (não como pack autônomo) e fontes Cinzel/Alegreya SC com os avisos OFL; documentar créditos, papéis, animações estáticas e fallbacks.
+- [x] Validar typecheck, 37 testes, build/check-size, smoke desktop/mobile sem erros de navegador; confirmar GLBs de casas no cenário e entrada/retomada do interior.
+- [ ] Após o push, confirmar CI, deploy do GitHub Pages e resposta dos assets publicados.
 
 ## Próxima rodada: fechar e polir o primeiro ciclo (19 nov 2026)
 - [x] Confirmar que o commit `fcd572d` passou build/smoke e deploy do Pages; o bundle público `assets/index-fE5_OR4S.js` responde HTTP 200.
@@ -134,3 +136,10 @@ H poção · Tab inventário · K habilidades · M mapa · L missões · Esc pau
 - [ ] Melhorar controles touch em celular: joystick/câmera distinguíveis e responsivos, botões sem sobrepor outras zonas ou cortar safe areas, multi-toque sem perder ações e layout legível em retrato/paisagem curtos, mantendo desempenho leve.
 - [ ] Tornar legíveis as animações do protagonista ao andar, correr, atacar, esquivar/rolar, receber dano e morrer; manter poses coerentes no modelo selecionado e sem root motion que desloque colisões.
 - [ ] Conferir proporções dos 30 mobs e 10 chefes contra o protagonista e ajustar escala quando necessário; deixar windups/áreas de ataque dos inimigos visíveis a tempo de esquivar e sem discrepância entre aviso e acerto.
+
+## Casas 3D e orientação de exploração (20 nov 2026)
+- [x] Mostrar casas GLB por função (cottage, taverna e ferreiro), manter alternativas/fallback e posicioná-las numa área próxima mais plana do terreno.
+- [x] Manter a posição de NPCs, forja e elementos funcionais ligados às casas quando o ajuste de terreno deslocar a construção.
+- [x] Quando não houver missão principal rastreada, indicar no HUD/mapa o próximo capítulo principal habilitado pela cadeia de pré-requisitos.
+- [x] Conferir em smoke visual os modelos 3D de casas em Brumal/Aster e validar abertura/retomada do interior; testes cobrem papéis cottage/taverna/ferreiro e realocação da forja com NPC/estação alinhados.
+- [x] Verificar que a indicação do próximo capítulo respeita pré-requisitos, nomeia Aster após a etapa inicial e mostra preparação de nível quando aplicável.

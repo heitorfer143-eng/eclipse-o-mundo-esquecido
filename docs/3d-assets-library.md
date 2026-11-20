@@ -41,7 +41,11 @@ Criaturas com silhuetas não humanoides — dragão, lobo, aranha, slime, golem,
 
 ## Arquitetura, mundo e efeitos
 
-O projeto também mantém três modelos GLB de casas locais em `public/assets/models/houses/`, usados pela geração de vilas, cidades e portos, com colisores dimensionados pelos bounds reais. Castelos, torres, ruínas, cavernas, templos, portos e dungeons usam a biblioteca procedural compartilhada em `src/game/world/structures.ts`, com materiais regionais por bioma e geometria mesclada para limitar draw calls.
+O projeto mantém três modelos GLB Shuriken em `public/assets/models/houses/`: cottage para casas comuns, taverna para hospedaria e oficina de ferreiro para edifícios da forja. Três casas CC0 da Innerscene permanecem como alternativas/fallback. Os modelos são estáticos, compartilhados entre instâncias e limitados por bounds medidos; os colliders mantêm uma abertura de entrada. As construções procuram uma posição próxima mais plana e os pontos funcionais do ferreiro acompanham o deslocamento. Os créditos e limites de redistribuição estão em [`SOURCES.md`](../public/assets/models/houses/SOURCES.md). Castelos, torres, ruínas, cavernas, templos, portos e dungeons usam a biblioteca procedural compartilhada em `src/game/world/structures.ts`, com materiais regionais por bioma e geometria mesclada para limitar draw calls.
+
+## Fontes da interface
+
+Cinzel variável é usada na hierarquia serifada; Alegreya SC Regular/Bold aparece em pequenos cabeçalhos e metadados. Os três arquivos locais ficam em `src/assets/fonts/`, são empacotados pelo Vite com URLs relativas e mantêm as licenças SIL OFL 1.1 em `licenses/`. MedievalSharp foi auditada, mas não foi incluída por não acrescentar papel funcional necessário nesta rodada.
 
 Fontes para próximas expansões (não são dependências runtime até serem integradas e testadas):
 - [Shuriken Fantasy — 31 GLBs](https://shuriken.studio/kits/fantasy): goblin, slime, torre arcana, árvore-casa, arena de boss, armas, poções, runas e VFX.

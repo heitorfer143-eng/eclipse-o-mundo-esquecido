@@ -111,6 +111,13 @@ export class QuestLog {
     return QUESTS.filter(quest => this.states.get(quest.id)?.status === 'concluida')
   }
 
+  /** Next main-story chapter whose prerequisites are complete, even if its level gate is still ahead. */
+  nextMainQuest(): QuestDef | undefined {
+    return QUESTS.find(quest => quest.type === 'principal'
+      && !this.isCompleted(quest.id)
+      && (quest.requires ?? []).every(requirement => this.isCompleted(requirement)))
+  }
+
   available(level: number): QuestDef[] {
     return QUESTS.filter(quest => this.statusOf(quest, level) === 'disponivel')
   }
