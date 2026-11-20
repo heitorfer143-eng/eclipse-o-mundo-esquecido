@@ -264,8 +264,7 @@ export class CharacterModel {
   private equippedBoots = false
   private externalRequest = 0
   private disposed = false
-  private auraColor = '#7fe3ff'
-  private auraEnabled = true
+  private auraEnabled = false
   private readonly externalMaterialPalette?: ExternalMaterialPalette
   private survivorAppearance = false
   private armorStyle: ArmorVisualStyle = 'andarilho'
@@ -405,6 +404,7 @@ export class CharacterModel {
     this.aura.rotation.x = -Math.PI / 2
     this.aura.position.y = 0.02
     this.root.add(this.aura)
+    this.aura.visible = false
 
     // New campaigns use this local rig: bare skin and a simple loincloth, not a baked armour GLB.
     this.root.traverse(obj => {
@@ -494,15 +494,13 @@ export class CharacterModel {
     })
   }
 
-  setAuraColor(color: string): void {
-    if (!/^#[0-9a-f]{6}$/i.test(color)) return
-    this.auraColor = color
-    ;(this.aura.material as THREE.MeshBasicMaterial).color.set(color)
+  setAuraColor(_color: string): void {
+    this.aura.visible = false
   }
 
-  setAuraEnabled(enabled: boolean): void {
-    this.auraEnabled = enabled
-    if (!enabled) this.aura.visible = false
+  setAuraEnabled(_enabled: boolean): void {
+    this.auraEnabled = false
+    this.aura.visible = false
   }
 
   private buildArmorMeshes(): void {
@@ -669,7 +667,6 @@ export class CharacterModel {
     const bootMaterial = bootsVisible ? this.armorMaterial : this.survivorAppearance ? this.skinMaterial : this.leatherMaterial
     this.footL.material = bootMaterial
     this.footR.material = bootMaterial
-    this.setAuraColor(options.auraColor ?? this.auraColor)
   }
 
   /** Pose the rig for the current animation state. Called once per rendered frame. */
@@ -844,7 +841,6 @@ export class CharacterModel {
           this.torso.rotation.y = 0.6
           this.body.position.y = -0.06
           this.aura.visible = this.auraEnabled
-          ;(this.aura.material as THREE.MeshBasicMaterial).color.set('#ffcf6a')
         }
         this.legL.rotation.x = -0.25
         this.legR.rotation.x = 0.3

@@ -10,7 +10,7 @@ const OPENING_BEATS = [
 export type OpeningIntroCallbacks = {
   onPlay: () => void
   onStop: () => void
-  onClose: () => void
+  onClose: (continueToCampaign: boolean) => void
 }
 
 /** Short, skippable story opening paired with the game's original title cue. */
@@ -23,6 +23,7 @@ export class OpeningIntro {
   private returnFocus?: HTMLElement
   private beatIndex = 0
   private timer = 0
+  private continueToCampaign = false
   private readonly handleKeydown = (event: KeyboardEvent): void => {
     if (this.visible) handleModalKeydown(event, this.root, () => this.close())
   }
@@ -63,13 +64,14 @@ export class OpeningIntro {
     return !this.root.classList.contains('hidden')
   }
 
-  open(): void {
+  open(continueToCampaign = false): void {
     if (this.visible) return
     this.returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
     this.beatIndex = 0
+    this.continueToCampaign = continueToCampaign
     this.root.classList.remove('hidden')
     this.root.classList.add('opening-intro--playing')
-    this.skipButton.textContent = 'Pular introdução'
+    this.skipButton.textContent = continueToCampaign ? 'Pular para criar personagem' : 'Pular introdução'
     this.renderBeat()
     this.callbacks.onPlay()
     this.skipButton.focus()
@@ -78,12 +80,14 @@ export class OpeningIntro {
 
   close(restoreFocus = true): void {
     if (!this.visible) return
+    const continueToCampaign = this.continueToCampaign
+    this.continueToCampaign = false
     window.clearTimeout(this.timer)
     this.root.classList.add('hidden')
     this.root.classList.remove('opening-intro--playing')
     this.callbacks.onStop()
-    this.callbacks.onClose()
-    if (restoreFocus) this.returnFocus?.focus()
+    this.callbacks.onClose(continueToCampaign)
+    if (restoreFocus && !continueToCampaign) this.returnFocus?.focus()
     this.returnFocus = undefined
   }
 
@@ -94,7 +98,9 @@ export class OpeningIntro {
     this.title.textContent = beat.title
     this.text.textContent = beat.text
     requestAnimationFrame(() => this.root.classList.remove('opening-intro__transition'))
-    if (this.beatIndex === OPENING_BEATS.length - 1) this.skipButton.textContent = 'Voltar ao menu'
+    if (this.beatIndex === OPENING_BEATS.length - 1) {
+      this.skipButton.textContent = this.continueToCampaign ? 'Continuar para criar personagem' : 'Voltar ao menu'
+    }
   }
 
   private scheduleBeat(): void {

@@ -2,7 +2,7 @@ import type { NpcDef } from '../data/types'
 import type { ExternalMaterialPalette } from './externalModels'
 
 export type NpcAppearance = {
-  model: 'civilian' | 'soldier' | 'paladin'
+  model: 'civilian' | 'soldier' | 'paladin' | 'barbarian' | 'mage' | 'rogue' | 'rogue-hooded'
   armored: boolean
   scale: number
   materials: ExternalMaterialPalette
@@ -23,13 +23,23 @@ const ROLE_DETAILS: Record<string, { skin: string; hair: string; leather: string
   sacerdote: { skin: '#e0b090', hair: '#a0a0a0', leather: '#756847' },
 }
 
-/** Give every NPC the protagonist's Quaternius low-poly presentation while keeping outfit and face colors distinct. */
+const ROLE_MODELS: Record<string, NpcAppearance['model']> = {
+  ferreiro: 'barbarian',
+  alquimista: 'mage',
+  mago: 'mage',
+  sacerdote: 'mage',
+  cacador: 'rogue',
+  pescador: 'rogue',
+  anciao: 'rogue-hooded',
+}
+
+/** Give each NPC a role-appropriate local low-poly model while keeping outfit and face colors distinct. */
 export function npcAppearanceFor(def: NpcDef): NpcAppearance {
   const details = ROLE_DETAILS[def.role] ?? ROLE_DETAILS.campones
   const isCaptain = def.id === 'capitao-ronan'
   const isGuard = def.role === 'guarda'
   return {
-    model: isCaptain ? 'paladin' : isGuard ? 'soldier' : 'civilian',
+    model: isCaptain ? 'paladin' : isGuard ? 'soldier' : ROLE_MODELS[def.role] ?? 'civilian',
     armored: isGuard,
     scale: def.role === 'crianca' ? 0.72 : 1,
     materials: {

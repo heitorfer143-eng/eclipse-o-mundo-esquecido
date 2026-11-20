@@ -12,7 +12,7 @@ const QUEST_MARKER_MATERIALS = {
   turnIn: makeQuestMarkerMaterial('?', '#7fe0a2'),
 }
 
-/** A townsperson: procedural body, floating nameplate and a small idle routine. */
+/** A townsperson with a local role-specific model, floating nameplate and a small idle routine. */
 export class Npc {
   readonly def: NpcDef
   readonly root = new THREE.Group()
@@ -39,10 +39,13 @@ export class Npc {
       leather: look.materials.belt ?? '#4b3a26',
       hair: look.materials.hair ?? '#5a4028',
     }
-    const modelUrl = look.model === 'paladin' ? characterModelUrlFor('Paladin', true)
-      : look.model === 'soldier' ? characterModelUrlFor('Soldier', true)
-      : characterModelUrlFor('Soldier', false)
-    this.model = new CharacterModel(appearance, modelUrl, Math.PI, 'Survivor', look.materials)
+    const modelId = look.model === 'paladin' ? 'Paladin'
+      : look.model === 'soldier' || look.model === 'civilian' ? 'Soldier'
+        : look.model === 'barbarian' ? 'Barbarian'
+          : look.model === 'mage' ? 'Mage'
+            : look.model === 'rogue' ? 'Rogue' : 'Rogue_Hooded'
+    const modelUrl = characterModelUrlFor(modelId, look.armored)
+    this.model = new CharacterModel(appearance, modelUrl, Math.PI, modelId, look.materials)
     this.model.setAuraEnabled(false)
     this.model.root.scale.multiplyScalar(look.scale)
     this.root.add(this.model.root)

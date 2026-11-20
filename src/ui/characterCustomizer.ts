@@ -1,5 +1,4 @@
 import {
-  AURA_OPTIONS,
   CHARACTER_OPTIONS,
   ELEMENT_OPTIONS,
   isCharacterNameValid,
@@ -114,7 +113,7 @@ export class CharacterCustomizer {
           <button class="character-customizer__close" data-close type="button" aria-label="Fechar personalização">✕</button>
         </header>
         <div class="character-customizer__body scroll">
-          <p class="character-customizer__intro">Escolha o nome, a classe, o elemento e a aura. Você começa com roupa simples, sem armadura; a aparência armada surge quando conquistar e equipar uma armadura nesta campanha única.</p>
+          <p class="character-customizer__intro">Escolha o nome, a classe e o elemento. Você começa com roupa simples, sem armadura; a aparência armada surge quando conquistar e equipar uma armadura nesta campanha única.</p>
           <label class="character-customizer__section-title" for="campaign-player-name">Nome do jogador</label>
           <input class="character-customizer__name" id="campaign-player-name" data-player-name type="text" maxlength="24" autocomplete="nickname" placeholder="Digite o nome do personagem" required>
           <p class="character-customizer__preview" aria-live="polite">${selectedModel.label} selecionado. Sem armadura, capacete ou botas no início.</p>
@@ -131,14 +130,6 @@ export class CharacterCustomizer {
           <div class="character-customizer__auras" role="group" aria-label="Elemento fixo da campanha">
             ${ELEMENT_OPTIONS.map(option => `
               <button class="aura-swatch" data-element="${option.id}" type="button" aria-label="Elemento ${option.label}" aria-pressed="${this.profile.element === option.id}">
-                <span class="aura-swatch__dot" style="--swatch:${option.color}" aria-hidden="true"></span>
-                <span>${option.label}</span>
-              </button>`).join('')}
-          </div>
-          <h3 class="character-customizer__section-title">Cor da aura</h3>
-          <div class="character-customizer__auras" role="group" aria-label="Cores da aura">
-            ${AURA_OPTIONS.map(option => `
-              <button class="aura-swatch" data-aura="${option.id}" type="button" aria-label="Aura ${option.label}" aria-pressed="${this.profile.auraColor === option.color}">
                 <span class="aura-swatch__dot" style="--swatch:${option.color}" aria-hidden="true"></span>
                 <span>${option.label}</span>
               </button>`).join('')}
@@ -161,12 +152,6 @@ export class CharacterCustomizer {
       button.addEventListener('click', () => {
         const modelId = CHARACTER_OPTIONS.find(option => option.id === button.dataset.model)?.id
         if (modelId) this.update({ modelId })
-      })
-    })
-    this.root.querySelectorAll<HTMLButtonElement>('[data-aura]').forEach(button => {
-      button.addEventListener('click', () => {
-        const auraColor = AURA_OPTIONS.find(option => option.id === button.dataset.aura)?.color
-        if (auraColor) this.update({ auraColor })
       })
     })
     this.root.querySelectorAll<HTMLButtonElement>('[data-element]').forEach(button => {

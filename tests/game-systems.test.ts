@@ -61,9 +61,13 @@ describe('mundo procedural', () => {
 
   it('fornece UVs para grama, troncos, copas e rochas texturizadas', () => {
     const tree = treeGeometries('carvalho')!
-    for (const geometry of [grassGeometry(), rockGeometry(0), tree.bark!, tree.foliage!]) {
+    const rock = rockGeometry(0)
+    for (const geometry of [grassGeometry(), rock, tree.bark!, tree.foliage!]) {
       expect(geometry.getAttribute('uv')?.count).toBe(geometry.getAttribute('position').count)
     }
+    const colors = rock.getAttribute('color')
+    expect(colors?.count).toBe(rock.getAttribute('position').count)
+    expect((colors?.getX(0) ?? 0)).toBeGreaterThan(0.7)
   })
 })
 

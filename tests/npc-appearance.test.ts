@@ -6,10 +6,14 @@ import { npcAppearanceFor } from '../src/game/entities/npcAppearance'
 describe('aparência Quaternius dos NPCs', () => {
   const appearances = NPCS.map(def => ({ def, look: npcAppearanceFor(def) }))
 
-  it('mantém modelos de estilo low-poly e paletas válidas em todos os NPCs', () => {
+  it('distribui modelos locais de estilo low-poly e paletas válidas entre os NPCs', () => {
+    const models = new Set(appearances.map(({ look }) => look.model))
+    expect(models.size).toBeGreaterThanOrEqual(5)
+    for (const model of ['civilian', 'soldier', 'paladin', 'barbarian', 'mage', 'rogue', 'rogue-hooded']) {
+      expect(models.has(model as typeof appearances[number]['look']['model'])).toBe(true)
+    }
     expect(appearances.length).toBeGreaterThan(0)
     for (const { look } of appearances) {
-      expect(['civilian', 'soldier', 'paladin']).toContain(look.model)
       expect(look.scale).toBeGreaterThan(0)
       expect(look.scale).toBeLessThanOrEqual(1)
       expect(look.materials.skin).toMatch(/^#[\da-f]{6}$/i)
@@ -37,7 +41,7 @@ describe('aparência Quaternius dos NPCs', () => {
       mode: 'cast', speed: 0, actionTime: 0.2, actionDuration: 0.8,
       combo: 0, weapon: 'espada', charging: false,
     }
-    model.setAuraEnabled(false)
+    model.setAuraEnabled(true)
     model.animate(1 / 60, cast)
     expect(model.root.getObjectByName('character-aura')?.visible).toBe(false)
     model.dispose()

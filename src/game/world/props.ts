@@ -124,7 +124,8 @@ export function rockGeometry(variant: number): THREE.BufferGeometry {
     position.setXYZ(i, position.getX(i) * n, position.getY(i) * n * 0.72, position.getZ(i) * n)
   }
   geo.computeVertexNormals()
-  paint(geo, key === 2 ? '#6a6a72' : '#7d7a72')
+  // A brighter neutral tint lets the stone albedo read instead of multiplying it into near-black.
+  paint(geo, key === 2 ? '#d8d5d1' : '#e3dfd5')
   const uv = new Float32Array(position.count * 2)
   const bounds = new THREE.Box3().setFromBufferAttribute(position)
   const size = bounds.getSize(new THREE.Vector3())

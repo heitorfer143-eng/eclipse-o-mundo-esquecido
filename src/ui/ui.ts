@@ -51,7 +51,7 @@ export class Ui {
     })
     this.title = new TitleScreen(root, save, {
       onNew: () => {
-        this.campaignIntro.open()
+        this.openingIntro.open(true)
         this.syncTouch()
       },
       onContinue: campaignId => this.continueCampaign(campaignId, callbacks.onContinue),
@@ -65,8 +65,9 @@ export class Ui {
     this.openingIntro = new OpeningIntro(root, {
       onPlay: callbacks.onOpeningPlay,
       onStop: callbacks.onOpeningStop,
-      onClose: () => {
-        this.title.show()
+      onClose: continueToCampaign => {
+        if (continueToCampaign) this.campaignIntro.open()
+        else this.title.show()
         this.syncTouch()
       },
     })

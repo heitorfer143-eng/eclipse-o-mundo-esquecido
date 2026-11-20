@@ -38,17 +38,21 @@ await page.getByRole('button', { name: 'Assistir à introdução' }).click()
 await page.locator('.opening-intro').waitFor({ state: 'visible' })
 const openingTitle = await page.locator('.opening-intro__title').textContent()
 if (openingTitle !== 'O amanhecer foi partido.') throw new Error(`A introdução não abriu no primeiro quadro: ${openingTitle}`)
+await page.waitForFunction(() => window.__eclipse.audio.openingPlaying, null, { timeout: 15000 })
 await page.getByRole('button', { name: 'Pular introdução' }).click()
 await page.locator('.opening-intro').waitFor({ state: 'hidden' })
 
 // New-game flow: exactly one identity, saved before the first story dialogue.
 await page.getByRole('button', { name: 'Criar personagem', exact: true }).click()
+await page.locator('.opening-intro').waitFor({ state: 'visible' })
+await page.waitForFunction(() => window.__eclipse.audio.openingPlaying, null, { timeout: 15000 })
+await page.getByRole('button', { name: 'Pular para criar personagem' }).click()
 await page.locator('.campaign-intro').waitFor({ state: 'visible' })
 await page.getByRole('button', { name: 'Iniciar campanha' }).click()
 await page.locator('[data-player-name]').fill('Teste Eclipse')
 await page.locator('[data-model="Paladin"]').click()
 await page.locator('[data-element="gelo"]').click()
-await page.locator('[data-aura="arcano"]').click()
+if (await page.locator('[data-aura]').count()) throw new Error('O criador ainda expõe a seleção de cor da aura.')
 await captureScreenshot(page, '02-character.png')
 await page.getByRole('button', { name: 'Confirmar e começar' }).click()
 await page.locator('.dialogue').waitFor({ state: 'visible', timeout: 45000 })
@@ -66,6 +70,26 @@ await page.waitForFunction(() => {
   })
   return hasShirt
 }, null, { timeout: 30000 })
+const faunaCount = await page.evaluate(() => window.__eclipse.game.world.chunks.wildlifeAgents().filter(animal => !animal.dead).length)
+if (faunaCount < 2) throw new Error(`A fauna não apareceu em quantidade suficiente: ${faunaCount}`)
+await page.waitForFunction(() => {
+  let loaded = false
+  window.__eclipse.game.world.scene.traverse(object => {
+    if (object.name !== 'world-rocks' || !object.isInstancedMesh || Array.isArray(object.material)) return
+    if (object.material.map?.image?.width) loaded = true
+  })
+  return loaded
+}, null, { timeout: 30000 })
+const rockTextureUrl = await page.evaluate(() => {
+  let url = ''
+  window.__eclipse.game.world.scene.traverse(object => {
+    if (object.name !== 'world-rocks' || !object.isInstancedMesh || Array.isArray(object.material)) return
+    const image = object.material.map?.image
+    if (image?.width) url = image.currentSrc || image.src || ''
+  })
+  return url
+})
+if (!rockTextureUrl.includes('stone-blocks.webp')) throw new Error(`As rochas não receberam a textura própria: ${rockTextureUrl}`)
 if (await page.evaluate(() => window.__eclipse.game.player.element) !== 'gelo') throw new Error('element specialization did not persist to the campaign')
 await page.waitForTimeout(1000)
 
@@ -153,6 +177,7 @@ const openingState = await page.evaluate(() => {
     tracked: g.quests.tracked,
     storyFlags: g.save.data.game?.storyFlags ?? [],
     armorEquipped: Boolean(equipment.armadura || equipment.capacete || equipment.botas),
+    playerAuraVisible: g.player.model.root.getObjectByName('character-aura')?.visible ?? false,
     visualGear: g.player.model.visibleGearState,
     externalModelLoaded: Boolean(g.player.model.external),
     externalMaterials: [...externalMaterials],
@@ -163,9 +188,10 @@ console.log('opening state:', openingState)
 if (openingState.mode !== 'playing' || openingState.quest !== 'ativa' || openingState.tracked !== 'principal-01') {
   throw new Error(`O aceite da missão inicial não persistiu: ${JSON.stringify(openingState)}`)
 }
-if (openingState.profile?.name !== 'Teste Eclipse' || openingState.profile.modelId !== 'Paladin' || openingState.profile.auraColor !== '#c094ff') {
+if (openingState.profile?.name !== 'Teste Eclipse' || openingState.profile.modelId !== 'Paladin') {
   throw new Error(`Perfil inicial deveria manter o Paladino escolhido: ${JSON.stringify(openingState.profile)}`)
 }
+if (openingState.playerAuraVisible) throw new Error('A aura do protagonista ainda está visível.')
 if (openingState.armorEquipped || openingState.activeCampaigns !== 1 || !openingState.storyFlags.includes('iara-intro')
   || !openingState.externalModelLoaded || !openingState.externalMaterials.includes('Shirt') || !openingState.externalMaterials.includes('Pants')) {
   throw new Error('A campanha não começou com uma identidade única, sem armadura e com a introdução marcada.')
@@ -387,6 +413,9 @@ if (deleteMessages !== 2 || await page.evaluate(() => JSON.stringify(window.__ec
   throw new Error('Excluir o save alterou configurações ou deixou de pedir confirmação.')
 }
 await page.getByRole('button', { name: 'Criar personagem', exact: true }).click()
+await page.locator('.opening-intro').waitFor({ state: 'visible' })
+await page.getByRole('button', { name: 'Pular para criar personagem' }).click()
+await page.locator('.campaign-intro').waitFor({ state: 'visible' })
 await page.getByRole('button', { name: 'Iniciar campanha' }).click()
 await page.locator('[data-player-name]').fill('Nara Eclipse')
 await page.getByRole('button', { name: 'Confirmar e começar' }).click({ noWaitAfter: true })
@@ -503,6 +532,9 @@ mobilePage.on('pageerror', error => {
 await mobilePage.goto(mobileUrl.toString(), { waitUntil: 'domcontentloaded' })
 await mobilePage.waitForFunction(() => window.__eclipse?.game, { timeout: 30000 })
 await mobilePage.getByRole('button', { name: 'Criar personagem', exact: true }).click()
+await mobilePage.locator('.opening-intro').waitFor({ state: 'visible' })
+await mobilePage.getByRole('button', { name: 'Pular para criar personagem' }).click()
+await mobilePage.locator('.campaign-intro').waitFor({ state: 'visible' })
 await mobilePage.getByRole('button', { name: 'Iniciar campanha' }).click()
 await mobilePage.locator('[data-player-name]').fill('Mobile Eclipse')
 await mobilePage.getByRole('button', { name: 'Confirmar e começar' }).click()

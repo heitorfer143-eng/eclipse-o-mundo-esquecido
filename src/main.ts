@@ -41,6 +41,7 @@ const WORLD_TEXTURE_ASSETS = {
   leaves: 'assets/textures/tree-leaves.webp',
   bark: HOUSE_TEXTURE_ASSETS.wood,
   stone: 'assets/textures/castle-stone.webp',
+  rock: HOUSE_TEXTURE_ASSETS.stone,
 } as const
 
 function createWorldSeed(): number {
@@ -173,7 +174,7 @@ async function boot(): Promise<void> {
         window.location.assign(next.toString())
         return
       }
-      startGame(false)
+      startGame(false, true, true)
     },
     onSettingsChanged: settings => {
       applyQuality(renderer, settings.quality)
@@ -190,6 +191,8 @@ async function boot(): Promise<void> {
     audio,
     save,
     onQuit: () => {
+      audio.stopOpening()
+      audio.stopMusic()
       game.toTitle()
       ui.showTitle()
       input.unlockPointer()
@@ -211,10 +214,15 @@ async function boot(): Promise<void> {
 
   let started = false
   let suppressAutomaticPauseUntil = 0
-  const startGame = (fresh: boolean, requestPointerLock = true): void => {
+  const startGame = (fresh: boolean, requestPointerLock = true, openingMusic = false): void => {
     audio.unlock()
-    audio.stopOpening()
-    audio.startMusic()
+    if (openingMusic) {
+      audio.stopMusic()
+      void audio.playOpening(`${import.meta.env.BASE_URL}assets/audio/eclipse-opening.mp3`, () => audio.startMusic())
+    } else {
+      audio.stopOpening()
+      audio.startMusic()
+    }
     started = true
     suppressAutomaticPauseUntil = performance.now() + 1800
     game.start(fresh)
@@ -423,7 +431,7 @@ async function boot(): Promise<void> {
   else ui.showTitle()
   const localSmoke = window.location.hostname === '127.0.0.1' && new URLSearchParams(window.location.search).has('smoke')
   if (import.meta.env.DEV || localSmoke) {
-    ;(window as unknown as { __eclipse: unknown }).__eclipse = { game, ui, save, world, input, renderer, camera }
+    ;(window as unknown as { __eclipse: unknown }).__eclipse = { game, ui, save, world, input, renderer, camera, audio }
   }
 }
 

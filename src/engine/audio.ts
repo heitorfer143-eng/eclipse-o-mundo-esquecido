@@ -59,6 +59,10 @@ export class Audio {
     return buffer
   }
 
+  get openingPlaying(): boolean {
+    return Boolean(this.openingSource)
+  }
+
   playBuffer(buffer: AudioBuffer, bus: 'music' | 'sfx' = 'sfx', loop = false): AudioBufferSourceNode {
     const src = this.ctx.createBufferSource()
     src.buffer = buffer
@@ -68,13 +72,17 @@ export class Audio {
     return src
   }
 
-  async playOpening(url: string): Promise<void> {
+  async playOpening(url: string, onEnded?: () => void): Promise<void> {
     this.unlock()
     this.stopOpening(0)
     const request = ++this.openingRequest
     try {
       const buffer = await this.load(url)
-      if (request !== this.openingRequest || this.ctx.state !== 'running') return
+      if (request !== this.openingRequest) return
+      if (this.ctx.state !== 'running') {
+        onEnded?.()
+        return
+      }
       const source = this.ctx.createBufferSource()
       const gain = this.ctx.createGain()
       source.buffer = buffer
@@ -87,10 +95,12 @@ export class Audio {
         if (this.openingSource !== source) return
         this.openingSource = undefined
         this.openingGain = undefined
+        onEnded?.()
       }
       source.start()
     } catch (error) {
       console.warn('A trilha da introdução não pôde ser carregada:', error)
+      if (request === this.openingRequest) onEnded?.()
     }
   }
 

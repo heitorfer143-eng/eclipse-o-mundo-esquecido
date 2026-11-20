@@ -174,6 +174,7 @@ H poção · Tab inventário · K habilidades · M mapa · L missões · Esc pau
 - [x] Integrar Casual_Male como roupa civil inicial e Soldier_Male/Knight_Golden_Male como visuais armados do Soldado/Paladino, preservando a campanha única e acionando a troca pelo equipamento do inventário; aproveitar rig e clips Quaternius, registrar licença CC0 e validar typecheck, 48 testes, build e smoke desktop/mobile sem erros.
 
 ## NPCs Quaternius e abertura cinematográfica (20 nov 2026)
-- [x] Usar modelos locais Quaternius coerentes com o protagonista em todos os NPCs humanos, mantendo variação de pele, cabelo e roupa; civis em Casual_Male, guardas em Soldier_Male e Capitão Ronan em Knight_Golden_Male, sem aura em nenhum estado.
-- [x] Adicionar à tela inicial uma introdução cinematográfica com quatro quadros de lore, transições, opção de pular/voltar ao menu e trilha instrumental original integrada ao barramento de música do jogo, com fade ao sair e início compatível com o bloqueio de autoplay do navegador.
-- [x] Validar paletas e variantes Quaternius, ausência de aura inclusive durante conjuração, abertura e salto da introdução, campanha, modelos e navegação em browser; `pnpm typecheck`, 51 testes, `pnpm build` e smoke desktop/mobile sem erros de browser.
+- [x] Usar modelos locais Quaternius (Casual_Male, Soldier_Male, Knight_Golden_Male) e KayKit (Barbarian, Mage, Rogue, Rogue_Hooded) por papel de NPC, mantendo paletas próprias e guardas/capitão armados; remover a aura do protagonista e dos NPCs em todos os estados.
+- [x] Conduzir a nova campanha pela introdução cinematográfica de quatro quadros com trilha original, CTA para pular direto à criação e continuidade até o prólogo; iniciar a faixa pelo gesto do jogador e retomar a música ambiente ao fim.
+- [x] Aplicar a textura clara `stone-blocks.webp` às rochas separadamente das muralhas, mantendo UVs e tons legíveis; aumentar o spawn para 2–3 animais por chunk habitável.
+- [x] Validar modelos, aura, textura de rochas, fauna e fluxo da campanha; `pnpm typecheck`, 51 testes, `pnpm build` e smoke desktop/mobile sem erros de navegador.

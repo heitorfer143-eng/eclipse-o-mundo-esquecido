@@ -80,7 +80,7 @@ export type WildlifeAgent = {
   takeDamage: (amount: number) => { amount: number; killed: boolean }
 }
 
-export type ChunkTextureSet = { grass: THREE.Texture; leaves: THREE.Texture; bark: THREE.Texture; stone: THREE.Texture }
+export type ChunkTextureSet = { grass: THREE.Texture; leaves: THREE.Texture; bark: THREE.Texture; stone: THREE.Texture; rock: THREE.Texture }
 
 export function applyChunkTextures(textures: ChunkTextureSet): void {
   for (const texture of Object.values(textures)) {
@@ -92,7 +92,7 @@ export function applyChunkTextures(textures: ChunkTextureSet): void {
   grassMaterial.map = textures.grass
   treeFoliageMaterial.map = textures.leaves
   treeBarkMaterial.map = textures.bark
-  rockMaterial.map = textures.stone
+  rockMaterial.map = textures.rock
   terrainMaterial.needsUpdate = true
   grassMaterial.needsUpdate = true
   treeFoliageMaterial.needsUpdate = true
@@ -356,6 +356,7 @@ export class Chunk {
       buckets.forEach((list, index) => {
         if (!list.length) return
         const mesh = new THREE.InstancedMesh(variants[index], rockMaterial, list.length)
+        mesh.name = 'world-rocks'
         list.forEach((m, i) => mesh.setMatrixAt(i, m))
         mesh.castShadow = true
         mesh.receiveShadow = false
@@ -399,7 +400,7 @@ export class Chunk {
 
   private populateWildlife(group: THREE.Group, originX: number, originZ: number, random: () => number, centerHeight: number): void {
     if (centerHeight < SEA_LEVEL + 2) return
-    const count = 1 + Math.floor(random() * 2)
+    const count = 2 + Math.floor(random() * 2)
     for (let i = 0; i < count; i += 1) {
       const x = originX + 8 + random() * (CHUNK_SIZE - 16)
       const z = originZ + 8 + random() * (CHUNK_SIZE - 16)
