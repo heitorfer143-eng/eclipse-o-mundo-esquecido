@@ -9,7 +9,7 @@ import { Boss } from '../src/game/entities/boss'
 import { ENEMY_VISUAL_LIMITS, Enemy } from '../src/game/entities/enemy'
 import { pickEnemyFor } from '../src/game/entities/spawner'
 import { externalAnimationFor, type AnimState } from '../src/game/entities/character'
-import { resolveExternalClipName, type ExternalAnimation } from '../src/game/entities/externalModels'
+import { externalHumanoidUrlForModel, EXTERNAL_CHARACTER_URLS, resolveExternalClipName, type ExternalAnimation } from '../src/game/entities/externalModels'
 import { NPCS } from '../src/game/data/npcData'
 import { QUESTS, questById } from '../src/game/data/questData'
 import { DialogueRunner } from '../src/game/systems/dialogue'
@@ -521,5 +521,22 @@ describe('animações do protagonista', () => {
       ['fall', 'Jump_Idle'], ['block', 'Blocking'],
     ]
     for (const [mode, clip] of expectations) expect(resolveExternalClipName(mode, actualClips)).toBe(clip)
+  })
+})
+describe('seleção de modelos 3D de criaturas', () => {
+  it('usa modelos humanoides específicos e mantém criaturas não humanoides no modelo próprio', () => {
+    expect(externalHumanoidUrlForModel('cavaleiro')).toBe(EXTERNAL_CHARACTER_URLS.knight)
+    expect(externalHumanoidUrlForModel('esqueleto')).toBe(EXTERNAL_CHARACTER_URLS.mummy)
+    expect(externalHumanoidUrlForModel('mumia')).toBe(EXTERNAL_CHARACTER_URLS.mummy)
+    expect(externalHumanoidUrlForModel('goblin')).toBe(EXTERNAL_CHARACTER_URLS.orc)
+    expect(externalHumanoidUrlForModel('diabrete')).toBe(EXTERNAL_CHARACTER_URLS.orc)
+    expect(externalHumanoidUrlForModel('golem')).toBe(EXTERNAL_CHARACTER_URLS.brute)
+    expect(externalHumanoidUrlForModel('gigante')).toBe(EXTERNAL_CHARACTER_URLS.brute)
+    expect(externalHumanoidUrlForModel('troll')).toBe(EXTERNAL_CHARACTER_URLS.brute)
+    expect(externalHumanoidUrlForModel('espectro')).toBe(EXTERNAL_CHARACTER_URLS.ghost)
+    expect(externalHumanoidUrlForModel('yeti')).toBe(EXTERNAL_CHARACTER_URLS.werewolf)
+    expect(externalHumanoidUrlForModel('elemental')).toBe(EXTERNAL_CHARACTER_URLS.witch)
+    expect(externalHumanoidUrlForModel('dragao')).toBeUndefined()
+    expect(externalHumanoidUrlForModel('lobo')).toBeUndefined()
   })
 })
