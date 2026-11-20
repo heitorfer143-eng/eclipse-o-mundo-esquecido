@@ -150,11 +150,12 @@ export class ExternalCharacter {
 export function externalHumanoidUrlForModel(model: string): string | undefined {
   if (model === 'cavaleiro') return EXTERNAL_CHARACTER_URLS.knight
   if (model === 'esqueleto' || model === 'mumia') return EXTERNAL_CHARACTER_URLS.mummy
-  if (model === 'goblin' || model === 'diabrete') return EXTERNAL_CHARACTER_URLS.orc
-  if (model === 'golem' || model === 'gigante' || model === 'troll') return EXTERNAL_CHARACTER_URLS.brute
+  if (model === 'goblin') return EXTERNAL_CHARACTER_URLS.orc
+  if (model === 'diabrete') return EXTERNAL_CHARACTER_URLS.orcPyromancer
+  if (model === 'gigante' || model === 'troll') return EXTERNAL_CHARACTER_URLS.brute
   if (model === 'espectro') return EXTERNAL_CHARACTER_URLS.ghost
   if (model === 'yeti') return EXTERNAL_CHARACTER_URLS.werewolf
-  if (model === 'elemental') return EXTERNAL_CHARACTER_URLS.witch
+  if (model === 'elemental') return undefined
   return undefined
 }
 
@@ -168,8 +169,22 @@ export const EXTERNAL_CHARACTER_URLS = {
   king: 'https://gobkit.com/freebies/human003/King.glb',
   archer: 'https://gobkit.com/freebies/human003/Archer.glb',
   orc: 'https://gobkit.com/freebies/human006/OrcLegionary.glb',
+  orcShaman: 'https://gobkit.com/freebies/human006/OrcWarShaman.glb',
+  orcCommander: 'https://gobkit.com/freebies/human006/OrcLegionCommander.glb',
+  orcChampion: 'https://gobkit.com/freebies/human006/OrcWarbandChampion.glb',
+  orcShieldBearer: 'https://gobkit.com/freebies/human006/OrcShieldBearer.glb',
+  orcPyromancer: 'https://gobkit.com/freebies/human010/OrcPyromancer.glb',
   brute: 'https://gobkit.com/freebies/human010/OrcChainBrute.glb',
   knight: 'https://gobkit.com/freebies/human010/BloodironKnight.glb',
+  knightCaptain: 'https://gobkit.com/freebies/human003/KnightCaptain.glb',
+  juggernaut: 'https://gobkit.com/freebies/human010/BloodironJuggernaut.glb',
+  halberdier: 'https://gobkit.com/freebies/human010/BloodironHalberdier.glb',
+  grunt: 'https://gobkit.com/freebies/human010/BloodironGrunt.glb',
+  scout: 'https://gobkit.com/freebies/human003/Scout.glb',
+  priestess: 'https://gobkit.com/freebies/human003/Priestess.glb',
+  farmer: 'https://gobkit.com/freebies/human017/FarmHand.glb',
+  bartender: 'https://gobkit.com/freebies/human021/Bartender.glb',
+  witchDoctor: 'https://gobkit.com/freebies/human010/OrcPyromancer.glb',
   witch: 'https://gobkit.com/freebies/human011/NightWitch.glb',
   ghost: 'https://gobkit.com/freebies/human011/SheetGhost.glb',
   mummy: 'https://gobkit.com/freebies/human011/TombMummy.glb',
