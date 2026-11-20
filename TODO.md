@@ -128,7 +128,7 @@ H poção · Tab inventário · K habilidades · M mapa · L missões · Esc pau
 - [x] Auditar individualmente as 18 fontes indicadas, separando permissão de download, uso no jogo e redistribuição; manter fora do build arquivos pagos, restritos ou com termos ambíguos.
 - [x] Integrar somente assets úteis e compatíveis: três casas Shuriken incorporadas no jogo (não como pack autônomo) e fontes Cinzel/Alegreya SC com os avisos OFL; documentar créditos, papéis, animações estáticas e fallbacks.
 - [x] Validar typecheck, 37 testes, build/check-size, smoke desktop/mobile sem erros de navegador; confirmar GLBs de casas no cenário e entrada/retomada do interior.
-- [ ] Após o push, confirmar CI, deploy do GitHub Pages e resposta dos assets publicados.
+- [x] Confirmar workflow `Eclipse - Build e testes` concluído com sucesso no commit `0370d067f752f02d96361ddcdb427b0cf85600b2`, deployment `github-pages` para o mesmo SHA e HTTP 200 da página, bundles JS/CSS e três GLBs publicados.
 
 ## Próxima rodada: fechar e polir o primeiro ciclo (19 nov 2026)
 - [x] Confirmar que o commit `fcd572d` passou build/smoke e deploy do Pages; o bundle público `assets/index-fE5_OR4S.js` responde HTTP 200.
