@@ -261,6 +261,10 @@ export class PoiManager {
     return this.loaded.get(id)?.spots
   }
 
+  collidersOf(id: string): readonly Collider[] {
+    return this.loaded.get(id)?.colliders ?? []
+  }
+
   /** Closest entry among currently loaded buildings; doors participate in the normal E interaction. */
   nearestHouseDoor(x: number, z: number, maxDistance = 3.1): HouseDoor | null {
     let best: HouseDoor | null = null

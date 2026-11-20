@@ -143,3 +143,7 @@ H poção · Tab inventário · K habilidades · M mapa · L missões · Esc pau
 - [x] Quando não houver missão principal rastreada, indicar no HUD/mapa o próximo capítulo principal habilitado pela cadeia de pré-requisitos.
 - [x] Conferir em smoke visual os modelos 3D de casas em Brumal/Aster e validar abertura/retomada do interior; testes cobrem papéis cottage/taverna/ferreiro e realocação da forja com NPC/estação alinhados.
 - [x] Verificar que a indicação do próximo capítulo respeita pré-requisitos, nomeia Aster após a etapa inicial e mostra preparação de nível quando aplicável.
+
+## Texturas e navegação de NPCs (20 nov 2026)
+- [x] Aplicar mapas leves de madeira, pedra, reboco e telhas aos materiais sem textura dos GLBs Shuriken; preservar mapas originais e fallbacks, gerar UVs ausentes e validar os quatro tipos em 2.352 materiais carregados no smoke mobile/desktop.
+- [x] Manter NPCs fora das casas ao iniciar e durante a rotina autônoma, usando exclusões por POI e colisores locais; validar caminhada simulada sem entrada em casa e confirmar no smoke que jogador ainda abre, retoma e sai do interior.

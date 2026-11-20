@@ -104,6 +104,45 @@ await page.waitForFunction(() => {
   window.__eclipse.game.world.pois.group.traverse(object => { if (object.name.startsWith('house-model-')) count += 1 })
   return count >= 7
 }, null, { timeout: 30000 })
+const houseTextureStatus = await page.evaluate(() => {
+  const categories = new Set()
+  let loadedMaps = 0
+  const houseRoots = []
+  window.__eclipse.game.world.pois.group.traverse(object => { if (object.name.startsWith('house-model-')) houseRoots.push(object) })
+  for (const root of houseRoots) root.traverse(object => {
+    if (!object.isMesh) return
+    const materials = Array.isArray(object.material) ? object.material : [object.material]
+    for (const material of materials) {
+      const name = material.name.toLowerCase()
+      if (!material.map?.image?.width) continue
+      loadedMaps += 1
+      if (/thatch|roof|shingle|paintred|paintorange/.test(name)) categories.add('telhas')
+      else if (/wood|bark|timber/.test(name)) categories.add('madeira')
+      else if (/stone|soil|plinth|brick/.test(name)) categories.add('pedra')
+      else if (/cream|paint|plaster|wall/.test(name)) categories.add('reboco')
+    }
+  })
+  return { loadedMaps, categories: [...categories] }
+})
+console.log('house texture maps:', houseTextureStatus)
+if (houseTextureStatus.loadedMaps < 4 || ['madeira', 'pedra', 'reboco', 'telhas'].some(category => !houseTextureStatus.categories.includes(category))) {
+  throw new Error(`Os mapas de textura não foram aplicados às categorias dos GLBs: ${JSON.stringify(houseTextureStatus)}`)
+}
+const npcNavigation = await page.evaluate(() => {
+  const g = window.__eclipse.game
+  const npc = g.population.npcs.find(candidate => candidate.root.userData.poiId === 'vila-brumal')
+  const houses = g.world.pois.collidersOf('vila-brumal').filter(collider => collider.npcBlocking)
+  if (!npc || houses.length === 0) return { available: false }
+  const isInside = () => houses.some(collider => npc.position.x >= collider.minX && npc.position.x <= collider.maxX
+    && npc.position.z >= collider.minZ && npc.position.z <= collider.maxZ)
+  const startedInside = isInside()
+  for (let step = 0; step < 1200; step += 1) npc.update(0.1, { x: 10000, y: 0, z: 10000 }, false)
+  return { available: true, startedInside, endedInside: isInside() }
+})
+console.log('NPC house navigation:', npcNavigation)
+if (!npcNavigation.available || npcNavigation.startedInside || npcNavigation.endedInside) {
+  throw new Error(`A rotina autônoma colocou um NPC dentro de uma casa: ${JSON.stringify(npcNavigation)}`)
+}
 const houseEntry = await page.evaluate(() => {
   const g = window.__eclipse.game
   const door = g.world.nearestHouseDoor(g.player.position.x, g.player.position.z, 180)

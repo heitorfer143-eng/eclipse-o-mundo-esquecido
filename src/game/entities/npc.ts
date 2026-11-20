@@ -3,6 +3,7 @@ import type { NpcDef } from '../data/types'
 import { clamp, dampAngle } from '../core/math'
 import { CharacterModel, type Appearance } from './character'
 import { EXTERNAL_CHARACTER_URLS, HUMANOID_VISUAL_SCALE } from './externalModels'
+import { resolveCircle, type Collider } from '../world/collision'
 
 const ROLE_COLORS: Record<string, { cloth: string; accent: string; leather: string; skin: string; hair: string }> = {
   ferreiro: { cloth: '#5a4030', accent: '#8a6a45', leather: '#3a2a20', skin: '#c98f63', hair: '#3a2a24' },
@@ -41,7 +42,7 @@ export class Npc {
   private facing = 0
   private talking = false
 
-  constructor(def: NpcDef, x: number, z: number, groundY: number, facing = 0) {
+  constructor(def: NpcDef, x: number, z: number, groundY: number, facing = 0, private readonly colliders: readonly Collider[] = []) {
     this.def = def
     const palette = ROLE_COLORS[def.role] ?? ROLE_COLORS.campones
     const appearance: Partial<Appearance> = {
@@ -124,10 +125,26 @@ export class Npc {
       if (toTarget.length() > 0.6) {
         toTarget.normalize()
         const speed = this.def.routine === 'vigiar' ? 0.5 : 0.85
-        this.position.x += toTarget.x * speed * dt
-        this.position.z += toTarget.z * speed * dt
+        const previousX = this.position.x
+        const previousZ = this.position.z
+        let nextX = previousX + toTarget.x * speed * dt
+        let nextZ = previousZ + toTarget.z * speed * dt
+        let hitStructure = false
+        for (const collider of this.colliders) {
+          const resolved = resolveCircle(nextX, nextZ, 0.34, collider, this.position.y, this.position.y + 1.8, true)
+          if (!resolved) continue
+          nextX = resolved.x
+          nextZ = resolved.z
+          hitStructure = true
+        }
+        this.position.x = nextX
+        this.position.z = nextZ
+        if (hitStructure) {
+          this.target.copy(this.position)
+          this.wanderTimer = 1.5
+        }
         this.facing = dampAngle(this.facing, Math.atan2(-toTarget.x, -toTarget.z), 5, dt)
-        moving = true
+        moving = Math.hypot(this.position.x - previousX, this.position.z - previousZ) > 0.02
       }
     }
     this.root.position.copy(this.position)

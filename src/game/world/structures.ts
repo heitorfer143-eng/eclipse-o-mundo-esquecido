@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { mulberry32 } from '../core/rng'
 import type { BiomeId } from '../data/types'
-import type { BoxCollider, Collider } from './collision'
+import { colliderContains, type BoxCollider, type Collider } from './collision'
 import type { Terrain } from './terrain'
 
 export type MaterialKey =
@@ -161,8 +161,8 @@ export class StructureBuilder {
     this.addCollider(x - w / 2, x + w / 2, z - d / 2, z + d / 2, y + 0.08, y - 0.08, false, true)
   }
 
-  addCollider(minX: number, maxX: number, minZ: number, maxZ: number, top: number, bottom: number, blocking = true, solidTop = true): BoxCollider {
-    const collider: BoxCollider = { kind: 'box', minX, maxX, minZ, maxZ, top, bottom, blocking, solidTop }
+  addCollider(minX: number, maxX: number, minZ: number, maxZ: number, top: number, bottom: number, blocking = true, solidTop = true, npcBlocking = false): BoxCollider {
+    const collider: BoxCollider = { kind: 'box', minX, maxX, minZ, maxZ, top, bottom, blocking, solidTop, ...(npcBlocking ? { npcBlocking: true } : {}) }
     this.colliders.push(collider)
     return collider
   }
@@ -259,6 +259,8 @@ function house(b: StructureBuilder, x: number, z: number, y: number, w: number, 
     const corners = [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) => terrain.heightAt(x + sx * w * 0.42, z + sz * d * 0.42))
     y = corners.reduce((sum, value) => sum + value, 0) / corners.length
   }
+  // Doors remain usable by the player, but ambient NPCs must not wander through the doorway.
+  b.addCollider(x - w / 2, x + w / 2, z - d / 2, z + d / 2, y + h + 2.2, y - 0.2, false, false, true)
   const doorIndex = b.spots.houses.length + 1
   b.spots.houses.push({ id: `house-${doorIndex}`, x, z: z + d / 2 + 1.15, y })
   if (houseModels.length) {
@@ -308,6 +310,28 @@ function house(b: StructureBuilder, x: number, z: number, y: number, w: number, 
   b.addCollider(x - w / 2 - 0.5, x + w / 2 + 0.5, z - d / 2 - 0.5, z + d / 2 + 0.5, roofY + 0.5, roofY, true, true)
   b.box(x + w * 0.27, roofY + roofRise * 0.55, z - d * 0.08, 0.62, 1.5, 0.62, 'pedra-escura')
   return { x, z, y }
+}
+
+function keepNpcsOutsideHouses(b: StructureBuilder, terrain: Terrain): void {
+  const exclusion = b.colliders.filter((collider): collider is BoxCollider => collider.kind === 'box' && collider.npcBlocking === true)
+  if (!exclusion.length) return
+  for (const npc of b.spots.npcs) {
+    if (!exclusion.some(collider => colliderContains(collider, npc.x, npc.z))) continue
+    let placed = false
+    for (let radius = 1.5; radius <= 8 && !placed; radius += 0.5) {
+      for (let step = 0; step < 16; step += 1) {
+        const angle = (step / 16) * Math.PI * 2
+        const candidateX = npc.x + Math.cos(angle) * radius
+        const candidateZ = npc.z + Math.sin(angle) * radius
+        if (exclusion.some(collider => colliderContains(collider, candidateX, candidateZ))) continue
+        npc.x = candidateX
+        npc.z = candidateZ
+        npc.y = terrain.heightAt(candidateX, candidateZ)
+        placed = true
+        break
+      }
+    }
+  }
 }
 
 function fence(b: StructureBuilder, x1: number, z1: number, x2: number, z2: number, y: number): void {
@@ -433,8 +457,10 @@ export function buildVillage(terrain: Terrain, x: number, z: number, seed: numbe
     const hx = x + Math.cos(angle) * radius
     const hz = z + Math.sin(angle) * radius
     const hy = terrain.heightAt(hx, hz)
-    const home = house(b, hx, hz, hy, 5.5 + rng() * 2.5, 5 + rng() * 2, 3.2 + rng() * 0.9, rng, 'telhado', houseModels, 'cottage', terrain)
-    b.spots.npcs.push({ x: home.x + 2.6, z: home.z + 2.6, y: terrain.heightAt(home.x + 2.6, home.z + 2.6) })
+    house(b, hx, hz, hy, 5.5 + rng() * 2.5, 5 + rng() * 2, 3.2 + rng() * 0.9, rng, 'telhado', houseModels, 'cottage', terrain)
+    const entrance = b.spots.houses[b.spots.houses.length - 1]
+    const residentX = entrance.x + (i % 2 === 0 ? 1 : -1) * 1.05
+    b.spots.npcs.push({ x: residentX, z: entrance.z + 0.12, y: terrain.heightAt(residentX, entrance.z + 0.12) })
   }
   // Forge with an anvil and a crafting station.
   const fx = x + 13
@@ -492,6 +518,7 @@ export function buildVillage(terrain: Terrain, x: number, z: number, seed: numbe
   b.spots.npcs.push({ x: sx + 2.5, z: sz + 1, y: sy })
   b.spots.npcs.push({ x: x - 2, z: z + 4, y })
   b.spots.npcs.push({ x: x + 4, z: z - 3, y })
+  keepNpcsOutsideHouses(b, terrain)
   const group = b.build()
   group.name = name
   return { group, colliders: b.colliders, spots: b.spots }
@@ -586,6 +613,7 @@ export function buildCity(terrain: Terrain, x: number, z: number, seed: number, 
     const ez = z - 30 - rng() * 20
     b.spots.enemies.push({ x: ex, z: ez, y: terrain.heightAt(ex, ez) })
   }
+  keepNpcsOutsideHouses(b, terrain)
   const group = b.build()
   group.name = 'Aster'
   return { group, colliders: b.colliders, spots: b.spots }

@@ -8,6 +8,7 @@ import { Npc } from './npc'
 import type { Spawner } from './spawner'
 import { pickEnemyFor } from './spawner'
 import { rollChest, type LootDrop } from '../systems/loot'
+import { collidersNearPoint } from '../world/collision'
 
 export type Chest = {
   id: string
@@ -123,7 +124,8 @@ export class Population {
   }
 
   private placeNpc(def: NpcDef, x: number, z: number, y: number, poi: Poi): void {
-    const npc = new Npc(def, x, z, y, Math.random() * Math.PI * 2)
+    const nearbyColliders = collidersNearPoint(this.pois.collidersOf(poi.id), x, z, 6, [])
+    const npc = new Npc(def, x, z, y, Math.random() * Math.PI * 2, nearbyColliders)
     npc.root.userData.poiId = poi.id
     this.group.add(npc.root)
     this.npcs.push(npc)

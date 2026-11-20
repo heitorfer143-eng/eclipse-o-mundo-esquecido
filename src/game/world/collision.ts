@@ -22,12 +22,14 @@ export type BoxCollider = {
   solidTop?: boolean
   /** Blocks movement horizontally. */
   blocking?: boolean
+  /** Exclusion volume for ambient NPC navigation; never blocks the player. */
+  npcBlocking?: boolean
 }
 
 export type Collider = CircleCollider | BoxCollider
 
 /** Push a circle out of a collider; returns the corrected position (mutates nothing). */
-export function resolveCircle(px: number, pz: number, radius: number, collider: Collider, feetY: number, headY: number): { x: number; z: number } | null {
+export function resolveCircle(px: number, pz: number, radius: number, collider: Collider, feetY: number, headY: number, includeNpcOnly = false): { x: number; z: number } | null {
   if (collider.kind === 'circle') {
     const top = collider.top ?? 0
     if (top > 0 && feetY > top - 0.05) return null
@@ -40,7 +42,7 @@ export function resolveCircle(px: number, pz: number, radius: number, collider: 
     const push = (min - dist) / dist
     return { x: px + dx * push, z: pz + dz * push }
   }
-  if (collider.blocking === false) return null
+  if (collider.blocking === false && !(includeNpcOnly && collider.npcBlocking)) return null
   if (feetY > collider.top - 0.12 || headY < collider.bottom) return null
   const cx = Math.max(collider.minX, Math.min(px, collider.maxX))
   const cz = Math.max(collider.minZ, Math.min(pz, collider.maxZ))

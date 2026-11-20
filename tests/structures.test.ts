@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import { Terrain } from '../src/game/world/terrain'
 import { BIOME_LIST } from '../src/game/world/biomes'
-import { supportHeight } from '../src/game/world/collision'
+import { colliderContains, resolveCircle, supportHeight, type BoxCollider } from '../src/game/world/collision'
 import {
   buildCamp,
   buildCastle,
@@ -111,6 +111,18 @@ describe('arquitetura procedural do mundo', () => {
     expect(first.spots.houses.length).toBeGreaterThan(0)
     expect(first.spots.houses[0].id).toBe('house-1')
     expect([first.spots.houses[0].x, first.spots.houses[0].y, first.spots.houses[0].z].every(Number.isFinite)).toBe(true)
+    const npcOnlyVolumes = first.colliders.filter(collider => collider.kind === 'box' && collider.npcBlocking)
+    expect(npcOnlyVolumes.length).toBeGreaterThan(0)
+    for (const npc of first.spots.npcs) {
+      const overlap = npcOnlyVolumes.find(collider => colliderContains(collider, npc.x, npc.z))
+      expect(overlap, `NPC em (${npc.x}, ${npc.z}) dentro de ${JSON.stringify(overlap)}`).toBeUndefined()
+    }
+    const doorKeepOut = npcOnlyVolumes.find((collider): collider is BoxCollider => collider.kind === 'box')!
+    const insideDoor = { x: (doorKeepOut.minX + doorKeepOut.maxX) / 2, z: (doorKeepOut.minZ + doorKeepOut.maxZ) / 2 }
+    const feet = doorKeepOut.bottom + 0.1
+    const head = doorKeepOut.top - 0.1
+    expect(resolveCircle(insideDoor.x, insideDoor.z, 0.34, doorKeepOut, feet, head)).toBeNull()
+    expect(resolveCircle(insideDoor.x, insideDoor.z, 0.34, doorKeepOut, feet, head, true)).not.toBeNull()
     expect(first.spots.enemies).toHaveLength(3)
     expect(first.spots.chests[0]).toMatchObject({ x: X + 9, z: Z + 13, tier: 1 })
 
@@ -120,6 +132,10 @@ describe('arquitetura procedural do mundo', () => {
     expect(city.group.name).toBe('Aster')
     expect(city.spots.enemies).toHaveLength(4)
     expect(city.spots.portal).toBeDefined()
+    const cityNpcOnlyVolumes = city.colliders.filter(collider => collider.kind === 'box' && collider.npcBlocking)
+    for (const npc of city.spots.npcs) {
+      expect(cityNpcOnlyVolumes.some(collider => colliderContains(collider, npc.x, npc.z))).toBe(false)
+    }
     expect(castle.spots.boss).toBeDefined()
     expect(castle.spots.enemies).toHaveLength(5)
     expect(dungeon.spots.boss).toBeDefined()

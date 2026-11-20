@@ -8,6 +8,7 @@ import { CameraRig } from './game/camera'
 import { Game, type GameInput } from './game/game'
 import { questById } from './game/data/questData'
 import type { ElementId } from './game/data/types'
+import { applyHouseTextures, type HouseTextureSet } from './game/world/houseTextures'
 import { World } from './game/world/world'
 import { Ui } from './ui/ui'
 
@@ -27,6 +28,12 @@ const HOUSE_MODEL_ASSETS = [
   'assets/models/houses/low-poly-city-house-building-low.glb',
   'assets/models/houses/gable-house.glb',
 ]
+const HOUSE_TEXTURE_ASSETS = {
+  wood: 'assets/textures/houses/wood-planks.webp',
+  stone: 'assets/textures/houses/stone-blocks.webp',
+  plaster: 'assets/textures/houses/plaster.webp',
+  roof: 'assets/textures/houses/roof-shingles.webp',
+} as const
 
 function createWorldSeed(): number {
   const values = new Uint32Array(1)
@@ -90,7 +97,22 @@ async function boot(): Promise<void> {
         console.warn(`Casa externa indisponível; será usada a casa procedural: ${path}`, error)
         return null
       }))
-    const loadedModels = await Promise.all(housePromises)
+    const textureEntries = Object.entries(HOUSE_TEXTURE_ASSETS) as [keyof HouseTextureSet, string][]
+    const texturePromises = textureEntries.map(async ([key, path]) => {
+      try {
+        return [key, await assets.texture(`${import.meta.env.BASE_URL}${path}`, { repeat: 1 })] as const
+      } catch (error) {
+        console.warn(`Textura de casa indisponível; serão mantidos os materiais base: ${path}`, error)
+        return null
+      }
+    })
+    const [loadedModels, loadedTextures] = await Promise.all([Promise.all(housePromises), Promise.all(texturePromises)])
+    const textureSet = loadedTextures.every(entry => entry !== null)
+      ? Object.fromEntries(loadedTextures) as HouseTextureSet
+      : null
+    if (textureSet) {
+      for (const model of loadedModels.slice(0, 3)) if (model) applyHouseTextures(model, textureSet)
+    }
     houseModels = loadedModels
   } finally {
     stopAssetProgress()
