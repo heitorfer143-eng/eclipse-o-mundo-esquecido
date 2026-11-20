@@ -78,6 +78,19 @@ export class Npc {
     this.updateQuestMarkerVisibility(0)
   }
 
+  setHomePosition(position: THREE.Vector3, facing?: number): void {
+    this.home.copy(position)
+    this.position.copy(position)
+    this.target.copy(position)
+    this.root.position.copy(position)
+    this.scheduleKey = ''
+    this.wanderTimer = 2
+    if (facing !== undefined) {
+      this.facing = facing
+      this.root.rotation.y = facing
+    }
+  }
+
   setQuestMarker(kind: 'offer' | 'turnIn' | null): void {
     this.questMarkerKind = kind
     this.updateQuestMarkerVisibility(0)

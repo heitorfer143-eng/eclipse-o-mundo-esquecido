@@ -230,7 +230,16 @@ export class Game {
     this.onModeChange?.(this.mode)
     this.ui.toast(saved ? 'Aventura retomada' : 'Uma nova jornada começa', 'quest')
     this.saveGame(true)
-    if (shouldIntroduceIara && this.population.npcs.some(npc => npc.def.id === 'iara')) this.openNpcDialogue('iara')
+    const initialQuestGiver = shouldIntroduceIara ? this.population.npcs.find(npc => npc.def.id === 'iara') : undefined
+    if (initialQuestGiver) {
+      const approachDistance = 2
+      const facing = this.player.facing
+      const x = this.player.position.x - Math.sin(facing) * approachDistance
+      const z = this.player.position.z - Math.cos(facing) * approachDistance
+      const position = new THREE.Vector3(x, this.world.groundAt(x, z, this.player.position.y), z)
+      initialQuestGiver.setHomePosition(position, facing)
+      this.openNpcDialogue('iara')
+    }
   }
 
   pause(): void {
