@@ -381,7 +381,8 @@ if (deleteMessages !== 2 || await page.evaluate(() => JSON.stringify(window.__ec
 await page.getByRole('button', { name: 'Criar personagem', exact: true }).click()
 await page.getByRole('button', { name: 'Iniciar campanha' }).click()
 await page.locator('[data-player-name]').fill('Nara Eclipse')
-await page.getByRole('button', { name: 'Confirmar e começar' }).click()
+await page.getByRole('button', { name: 'Confirmar e começar' }).click({ noWaitAfter: true })
+await page.waitForFunction(() => new URL(window.location.href).searchParams.get('eclipseResume') === '1', null, { timeout: 15000 })
 await page.locator('.dialogue').waitFor({ state: 'visible', timeout: 45000 })
 const recreated = await page.evaluate(() => ({
   count: window.__eclipse.save.data.campaigns.length,
