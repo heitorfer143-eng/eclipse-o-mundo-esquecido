@@ -4,7 +4,7 @@ import { clamp, damp, dampAngle } from '../core/math'
 import { ELEMENTS, damageAfterDefense, elementalMultiplier } from '../combat/damage'
 import { buildEnemyVisual, disposeEnemyVisual, fitEnemyVisual, type EnemyVisual, type EnemyVisualBounds } from './enemyModels'
 import type { EnemyContext } from './enemy'
-import { ExternalCharacter, EXTERNAL_CHARACTER_URLS, HUMANOID_VISUAL_SCALE, type ExternalAnimation } from './externalModels'
+import { ExternalCharacter, EXTERNAL_CHARACTER_URLS, type ExternalAnimation } from './externalModels'
 
 export type BossEvent =
   | { type: 'aoe'; center: THREE.Vector3; radius: number; damage: number; element?: ElementId; name: string }
@@ -77,7 +77,7 @@ export class Boss {
       : def.model === 'yeti' ? EXTERNAL_CHARACTER_URLS.werewolf
       : def.model === 'elemental' ? EXTERNAL_CHARACTER_URLS.witch : undefined
     if (externalBossUrl) {
-      void ExternalCharacter.load(externalBossUrl, this.visual.height * HUMANOID_VISUAL_SCALE).then(model => {
+      void ExternalCharacter.load(externalBossUrl, this.visual.height).then(model => {
         if (this.finished) { model.dispose(); return }
         this.external = model
         this.visual.root.visible = false
