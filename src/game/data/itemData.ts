@@ -259,6 +259,9 @@ const CONSUMABLES: ItemDef[] = [
 ]
 
 const MATERIALS: ItemDef[] = [
+  { id: 'tool-machado', name: 'Machado de Lenhador', kind: 'material', rarity: 'comum', value: 25, description: 'Ferramenta de trabalho necessária para cortar madeira dos troncos.', stack: 1 },
+  { id: 'tool-picareta', name: 'Picareta de Ferro', kind: 'material', rarity: 'comum', value: 30, description: 'Ferramenta de trabalho necessária para extrair minério e pedra.', stack: 1 },
+  { id: 'mat-pedra', name: 'Pedra de Construção', kind: 'material', rarity: 'comum', value: 3, description: 'Pedra bruta coletada para construção e forja.', stack: 99 },
   { id: 'mat-ferro', name: 'Minério de Ferro', kind: 'material', rarity: 'comum', value: 8, description: 'A base de quase tudo que é forjado.', stack: 99 },
   { id: 'mat-prata', name: 'Minério de Prata', kind: 'material', rarity: 'incomum', value: 20, description: 'Brilha mesmo no fundo de uma caverna.', stack: 99 },
   { id: 'mat-mithril', name: 'Minério de Mithril', kind: 'material', rarity: 'raro', value: 55, description: 'Leve como madeira, duro como aço.', stack: 99 },

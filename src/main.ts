@@ -9,6 +9,8 @@ import { Game, type GameInput } from './game/game'
 import { questById } from './game/data/questData'
 import type { ElementId } from './game/data/types'
 import { applyHouseTextures, type HouseTextureSet } from './game/world/houseTextures'
+import { applyWorldTextures } from './game/world/worldTextures'
+import type { ChunkTextureSet } from './game/world/chunks'
 import { World } from './game/world/world'
 import { Ui } from './ui/ui'
 
@@ -33,6 +35,12 @@ const HOUSE_TEXTURE_ASSETS = {
   stone: 'assets/textures/houses/stone-blocks.webp',
   plaster: 'assets/textures/houses/plaster.webp',
   roof: 'assets/textures/houses/roof-shingles.webp',
+} as const
+const WORLD_TEXTURE_ASSETS = {
+  grass: 'assets/textures/world/grass-meadow.webp',
+  leaves: 'assets/textures/tree-leaves.webp',
+  bark: HOUSE_TEXTURE_ASSETS.wood,
+  stone: 'assets/textures/castle-stone.webp',
 } as const
 
 function createWorldSeed(): number {
@@ -106,12 +114,26 @@ async function boot(): Promise<void> {
         return null
       }
     })
-    const [loadedModels, loadedTextures] = await Promise.all([Promise.all(housePromises), Promise.all(texturePromises)])
+    const worldTextureEntries = Object.entries(WORLD_TEXTURE_ASSETS) as [keyof typeof WORLD_TEXTURE_ASSETS, string][]
+    const worldTexturePromises = worldTextureEntries.map(async ([key, path]) => {
+      try {
+        return [key, await assets.texture(`${import.meta.env.BASE_URL}${path}`, { repeat: 1 })] as const
+      } catch (error) {
+        console.warn(`Textura de mundo indisponível; será usado o material base: ${path}`, error)
+        return null
+      }
+    })
+    const [loadedModels, loadedTextures, loadedWorldTextures] = await Promise.all([
+      Promise.all(housePromises), Promise.all(texturePromises), Promise.all(worldTexturePromises),
+    ])
     const textureSet = loadedTextures.every(entry => entry !== null)
       ? Object.fromEntries(loadedTextures) as HouseTextureSet
       : null
     if (textureSet) {
       for (const model of loadedModels.slice(0, 3)) if (model) applyHouseTextures(model, textureSet)
+    }
+    if (loadedWorldTextures.every(entry => entry !== null)) {
+      applyWorldTextures(Object.fromEntries(loadedWorldTextures) as ChunkTextureSet)
     }
     houseModels = loadedModels
   } finally {

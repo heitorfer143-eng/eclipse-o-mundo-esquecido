@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import { CameraRig } from '../src/game/camera'
 import { parseSave, SAVE_KEY, SaveStore } from '../src/engine/save'
-import { DEFAULT_CHARACTER_PROFILE, isCharacterNameValid } from '../src/game/data/characterProfile'
+import { CHARACTER_OPTIONS, DEFAULT_CHARACTER_PROFILE, isCharacterNameValid, parseCharacterProfile } from '../src/game/data/characterProfile'
 import { BOSSES } from '../src/game/data/bossData'
 import { ENEMIES } from '../src/game/data/enemyData'
 import { Boss } from '../src/game/entities/boss'
 import { ENEMY_VISUAL_LIMITS, Enemy } from '../src/game/entities/enemy'
 import { pickEnemyFor } from '../src/game/entities/spawner'
 import { CharacterModel, externalAnimationFor, type AnimState } from '../src/game/entities/character'
+import { characterModelPathFor } from '../src/game/entities/characterAssets'
 import { externalHumanoidUrlForModel, EXTERNAL_CHARACTER_URLS, resolveExternalClipName, type ExternalAnimation } from '../src/game/entities/externalModels'
 import { NPCS } from '../src/game/data/npcData'
 import { itemById } from '../src/game/data/itemData'
@@ -21,6 +22,9 @@ import { Terrain } from '../src/game/world/terrain'
 import { buildVillage } from '../src/game/world/structures'
 import { createHouseInterior } from '../src/game/world/interior'
 import { resolveAnimalClipName } from '../src/game/world/chunks'
+import { grassGeometry, rockGeometry, treeGeometries } from '../src/game/world/props'
+import { ABILITIES, abilityUnlocked, ELEMENTAL_MASTERY_LEVEL } from '../src/game/combat/abilities'
+import { shopFor } from '../src/game/systems/economy'
 
 const samplePoints = [
   [-1420, -930],
@@ -54,6 +58,13 @@ describe('mundo procedural', () => {
     expect(terrain.slopeAt(point!.x, point!.z)).toBeLessThanOrEqual(0.62)
     expect(point!.distance).toBeGreaterThanOrEqual(47.99)
   })
+
+  it('fornece UVs para grama, troncos, copas e rochas texturizadas', () => {
+    const tree = treeGeometries('carvalho')!
+    for (const geometry of [grassGeometry(), rockGeometry(0), tree.bark!, tree.foliage!]) {
+      expect(geometry.getAttribute('uv')?.count).toBe(geometry.getAttribute('position').count)
+    }
+  })
 })
 
 describe('interiores de casas', () => {
@@ -69,6 +80,45 @@ describe('interiores de casas', () => {
     expect(room.colliders.every(collider => collider.kind !== 'box' || Number.isFinite(collider.top))).toBe(true)
     room.dispose()
     expect(room.root.children).toHaveLength(0)
+  })
+})
+
+describe('progressão elemental e ferramentas', () => {
+  it('desbloqueia os três círculos nos níveis 1, 14 e 22 e reserva a maestria para o 40', () => {
+    expect(ABILITIES.filter(ability => ability.tier === 1).every(ability => ability.level === 1)).toBe(true)
+    expect(ABILITIES.filter(ability => ability.tier === 2).every(ability => ability.level === 14)).toBe(true)
+    expect(ABILITIES.filter(ability => ability.tier === 3).every(ability => ability.level === 22)).toBe(true)
+    expect(abilityUnlocked(ABILITIES.find(ability => ability.tier === 2)!, 13)).toBe(false)
+    expect(abilityUnlocked(ABILITIES.find(ability => ability.tier === 2)!, 14)).toBe(true)
+    expect(ELEMENTAL_MASTERY_LEVEL).toBe(40)
+  })
+
+  it('vende machado e picareta pelo sistema de inventário e ouro existente', () => {
+    const inventory = new Inventory()
+    inventory.gold = 500
+    const shop = shopFor('ferreiro')
+    expect(shop.buy('tool-machado', inventory, 1)).toBeNull()
+    expect(shop.buy('tool-picareta', inventory, 1)).toBeNull()
+    expect(inventory.has('tool-machado')).toBe(true)
+    expect(inventory.has('tool-picareta')).toBe(true)
+    expect(itemById('mat-pedra')).toBeDefined()
+    expect(inventory.gold).toBeLessThan(500)
+  })
+})
+
+describe('classe e modelos do protagonista', () => {
+  it('oferece somente Soldado/Paladino e mantém o Survivor apenas em saves antigos', () => {
+    expect(CHARACTER_OPTIONS.map(option => option.id)).toEqual(['Soldier', 'Paladin'])
+    expect(DEFAULT_CHARACTER_PROFILE.modelId).toBe('Soldier')
+    expect(parseCharacterProfile({ modelId: 'Survivor' }).modelId).toBe('Survivor')
+    expect(characterModelPathFor('Survivor')).toBeNull()
+  })
+
+  it('usa roupa civil no início e o modelo armado correspondente ao equipar armadura', () => {
+    expect(characterModelPathFor('Soldier')).toBe('assets/models/quaternius/characters/Casual_Male.gltf')
+    expect(characterModelPathFor('Soldier', true)).toBe('assets/models/quaternius/characters/Soldier_Male.gltf')
+    expect(characterModelPathFor('Paladin')).toBe('assets/models/quaternius/characters/Casual_Male.gltf')
+    expect(characterModelPathFor('Paladin', true)).toBe('assets/models/quaternius/characters/Knight_Golden_Male.gltf')
   })
 })
 
@@ -119,7 +169,7 @@ describe('salvamento local', () => {
     expect(legacy.profile).toEqual(DEFAULT_CHARACTER_PROFILE)
 
     const store = new SaveStore(storage)
-    store.updateProfile({ name: 'Eira da Lua', modelId: 'Rogue_Hooded', auraColor: '#c094ff' })
+    store.updateProfile({ name: 'Eira da Lua', modelId: 'Rogue_Hooded', auraColor: '#c094ff' , element: 'fogo' as const })
     store.saveGame({
       seed: 7, position: [0, 40, 800], facing: 0, playtime: 0, timeOfDay: 0.32,
       progression: { level: 1, xp: 0, attributePoints: 0, skillPoints: 0, attributes: {} },
@@ -128,14 +178,14 @@ describe('salvamento local', () => {
       deaths: 0, kills: 0, createdAt: 1, updatedAt: 1,
     })
     const restored = new SaveStore(storage)
-    expect(restored.data.profile).toEqual({ name: 'Eira da Lua', modelId: 'Rogue_Hooded', auraColor: '#c094ff' })
+    expect(restored.data.profile).toEqual({ name: 'Eira da Lua', modelId: 'Rogue_Hooded', auraColor: '#c094ff' , element: 'fogo' as const })
     restored.clearGame()
     expect(new SaveStore(storage).data.game).toBeNull()
-    expect(new SaveStore(storage).data.profile).toEqual({ name: 'Eira da Lua', modelId: 'Rogue_Hooded', auraColor: '#c094ff' })
+    expect(new SaveStore(storage).data.profile).toEqual({ name: 'Eira da Lua', modelId: 'Rogue_Hooded', auraColor: '#c094ff' , element: 'fogo' as const })
     expect(isCharacterNameValid('Eira')).toBe(true)
     expect(isCharacterNameValid(' ')).toBe(false)
 
-    values.set(SAVE_KEY, JSON.stringify({ version: 2, game: null, profile: { modelId: '<script>', auraColor: 'url(javascript:alert(1))' } }))
+    values.set(SAVE_KEY, JSON.stringify({ version: 2, game: null, profile: { modelId: '<script>', auraColor: 'url(javascript:alert(1))' } , element: 'fogo' as const }))
     expect(new SaveStore(storage).data.profile).toEqual(DEFAULT_CHARACTER_PROFILE)
   })
   it('mantém uma única campanha e recusa criar outra ou mudar a identidade', () => {
@@ -146,9 +196,9 @@ describe('salvamento local', () => {
       removeItem: (key: string) => { values.delete(key) },
     }
     const store = new SaveStore(storage)
-    const firstProfile = { name: 'Eira', modelId: 'Rogue_Hooded' as const, auraColor: '#c094ff' as const }
-    const secondProfile = { name: 'Tarin', modelId: 'Mage' as const, auraColor: '#ffcc70' as const }
-    const attemptedChange = { name: 'Eira nova', modelId: 'Barbarian' as const, auraColor: '#ff785f' as const }
+    const firstProfile = { name: 'Eira', modelId: 'Rogue_Hooded' as const, auraColor: '#c094ff' as const , element: 'fogo' as const }
+    const secondProfile = { name: 'Tarin', modelId: 'Mage' as const, auraColor: '#ffcc70' as const , element: 'fogo' as const }
+    const attemptedChange = { name: 'Eira nova', modelId: 'Barbarian' as const, auraColor: '#ff785f' as const , element: 'fogo' as const }
     const firstId = store.createCampaign(firstProfile, 11)!
     expect(store.updateProfile(attemptedChange)).toEqual(firstProfile)
     expect(store.updateCampaignProfile(firstId, attemptedChange)).toBeNull()
@@ -181,8 +231,8 @@ describe('salvamento local', () => {
     }
     const store = new SaveStore(storage)
     const settings = { ...store.data.settings }
-    const firstProfile = { name: 'Eira', modelId: 'Rogue_Hooded' as const, auraColor: '#c094ff' as const }
-    const secondProfile = { name: 'Tarin', modelId: 'Mage' as const, auraColor: '#ffcc70' as const }
+    const firstProfile = { name: 'Eira', modelId: 'Rogue_Hooded' as const, auraColor: '#c094ff' as const , element: 'fogo' as const }
+    const secondProfile = { name: 'Tarin', modelId: 'Mage' as const, auraColor: '#ffcc70' as const , element: 'fogo' as const }
     const firstId = store.createCampaign(firstProfile, 11)!
     store.saveGame({
       seed: 11, position: [4, 30, -8], facing: 0, playtime: 120, timeOfDay: 0.5,
@@ -216,8 +266,8 @@ describe('salvamento local', () => {
       removeItem: (key: string) => { values.delete(key) },
     }
     const store = new SaveStore(storage)
-    const id = store.createCampaign({ name: '', modelId: 'Knight', auraColor: '#7fe3ff' }, 33)!
-    const completed = { name: 'Nara', modelId: 'Rogue' as const, auraColor: '#8ee18a' as const }
+    const id = store.createCampaign({ name: '', modelId: 'Knight', auraColor: '#7fe3ff' , element: 'fogo' as const }, 33)!
+    const completed = { name: 'Nara', modelId: 'Rogue' as const, auraColor: '#8ee18a' as const , element: 'fogo' as const }
     expect(store.updateCampaignProfile(id, completed)).toEqual(completed)
     expect(store.updateCampaignProfile(id, { ...completed, name: 'Nara alterada' })).toBeNull()
     expect(store.activeCampaign?.profile).toEqual(completed)
@@ -611,6 +661,18 @@ describe('animações do protagonista', () => {
     for (const [mode, clip] of expectations) expect(resolveExternalClipName(mode, actualClips)).toBe(clip)
   })
 
+  it('resolve os clips Quaternius de movimento, combate e morte', () => {
+    const clips = ['Death', 'Defeat', 'Idle', 'Jump', 'PickUp', 'Punch', 'RecieveHit', 'Roll', 'Run', 'Run_Carry', 'Shoot_OneHanded', 'SitDown', 'StandUp', 'SwordSlash', 'Victory', 'Walk', 'Walk_Carry']
+    const expectations: [ExternalAnimation, string][] = [
+      ['idle', 'Idle'], ['walk', 'Walk'], ['run', 'Run'], ['attack', 'SwordSlash'],
+      ['attack-heavy', 'SwordSlash'], ['attack-thrust', 'SwordSlash'], ['attack-fast', 'Punch'],
+      ['attack-ranged', 'Shoot_OneHanded'], ['cast', 'Shoot_OneHanded'], ['hit', 'RecieveHit'],
+      ['death', 'Death'], ['dodge-forward', 'Roll'], ['dodge-backward', 'Roll'],
+      ['dodge-left', 'Roll'], ['dodge-right', 'Roll'], ['jump', 'Jump'],
+    ]
+    for (const [mode, clip] of expectations) expect(resolveExternalClipName(mode, clips)).toBe(clip)
+  })
+
   it('reconhece os clips nomeados dos personagens Gobkit sem quebrar os clips KayKit', () => {
     const clips = ['idle', 'walk', 'run', 'attack', 'dead', 'hit', 'special']
     expect(resolveExternalClipName('idle', clips)).toBe('idle')
@@ -629,6 +691,8 @@ describe('animações da fauna', () => {
     expect(resolveAnimalClipName('walk', actualClips)).toBe('Walking_A')
     expect(resolveAnimalClipName('run', actualClips)).toBe('Running_A')
     expect(resolveAnimalClipName('walk', ['Idle_A'])).toBeUndefined()
+    expect(resolveAnimalClipName('run', ['AnimalArmature|Gallop'])).toBe('AnimalArmature|Gallop')
+    expect(resolveAnimalClipName('death', ['AnimalArmature|Death'])).toBe('AnimalArmature|Death')
   })
 })
 describe('seleção de modelos 3D de criaturas', () => {

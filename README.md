@@ -21,6 +21,9 @@ algo no coração da Cicatriz está acordando. Você carrega a marca que pode fe
 - **30 tipos de criaturas** com oito comportamentos de IA (melee, investida, à distância, conjurador,
   voador, bruto, assassino, invocador) e **10 chefes** com três fases, telegrafias no chão e
   conjuntos de ataques próprios.
+- **12 animais Quaternius animados** por bioma (alpaca, touro, vaca, cervos, burro, raposa, cavalos,
+  husky, shiba e lobo): animações de repouso, caminhada, galope e morte; podem ser caçados e dão
+  carne, couro, XP e ouro usando o combate e a mochila existentes.
 - **Progressão completa**: níveis até 50, atributos, pontos de habilidade, inventário com 7
   equipamentos, 6 raridades, conjuntos com bônus, aprimoramento no ferreiro, lojas, coleta e
   crafting (forja, alquimia, cozinha, bancada).

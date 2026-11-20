@@ -258,14 +258,19 @@ export class CharacterModel {
   private externalMode: ExternalAnimation = 'idle'
   private externalActionTime = 0
   private externalUrl = ''
+  private selectedModelId: CharacterModelId = 'Survivor'
+  private equippedArmor = false
+  private equippedHelmet = false
+  private equippedBoots = false
   private externalRequest = 0
   private disposed = false
   private auraColor = '#7fe3ff'
   private survivorAppearance = false
   private armorStyle: ArmorVisualStyle = 'andarilho'
 
-  constructor(appearance: Partial<Appearance> = {}, externalUrl: string = EXTERNAL_CHARACTER_URLS.player, externalYaw = 0) {
+  constructor(appearance: Partial<Appearance> = {}, externalUrl: string = EXTERNAL_CHARACTER_URLS.player, externalYaw = 0, selectedModelId?: CharacterModelId) {
     this.appearance = { ...DEFAULT_APPEARANCE, ...appearance }
+    this.selectedModelId = selectedModelId ?? (externalUrl ? 'Knight' : 'Survivor')
     const skin = mat(this.appearance.skin, { roughness: 0.85 })
     this.skinMaterial = skin
     this.clothMaterial = mat(this.appearance.cloth, { roughness: 0.9 })
@@ -422,13 +427,14 @@ export class CharacterModel {
     }
   }
 
-  /** Swap a licensed model lazily; stale requests never replace the newest selection. */
+  /** Swap a licensed model lazily; new class profiles use their outfit/armor pair. */
   setKayKitModel(id: CharacterModelId): void {
+    this.selectedModelId = id
     if (id === 'Survivor') {
       this.setProceduralAppearance()
       return
     }
-    this.setExternalModelUrl(characterModelUrlFor(id), Math.PI)
+    this.setExternalModelUrl(characterModelUrlFor(id, this.equippedArmor), Math.PI)
   }
 
   private enableSurvivorAppearance(): void {
@@ -617,7 +623,15 @@ export class CharacterModel {
       this.weaponSlot.add(this.weapon)
     }
     this.applyArmorStyle(options.armorStyle)
-    const armorVisible = options.armor === true
+    const armorVisible = options.armor ?? this.equippedArmor
+    const helmetVisible = options.helmet ?? this.equippedHelmet
+    const bootsVisible = options.boots ?? this.equippedBoots
+    this.equippedArmor = armorVisible
+    this.equippedHelmet = helmetVisible
+    this.equippedBoots = bootsVisible
+    if (this.selectedModelId === 'Soldier' || this.selectedModelId === 'Paladin') {
+      this.setExternalModelUrl(characterModelUrlFor(this.selectedModelId, armorVisible), Math.PI)
+    }
     this.armorTorsoGroup.visible = armorVisible
     this.armorWaistGroup.visible = armorVisible
     this.forearmArmorL.visible = armorVisible
@@ -639,11 +653,11 @@ export class CharacterModel {
       this.helmet.add(visor, crest)
       this.head.add(this.helmet)
     }
-    this.helmet.visible = options.helmet === true
-    this.hairMesh.visible = options.helmet !== true
-    this.bootArmorL.visible = options.boots === true
-    this.bootArmorR.visible = options.boots === true
-    const bootMaterial = options.boots ? this.armorMaterial : this.survivorAppearance ? this.skinMaterial : this.leatherMaterial
+    this.helmet.visible = helmetVisible
+    this.hairMesh.visible = !helmetVisible
+    this.bootArmorL.visible = bootsVisible
+    this.bootArmorR.visible = bootsVisible
+    const bootMaterial = bootsVisible ? this.armorMaterial : this.survivorAppearance ? this.skinMaterial : this.leatherMaterial
     this.footL.material = bootMaterial
     this.footR.material = bootMaterial
     this.setAuraColor(options.auraColor ?? this.auraColor)

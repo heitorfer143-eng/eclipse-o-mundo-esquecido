@@ -15,6 +15,7 @@ export const SHOP_NAMES: Record<ShopId, string> = {
 
 const STOCK: Record<ShopId, string[]> = {
   ferreiro: [
+    'tool-machado', 'tool-picareta',
     'arma-espada-1', 'arma-espada-2', 'arma-espada-3', 'arma-espadao-2', 'arma-machado-2', 'arma-lanca-2', 'arma-adaga-2', 'arma-adaga-3',
     'armadura-andarilho', 'capacete-andarilho', 'botas-andarilho', 'armadura-sentinela', 'capacete-sentinela', 'botas-sentinela',
     'mat-ferro', 'mat-prata', 'mat-madeira', 'mat-couro',

@@ -55,7 +55,7 @@ export type Spots = {
   enemies: { x: number; z: number; y: number }[]
   houses: { id: string; x: number; z: number; y: number }[]
   braziers: { x: number; z: number; y: number }[]
-  resources: { x: number; z: number; y: number; kind: 'ferro' | 'prata' | 'mithril' | 'erva' | 'madeira' | 'pesca' | 'cristal' }[]
+  resources: { x: number; z: number; y: number; kind: 'ferro' | 'prata' | 'mithril' | 'erva' | 'madeira' | 'pesca' | 'cristal' | 'pedra' }[]
   stations: { x: number; z: number; y: number; kind: 'forja' | 'alquimia' | 'fogueira' | 'bancada' }[]
   boss?: { x: number; z: number; y: number }
   portal?: { x: number; z: number; y: number }
@@ -240,7 +240,7 @@ function house(b: StructureBuilder, x: number, z: number, y: number, w: number, 
   // Retain the three historical random draws so mob/resource coordinates after buildings stay unchanged.
   const rolls = [rng(), rng(), rng()]
   if (terrain) {
-    // Buildings are rigid; pick the nearest flatter patch and seat them on the local mean ground.
+    // Buildings are rigid; pick a flat patch and keep the entire footprint above the ground.
     const candidates = [{ x, z }, ...Array.from({ length: 8 }, (_, i) => {
       const angle = i * Math.PI / 4
       return { x: x + Math.cos(angle) * 4, z: z + Math.sin(angle) * 4 }
@@ -256,8 +256,16 @@ function house(b: StructureBuilder, x: number, z: number, y: number, w: number, 
     }
     x = best.x
     z = best.z
-    const corners = [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) => terrain.heightAt(x + sx * w * 0.42, z + sz * d * 0.42))
-    y = corners.reduce((sum, value) => sum + value, 0) / corners.length
+    const corners = [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) => ({
+      x: x + sx * w * 0.42,
+      z: z + sz * d * 0.42,
+      y: terrain.heightAt(x + sx * w * 0.42, z + sz * d * 0.42),
+    }))
+    y = Math.max(...corners.map(corner => corner.y)) + 0.06
+    for (const corner of corners) {
+      const supportHeight = y - corner.y
+      if (supportHeight > 0.25) b.cylinder(corner.x, corner.y + supportHeight / 2, corner.z, 0.24, supportHeight, 'pedra-escura', 6)
+    }
   }
   // Doors remain usable by the player, but ambient NPCs must not wander through the doorway.
   b.addCollider(x - w / 2, x + w / 2, z - d / 2, z + d / 2, y + h + 2.2, y - 0.2, false, false, true)
@@ -515,6 +523,7 @@ export function buildVillage(terrain: Terrain, x: number, z: number, seed: numbe
   b.spots.resources.push({ x: x - 16, z: z + 8, y: terrain.heightAt(x - 16, z + 8), kind: 'erva' })
   b.spots.resources.push({ x: x + 18, z: z + 16, y: terrain.heightAt(x + 18, z + 16), kind: 'madeira' })
   b.spots.resources.push({ x: x - 16, z: z - 16, y: terrain.heightAt(x - 16, z - 16), kind: 'ferro' })
+  b.spots.resources.push({ x: x - 11, z: z - 18, y: terrain.heightAt(x - 11, z - 18), kind: 'pedra' })
   b.spots.npcs.push({ x: sx + 2.5, z: sz + 1, y: sy })
   b.spots.npcs.push({ x: x - 2, z: z + 4, y })
   b.spots.npcs.push({ x: x + 4, z: z - 3, y })
@@ -607,6 +616,7 @@ export function buildCity(terrain: Terrain, x: number, z: number, seed: number, 
   b.spots.chests.push({ x: x - 8, z: z - 16, y: terrain.heightAt(x - 8, z - 16), tier: 3 })
   b.spots.resources.push({ x: x + 30, z: z + 18, y: terrain.heightAt(x + 30, z + 18), kind: 'madeira' })
   b.spots.resources.push({ x: x - 32, z: z + 22, y: terrain.heightAt(x - 32, z + 22), kind: 'ferro' })
+  b.spots.resources.push({ x: x - 26, z: z + 25, y: terrain.heightAt(x - 26, z + 25), kind: 'pedra' })
   footpath(b, terrain, x, z + size, x, z + 8, 3.4, 3.4)
   for (let i = 0; i < 4; i += 1) {
     const ex = x + 40 + rng() * 20

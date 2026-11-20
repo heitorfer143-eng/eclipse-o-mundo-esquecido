@@ -155,5 +155,20 @@ H poção · Tab inventário · K habilidades · M mapa · L missões · Esc pau
 - [x] Contar mortes de lobos sombrios em objetivos ativos, atualizar o diário e os marcadores de NPC e persistir o progresso do abate; validar um lobo real no smoke.
 - [x] Passar `pnpm typecheck`, 42 testes, `pnpm build` e o smoke desktop/mobile sem erros de navegador.
 
-## Texturas do mundo (pendente)
-- [ ] Integrar ao terreno, árvores e castelo as imagens existentes `public/assets/textures/world/grass-meadow.png`, `public/assets/textures/tree-leaves.png` e `public/assets/textures/castle-stone.png`, mantendo desempenho mobile e fallbacks; obter ou criar textura de casca de árvore antes de marcá-la pronta (`tree-bark.png` não foi produzida).
+## Texturas do mundo
+- [x] Aplicar grama ao terreno e às touceiras, folhas à copa, madeira ao tronco e pedra às rochas/estruturas; criar UVs ausentes e manter fallback de materiais.
+- [x] Otimizar as três imagens originais em WebP sem sobrescrever os PNGs: grama, folhas e pedra ficam em torno de 161–273 KB cada; reaproveitar a textura de madeira já existente para casca.
+
+## Fauna, especialização, coleta e acabamento visual (20 nov 2026)
+- [x] Remover inimigos finalizados antes de verificar o limite de população e repor guardas de POI em cerca de 22 segundos, removendo-os ao descarregar a área.
+- [x] Texturizar terreno, touceiras, árvores, rochas e materiais de estruturas; otimizar mapas para WebP e preservar os PNGs originais.
+- [x] Fixar o elemento escolhido na criação da campanha única, ocultar os outros elementos e bloquear troca; habilidades nos níveis 1, 14 e 22 e +20% de poder mágico como maestria no nível 40.
+- [x] Elevar as casas pela maior altura da fundação e usar apoios de pedra nos cantos baixos para reduzir paredes enterradas.
+- [x] Permitir caçar cervos, javalis, cavalos, vacas e outras espécies; conceder carne, couro, XP e ouro, com retorno dos animais após intervalo.
+- [x] Vender machado e picareta no ferreiro, exigir a ferramenta correta para madeira/minérios/pedra e reutilizar o inventário e ouro existentes.
+- [x] Corrigir a prioridade visual do diálogo sobre o HUD, para manter as opções de missão clicáveis durante conversas.
+
+## Modelos Quaternius indicados (20 nov 2026)
+- [x] Integrar localmente os 12 animais do Ultimate Animated Animal Pack; selecionar espécies conforme bioma, mapear clips reais de repouso/caminhada/galope/morte e manter caça, recompensas, inventário e respawn existentes.
+- [x] Registrar a procedência e a licença CC0 específica dos modelos animais e validar os 12 arquivos e clips em testes.
+- [x] Integrar Casual_Male como roupa civil inicial e Soldier_Male/Knight_Golden_Male como visuais armados do Soldado/Paladino, preservando a campanha única e acionando a troca pelo equipamento do inventário; aproveitar rig e clips Quaternius, registrar licença CC0 e validar typecheck, 48 testes, build e smoke desktop/mobile sem erros.

@@ -411,7 +411,11 @@ export class Hud {
   private renderAbilities(snapshot: HudSnapshot): void {
     this.abilitiesEl.innerHTML = ''
     for (const element of ELEMENT_ORDER) {
-      ;(this.elementsEl.children[ELEMENT_ORDER.indexOf(element)] as HTMLElement).classList.toggle('active', element === snapshot.element)
+      const button = this.elementsEl.children[ELEMENT_ORDER.indexOf(element)] as HTMLButtonElement
+      button.style.display = element === snapshot.element ? 'flex' : 'none'
+      button.classList.toggle('active', element === snapshot.element)
+      button.setAttribute('aria-pressed', String(element === snapshot.element))
+      button.querySelector('.element__key')?.remove()
     }
     snapshot.abilities.forEach((ability, index) => {
       const button = document.createElement('button')

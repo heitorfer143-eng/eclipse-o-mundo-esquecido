@@ -18,7 +18,7 @@ import { Spawner } from './entities/spawner'
 import type { CharacterProfile } from './data/characterProfile'
 import { Effects } from './combat/effects'
 import { Projectiles } from './combat/projectiles'
-import { abilityUnlocked, abilitiesFor, type AbilityDef } from './combat/abilities'
+import { abilityUnlocked, abilitiesFor, ELEMENTAL_MASTERY_LEVEL, type AbilityDef } from './combat/abilities'
 import { ELEMENTS, criticalDamage, rollCritical } from './combat/damage'
 import { weaponProfile } from './combat/weapons'
 import { Inventory } from './systems/inventory'
@@ -32,6 +32,7 @@ import { BIOMES } from './world/biomes'
 import type { HouseDoor, Poi } from './world/poi'
 import type { BiomeWaypoint } from './world/terrain'
 import type { World } from './world/world'
+import type { WildlifeAgent } from './world/chunks'
 import { createHouseInterior } from './world/interior'
 import type { Ui } from '../ui/ui'
 import type { HudAbility, HudPoi, HudSnapshot } from '../ui/hud'
@@ -308,6 +309,9 @@ export class Game {
       enemy.render(sim, this.camera.camera)
       if (enemy.alive) this.frameEnemies.push(this.enemyTarget(enemy))
     }
+    for (const animal of this.world.chunks.wildlifeAgents()) {
+      if (!animal.dead) this.frameEnemies.push(this.wildlifeTarget(animal))
+    }
     if (this.boss) {
       const events: BossEvent[] = []
       this.boss.update(sim, ctx, events)
@@ -515,6 +519,16 @@ export class Game {
     }
   }
 
+  private wildlifeTarget(animal: WildlifeAgent): CombatTarget {
+    return {
+      position: animal.worldPosition,
+      radius: animal.radius,
+      height: animal.height,
+      alive: !animal.dead,
+      takeDamage: (amount, options) => ({ ...animal.takeDamage(amount), crit: Boolean(options?.crit) }),
+    }
+  }
+
   private asProjectileTarget(target: CombatTarget): { position: THREE.Vector3; radius: number; height: number; alive: boolean; takeDamage: (amount: number, element?: ElementId, crit?: boolean, from?: THREE.Vector3) => void; source: CombatTarget } {
     return {
       position: target.position,
@@ -544,8 +558,34 @@ export class Game {
       this.onBossDeath(this.boss)
       return
     }
+    const animal = this.world.chunks.wildlifeAgents().find(entry => entry.worldPosition === target.position)
+    if (animal) {
+      this.onWildlifeDeath(animal)
+      return
+    }
     const enemy = this.spawner.enemies.find(entry => entry.position === target.position)
     if (enemy) this.onEnemyDeath(enemy)
+  }
+
+  private onWildlifeDeath(animal: WildlifeAgent): void {
+    if (animal.counted) return
+    animal.counted = true
+    this.kills += 1
+    this.player.kills = this.kills
+    const largeAnimal = ['touro', 'vaca', 'burro', 'cavalo', 'cavalo-branco', 'cervo-real'].includes(animal.id)
+    const xp = largeAnimal ? 12 : animal.id === 'cervo' || animal.id === 'lobo' ? 8 : 4
+    const gold = largeAnimal ? 5 : animal.id === 'lobo' ? 4 : 2
+    const dropCount = largeAnimal ? 2 : 1
+    this.grantXp(xp)
+    this.inventory.gold += gold
+    this.giveLoot([
+      { itemId: 'comida-carne', count: dropCount },
+      { itemId: 'mat-couro', count: dropCount },
+    ])
+    this.audio.play('death')
+    this.ui.toast(`${animal.name} abatido: +${xp} XP · +${gold} ouro`, 'info')
+    this.quests.syncInventory(this.inventory)
+    this.checkQuestReady()
   }
 
   private onEnemyEvent(event: EnemyEvent, enemy: Enemy): void {
@@ -711,6 +751,10 @@ export class Game {
     this.effects.levelUp(this.player.position)
     this.audio.play('levelup')
     this.ui.toast(`Nível ${this.progression.level}! +5 pontos de atributo, +1 de habilidade`, 'level')
+    const previousLevel = this.progression.level - levels
+    if (previousLevel < 14 && this.progression.level >= 14) this.ui.toast('Nível 14: habilidades de segundo círculo desbloqueadas.', 'level')
+    if (previousLevel < 22 && this.progression.level >= 22) this.ui.toast('Nível 22: habilidades de terceiro círculo desbloqueadas.', 'level')
+    if (previousLevel < ELEMENTAL_MASTERY_LEVEL && this.progression.level >= ELEMENTAL_MASTERY_LEVEL) this.ui.toast('Nível 40: Maestria Elemental — +20% de poder mágico.', 'level')
     this.quests.progress('nivel', String(this.progression.level))
   }
 
@@ -786,9 +830,11 @@ export class Game {
 
   selectElement(element: ElementId): void {
     if (this.mode !== 'playing') return
-    this.player.setElement(element)
-    this.audio.play('ui')
-    this.ui.toast(`Elemento: ${ELEMENTS[element].name}`, 'info')
+    if (element !== this.player.element) {
+      this.ui.toast(`Sua campanha está vinculada a ${ELEMENTS[this.player.element].name}; esse elemento não pode ser trocado.`, 'warn')
+      return
+    }
+    this.ui.toast(`Elemento da campanha: ${ELEMENTS[this.player.element].name}`, 'info')
   }
 
   castAbility(index: number): void {
@@ -805,7 +851,8 @@ export class Game {
     this.audio.play(ability.element === 'fogo' ? 'fire' : ability.element === 'gelo' ? 'ice' : ability.element === 'raio' ? 'lightning' : 'cast')
     const stats = this.player.effective
     const effects = this.skills.effects()
-    const power = stats.spellPower * ability.power * (1 + effects.magicDamage) * (1 + effects.manaBonus * 0)
+    const mastery = this.progression.level >= ELEMENTAL_MASTERY_LEVEL ? 1.2 : 1
+    const power = stats.spellPower * ability.power * (1 + effects.magicDamage) * mastery * (1 + effects.manaBonus * 0)
     const color = ELEMENTS[ability.element].color
     const direction = this.aimDirection()
     const origin = this.player.position.clone().setY(this.player.position.y + 1.3)
@@ -878,6 +925,12 @@ export class Game {
       if (status) enemy.applyStatus(status as Parameters<Enemy['applyStatus']>[0], statusSeconds, 1)
       this.ui.popDamage(enemy.position.clone().setY(enemy.position.y + enemy.height), String(result.amount), 'magic')
       if (result.killed) this.onEnemyDeath(enemy)
+    }
+    for (const animal of this.world.chunks.wildlifeAgents()) {
+      if (animal.dead || animal.worldPosition.distanceTo(center) > radius + animal.radius) continue
+      const result = animal.takeDamage(damage)
+      this.ui.popDamage(animal.worldPosition.clone().setY(animal.worldPosition.y + animal.height), String(result.amount), 'magic')
+      if (result.killed) this.onWildlifeDeath(animal)
     }
     if (this.boss && !this.boss.dead) {
       const distance = this.boss.position.distanceTo(center)
@@ -996,6 +1049,17 @@ export class Game {
       this.quests.progress('interagir', poiId)
       this.checkQuestReady()
     } else if (nearby.kind === 'resource') {
+      const requiredTool = nearby.node.kind === 'madeira'
+        ? 'tool-machado'
+        : ['ferro', 'prata', 'mithril', 'cristal', 'pedra'].includes(nearby.node.kind)
+          ? 'tool-picareta'
+          : undefined
+      if (requiredTool && !this.inventory.has(requiredTool)) {
+        this.ui.toast(requiredTool === 'tool-machado'
+          ? 'Você precisa de um machado. Compre um no ferreiro.'
+          : 'Você precisa de uma picareta. Compre uma no ferreiro.', 'warn')
+        return
+      }
       const gathered = this.population.gather(nearby.node)
       if (gathered) {
         const def = itemById(gathered.itemId)

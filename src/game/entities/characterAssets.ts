@@ -1,6 +1,6 @@
-import { ALL_CHARACTER_OPTIONS, type CharacterModelId, type LegacyCharacterModelId } from '../data/characterProfile'
+import { LEGACY_CHARACTER_OPTIONS, type CharacterModelId, type LegacyCharacterModelId } from '../data/characterProfile'
 
-export type KayKitCharacterId = LegacyCharacterModelId
+export type KayKitCharacterId = Exclude<LegacyCharacterModelId, 'Survivor'>
 
 const STORAGE_PATHS: Record<KayKitCharacterId, string> = {
   Barbarian: '/manus-storage/game/sha256/cefc311a0e10c7858b6141f5ada7e33268727564fb8ac1347aab97d000669cc6.glb',
@@ -18,14 +18,36 @@ const FILES: Record<KayKitCharacterId, string> = {
   Rogue_Hooded: 'Rogue_Hooded.glb',
 }
 
-export const KAYKIT_CHARACTER_IDS: readonly KayKitCharacterId[] = ALL_CHARACTER_OPTIONS
+export const KAYKIT_CHARACTER_IDS: readonly KayKitCharacterId[] = LEGACY_CHARACTER_OPTIONS
   .map(option => option.id)
   .filter((id): id is KayKitCharacterId => id !== 'Survivor')
 
-/** Resolve only bundled/allowlisted legacy models; Survivor deliberately uses the animated procedural rig. */
-export function characterModelUrlFor(id: CharacterModelId): string {
-  if (id === 'Survivor') return ''
-  const allowedId = KAYKIT_CHARACTER_IDS.includes(id) ? id : 'Knight'
+export const QUATERNIUS_CHARACTER_ASSETS = {
+  Soldier: {
+    starting: 'assets/models/quaternius/characters/Casual_Male.gltf',
+    armored: 'assets/models/quaternius/characters/Soldier_Male.gltf',
+  },
+  Paladin: {
+    starting: 'assets/models/quaternius/characters/Casual_Male.gltf',
+    armored: 'assets/models/quaternius/characters/Knight_Golden_Male.gltf',
+  },
+} as const
+
+/** Relative asset path for a profile. Legacy Survivor remains procedural; armor swaps only the new class look. */
+export function characterModelPathFor(id: CharacterModelId, armorEquipped = false): string | null {
+  if (id === 'Survivor') return null
+  if (id === 'Soldier' || id === 'Paladin') {
+    const assets = QUATERNIUS_CHARACTER_ASSETS[id]
+    return armorEquipped ? assets.armored : assets.starting
+  }
+  const allowedId = KAYKIT_CHARACTER_IDS.find(candidate => candidate === id) ?? 'Knight'
+  return `models/KayKitAdventurers/${FILES[allowedId]}`
+}
+
+/** Resolve bundled/allowlisted models without changing legacy saves or introducing remote runtime assets. */
+export function characterModelUrlFor(id: CharacterModelId, armorEquipped = false): string {
+  const path = characterModelPathFor(id, armorEquipped)
+  if (!path) return ''
   const host = typeof window === 'undefined' ? '' : window.location.hostname
   const isManusHost = host.endsWith('.manus.computer')
     || host.endsWith('.manuspre.computer')
@@ -33,7 +55,7 @@ export function characterModelUrlFor(id: CharacterModelId): string {
     || host.endsWith('.manusvm.computer')
     || host.endsWith('.manuscomputer.ai')
     || host.endsWith('.manus.game')
-  if (isManusHost) return STORAGE_PATHS[allowedId]
+  if (KAYKIT_CHARACTER_IDS.includes(id as KayKitCharacterId) && isManusHost) return STORAGE_PATHS[id as KayKitCharacterId]
   if (typeof document === 'undefined') throw new Error('O carregamento de personagens requer um navegador')
-  return new URL(`models/KayKitAdventurers/${FILES[allowedId]}`, document.baseURI).toString()
+  return new URL(path, document.baseURI).toString()
 }

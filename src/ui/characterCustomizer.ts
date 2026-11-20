@@ -1,6 +1,7 @@
 import {
   AURA_OPTIONS,
   CHARACTER_OPTIONS,
+  ELEMENT_OPTIONS,
   isCharacterNameValid,
   normalizeCharacterName,
   parseCharacterProfile,
@@ -107,23 +108,31 @@ export class CharacterCustomizer {
       <section class="character-customizer__panel">
         <header class="character-customizer__head">
           <div>
-            <div class="character-customizer__eyebrow">Aetherion · personagem da campanha</div>
+          <div class="character-customizer__eyebrow">Aetherion · identidade fixa da campanha</div>
             <h2 class="character-customizer__title" id="character-customizer-title">Criar personagem</h2>
           </div>
           <button class="character-customizer__close" data-close type="button" aria-label="Fechar personalização">✕</button>
         </header>
         <div class="character-customizer__body scroll">
-          <p class="character-customizer__intro">Escolha o nome e a aura do protagonista. A identidade ficará fixa; você começa como sobrevivente sem armadura e evolui explorando e fabricando equipamento.</p>
+          <p class="character-customizer__intro">Escolha o nome, a classe, o elemento e a aura. Você começa com roupa simples, sem armadura; a aparência armada surge quando conquistar e equipar uma armadura nesta campanha única.</p>
           <label class="character-customizer__section-title" for="campaign-player-name">Nome do jogador</label>
           <input class="character-customizer__name" id="campaign-player-name" data-player-name type="text" maxlength="24" autocomplete="nickname" placeholder="Digite o nome do personagem" required>
           <p class="character-customizer__preview" aria-live="polite">${selectedModel.label} selecionado. Sem armadura, capacete ou botas no início.</p>
-          <h3 class="character-customizer__section-title">Visual</h3>
+          <h3 class="character-customizer__section-title">Classe do protagonista · escolha única</h3>
           <div class="character-customizer__models" role="group" aria-label="Modelos de personagem">
             ${CHARACTER_OPTIONS.map(option => `
               <button class="character-choice" data-model="${option.id}" type="button" aria-pressed="${this.profile.modelId === option.id}">
                 <span class="character-choice__sigil" aria-hidden="true">✦</span>
                 <span class="character-choice__copy"><strong>${option.label}</strong><small>${option.description}</small></span>
                 <span class="character-choice__check" aria-hidden="true">${this.profile.modelId === option.id ? '✓' : ''}</span>
+              </button>`).join('')}
+          </div>
+          <h3 class="character-customizer__section-title">Elemento da campanha · escolha permanente</h3>
+          <div class="character-customizer__auras" role="group" aria-label="Elemento fixo da campanha">
+            ${ELEMENT_OPTIONS.map(option => `
+              <button class="aura-swatch" data-element="${option.id}" type="button" aria-label="Elemento ${option.label}" aria-pressed="${this.profile.element === option.id}">
+                <span class="aura-swatch__dot" style="--swatch:${option.color}" aria-hidden="true"></span>
+                <span>${option.label}</span>
               </button>`).join('')}
           </div>
           <h3 class="character-customizer__section-title">Cor da aura</h3>
@@ -158,6 +167,12 @@ export class CharacterCustomizer {
       button.addEventListener('click', () => {
         const auraColor = AURA_OPTIONS.find(option => option.id === button.dataset.aura)?.color
         if (auraColor) this.update({ auraColor })
+      })
+    })
+    this.root.querySelectorAll<HTMLButtonElement>('[data-element]').forEach(button => {
+      button.addEventListener('click', () => {
+        const element = ELEMENT_OPTIONS.find(option => option.id === button.dataset.element)?.id
+        if (element) this.update({ element })
       })
     })
     this.root.querySelectorAll<HTMLElement>('[data-close]').forEach(button => {

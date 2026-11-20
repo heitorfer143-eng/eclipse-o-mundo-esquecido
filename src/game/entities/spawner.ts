@@ -49,12 +49,23 @@ export class Spawner {
 
   add(spawn: EnemySpawn): Enemy {
     const enemy = new Enemy(spawn)
+    if (spawn.spawnId) enemy.root.userData.spawnId = spawn.spawnId
     this.scene.add(enemy.root)
     this.enemies.push(enemy)
     return enemy
   }
 
   update(dt: number, ctx: SpawnContext): void {
+    // Remove completed corpses before checking the cap; nearby bodies must not block respawn.
+    for (let i = this.enemies.length - 1; i >= 0; i -= 1) {
+      const enemy = this.enemies[i]
+      const distance = Math.hypot(enemy.position.x - ctx.playerPosition.x, enemy.position.z - ctx.playerPosition.z)
+      if (enemy.finished || (distance > 130 && (!enemy.aggro || enemy.dead))) {
+        enemy.dispose()
+        this.enemies.splice(i, 1)
+      }
+    }
+
     this.timer -= dt
     if (this.timer <= 0 && this.enemies.length < this.cap) {
       this.timer = 2.2 + Math.random() * 3
@@ -75,22 +86,21 @@ export class Spawner {
       }
     }
 
-    // Despawn far, non-aggro creatures to keep the scene lean.
-    for (let i = this.enemies.length - 1; i >= 0; i -= 1) {
-      const enemy = this.enemies[i]
-      if (enemy.aggro && !enemy.dead) continue
-      const distance = Math.hypot(enemy.position.x - ctx.playerPosition.x, enemy.position.z - ctx.playerPosition.z)
-      if (distance > 130 || (enemy.finished && distance > 40)) {
-        enemy.dispose()
-        this.enemies.splice(i, 1)
-      }
-    }
   }
 
   remove(enemy: Enemy): void {
     const index = this.enemies.indexOf(enemy)
     if (index >= 0) this.enemies.splice(index, 1)
     enemy.dispose()
+  }
+
+  hasSpawn(spawnId: string): boolean {
+    return this.enemies.some(enemy => enemy.root.userData.spawnId === spawnId)
+  }
+
+  removeSpawn(spawnId: string): void {
+    const enemy = this.enemies.find(entry => entry.root.userData.spawnId === spawnId)
+    if (enemy) this.remove(enemy)
   }
 
   clear(): void {

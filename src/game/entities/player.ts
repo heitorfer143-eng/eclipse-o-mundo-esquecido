@@ -125,7 +125,8 @@ export class Player {
   ) {
     this.stats = stats
     this.characterProfile = parseCharacterProfile(profile)
-    this.model = new CharacterModel(appearance, characterModelUrlFor(this.characterProfile.modelId), Math.PI)
+    this.element = this.characterProfile.element
+    this.model = new CharacterModel(appearance, characterModelUrlFor(this.characterProfile.modelId), Math.PI, this.characterProfile.modelId)
     this.model.setAuraColor(this.characterProfile.auraColor)
     this.root.add(this.model.root)
     this.position.copy(spawn)
@@ -192,7 +193,7 @@ export class Player {
   }
 
   setElement(element: ElementId): void {
-    this.element = element
+    if (element === this.characterProfile.element) this.element = element
   }
 
   cooldownLeft(id: string): number {

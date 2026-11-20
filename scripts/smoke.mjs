@@ -39,6 +39,8 @@ await page.getByRole('button', { name: 'Criar personagem', exact: true }).click(
 await page.locator('.campaign-intro').waitFor({ state: 'visible' })
 await page.getByRole('button', { name: 'Iniciar campanha' }).click()
 await page.locator('[data-player-name]').fill('Teste Eclipse')
+await page.locator('[data-model="Paladin"]').click()
+await page.locator('[data-element="gelo"]').click()
 await page.locator('[data-aura="arcano"]').click()
 await captureScreenshot(page, '02-character.png')
 await page.getByRole('button', { name: 'Confirmar e começar' }).click()
@@ -47,7 +49,44 @@ await captureScreenshot(page, '03-iara-dialogue.png')
 await page.getByRole('button', { name: 'Aceitar missão: O Despertar' }).click()
 await page.getByRole('button', { name: 'Encerrar conversa' }).click()
 await page.waitForFunction(() => window.__eclipse.game.mode === 'playing' && window.__eclipse.game.quests.tracked === 'principal-01')
+await page.waitForFunction(() => {
+  const external = window.__eclipse.game.player.model.external
+  let hasShirt = false
+  external?.root.traverse(object => {
+    if (!object.isMesh) return
+    const materials = Array.isArray(object.material) ? object.material : [object.material]
+    if (materials.some(material => material.name === 'Shirt')) hasShirt = true
+  })
+  return hasShirt
+}, null, { timeout: 30000 })
+if (await page.evaluate(() => window.__eclipse.game.player.element) !== 'gelo') throw new Error('element specialization did not persist to the campaign')
 await page.waitForTimeout(1000)
+
+await page.waitForFunction(() => window.__eclipse.game.world.chunks.wildlifeAgents().some(animal =>
+  animal.actions.idle && animal.actions.walk && animal.actions.run && animal.actions.death), null, { timeout: 30000 })
+const huntedAnimal = await page.evaluate(() => {
+  const g = window.__eclipse.game
+  const animal = g.world.chunks.wildlifeAgents().find(candidate => !candidate.dead
+    && candidate.actions.idle && candidate.actions.walk && candidate.actions.run && candidate.actions.death)
+  if (!animal) throw new Error('Nenhum animal Quaternius animado foi carregado.')
+  const before = {
+    meat: g.inventory.stacks.find(stack => stack.id === 'comida-carne')?.count ?? 0,
+    hide: g.inventory.stacks.find(stack => stack.id === 'mat-couro')?.count ?? 0,
+  }
+  g.damageArea(animal.worldPosition.clone(), 0, 100000, 'fogo')
+  return {
+    name: animal.name,
+    dead: animal.dead,
+    counted: animal.counted,
+    deathAnimation: animal.actions.death?.isRunning() ?? false,
+    meat: (g.inventory.stacks.find(stack => stack.id === 'comida-carne')?.count ?? 0) - before.meat,
+    hide: (g.inventory.stacks.find(stack => stack.id === 'mat-couro')?.count ?? 0) - before.hide,
+  }
+})
+console.log('Quaternius animal hunt:', huntedAnimal)
+if (!huntedAnimal.dead || !huntedAnimal.counted || !huntedAnimal.deathAnimation || huntedAnimal.meat < 1 || huntedAnimal.hide < 1) {
+  throw new Error(`A fauna não tocou morte/recompensas no combate existente: ${JSON.stringify(huntedAnimal)}`)
+}
 
 const lighting = await page.evaluate(() => {
   const g = window.__eclipse.game
@@ -87,6 +126,12 @@ const openingState = await page.evaluate(() => {
   const iara = g.population.npcs.find(npc => npc.def.id === 'iara')
   const profile = window.__eclipse.save.activeCampaign?.profile
   const equipment = g.inventory.equipment
+  const externalMaterials = new Set()
+  g.player.model.external?.root.traverse(object => {
+    if (!object.isMesh) return
+    const materials = Array.isArray(object.material) ? object.material : [object.material]
+    for (const material of materials) externalMaterials.add(material.name)
+  })
   const cameraBackX = Math.sin(g.player.facing)
   const cameraBackZ = Math.cos(g.player.facing)
   return {
@@ -102,6 +147,8 @@ const openingState = await page.evaluate(() => {
     storyFlags: g.save.data.game?.storyFlags ?? [],
     armorEquipped: Boolean(equipment.armadura || equipment.capacete || equipment.botas),
     visualGear: g.player.model.visibleGearState,
+    externalModelLoaded: Boolean(g.player.model.external),
+    externalMaterials: [...externalMaterials],
     activeCampaigns: g.save.data.campaigns.length,
   }
 })
@@ -109,39 +156,51 @@ console.log('opening state:', openingState)
 if (openingState.mode !== 'playing' || openingState.quest !== 'ativa' || openingState.tracked !== 'principal-01') {
   throw new Error(`O aceite da missão inicial não persistiu: ${JSON.stringify(openingState)}`)
 }
-if (openingState.profile?.name !== 'Teste Eclipse' || openingState.profile.modelId !== 'Survivor' || openingState.profile.auraColor !== '#c094ff') {
-  throw new Error(`Perfil inicial deveria ser um sobrevivente sem armadura: ${JSON.stringify(openingState.profile)}`)
+if (openingState.profile?.name !== 'Teste Eclipse' || openingState.profile.modelId !== 'Paladin' || openingState.profile.auraColor !== '#c094ff') {
+  throw new Error(`Perfil inicial deveria manter o Paladino escolhido: ${JSON.stringify(openingState.profile)}`)
 }
-if (openingState.armorEquipped || openingState.activeCampaigns !== 1 || !openingState.storyFlags.includes('iara-intro')) {
+if (openingState.armorEquipped || openingState.activeCampaigns !== 1 || !openingState.storyFlags.includes('iara-intro')
+  || !openingState.externalModelLoaded || !openingState.externalMaterials.includes('Shirt') || !openingState.externalMaterials.includes('Pants')) {
   throw new Error('A campanha não começou com uma identidade única, sem armadura e com a introdução marcada.')
 }
-if (!openingState.visualGear.survivor || openingState.visualGear.armor || openingState.visualGear.helmet || openingState.visualGear.boots) {
-  throw new Error(`O rig não começou visualmente como Sobrevivente sem armadura: ${JSON.stringify(openingState.visualGear)}`)
+if (openingState.visualGear.armor || openingState.visualGear.helmet || openingState.visualGear.boots) {
+  throw new Error(`O Paladino não começou com roupa civil e sem armadura: ${JSON.stringify(openingState.visualGear)}`)
 }
 await captureScreenshot(page, 'character-unarmored.png')
 const equippedLook = await page.evaluate(() => {
   const model = window.__eclipse.game.player.model
   model.setEquipment({ armor: true, armorStyle: 'andarilho' })
-  const state = model.visibleGearState
-  const visibleParts = []
-  model.root.traverse(object => {
-    if (['equipment-cuirass-shell', 'equipment-breastplate', 'equipment-pauldron-left', 'equipment-tasset', 'equipment-bracer-plate-left'].includes(object.name)) {
-      visibleParts.push({ name: object.name, visible: object.visible })
-    }
-  })
-  return { state, visibleParts }
+  return model.visibleGearState
 })
-if (!equippedLook.state.survivor || !equippedLook.state.armor || equippedLook.visibleParts.length < 5
-  || equippedLook.visibleParts.some(part => !part.visible)) {
-  throw new Error(`O Manto do Andarilho não apareceu em camadas no rig: ${JSON.stringify(equippedLook)}`)
+await page.waitForFunction(() => {
+  const external = window.__eclipse.game.player.model.external
+  let hasArmor = false
+  external?.root.traverse(object => {
+    if (!object.isMesh) return
+    const materials = Array.isArray(object.material) ? object.material : [object.material]
+    if (materials.some(material => material.name === 'Armor')) hasArmor = true
+  })
+  return hasArmor
+}, null, { timeout: 30000 })
+if (!equippedLook.armor) {
+  throw new Error(`A armadura equipada não selecionou o visual Quaternius do Paladino: ${JSON.stringify(equippedLook)}`)
 }
-await page.waitForTimeout(200)
 await captureScreenshot(page, 'character-first-armor.png')
 const restoredLook = await page.evaluate(() => {
   window.__eclipse.game.refreshStats()
   return window.__eclipse.game.player.model.visibleGearState
 })
 if (restoredLook.armor) throw new Error(`A validação visual alterou o equipamento inicial: ${JSON.stringify(restoredLook)}`)
+await page.waitForFunction(() => {
+  const external = window.__eclipse.game.player.model.external
+  let hasShirt = false
+  external?.root.traverse(object => {
+    if (!object.isMesh) return
+    const materials = Array.isArray(object.material) ? object.material : [object.material]
+    if (materials.some(material => material.name === 'Shirt')) hasShirt = true
+  })
+  return hasShirt
+}, null, { timeout: 30000 })
 if (openingState.distanceToIara > 3.4 || openingState.iaraCameraSide >= 0) throw new Error('Iara não está acessível ou ficou entre a câmera e o jogador.')
 if (openingState.maxEnemyHeight > 2.45) throw new Error(`Mob maior que o limite: ${openingState.maxEnemyHeight} m.`)
 
@@ -329,7 +388,7 @@ const recreated = await page.evaluate(() => ({
   name: window.__eclipse.save.activeCampaign?.profile.name,
   model: window.__eclipse.save.activeCampaign?.profile.modelId,
 }))
-if (recreated.count !== 1 || recreated.name !== 'Nara Eclipse' || recreated.model !== 'Survivor') {
+if (recreated.count !== 1 || recreated.name !== 'Nara Eclipse' || recreated.model !== 'Soldier') {
   throw new Error(`Após excluir, a campanha única não pôde ser recriada corretamente: ${JSON.stringify(recreated)}`)
 }
 await page.getByRole('button', { name: 'Aceitar missão: O Despertar' }).click()
@@ -377,6 +436,16 @@ const turnInHitTarget = await turnInButton.evaluate(button => {
 })
 if (!turnInHitTarget) throw new Error('O botão Concluir missão está encoberto na interface.')
 await turnInButton.click()
+await page.waitForFunction(() => {
+  const external = window.__eclipse.game.player.model.external
+  let hasSoldierArmor = false
+  external?.root.traverse(object => {
+    if (!object.isMesh) return
+    const materials = Array.isArray(object.material) ? object.material : [object.material]
+    if (materials.some(material => material.name === 'Main' || material.name === 'Helmet')) hasSoldierArmor = true
+  })
+  return hasSoldierArmor
+}, null, { timeout: 30000 })
 const armorAfterMission = await page.evaluate(() => {
   const g = window.__eclipse.game
   return {
@@ -387,7 +456,7 @@ const armorAfterMission = await page.evaluate(() => {
 })
 console.log('first armor progression:', armorAfterMission)
 if (armorAfterMission.quest !== 'concluida' || armorAfterMission.equipped !== 'armadura-andarilho'
-  || !armorAfterMission.visual.survivor || !armorAfterMission.visual.armor) {
+  || !armorAfterMission.visual.armor) {
   throw new Error(`A entrega da missão não vestiu a primeira armadura: ${JSON.stringify(armorAfterMission)}`)
 }
 await page.waitForTimeout(150)

@@ -5,7 +5,7 @@ import { hash2, mulberry32 } from '../core/rng'
 import { clamp } from '../core/math'
 import { BIOMES } from './biomes'
 import type { Collider } from './collision'
-import { grassGeometry, propMaterial, rockGeometry, treeGeometry } from './props'
+import { grassGeometry, propMaterial, rockGeometry, treeGeometries } from './props'
 import { SEA_LEVEL, type Terrain } from './terrain'
 
 export const CHUNK_SIZE = 80
@@ -15,27 +15,53 @@ const FAR_SEGMENTS = 10
 export type Lod = 'near' | 'far'
 
 const terrainMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.95, metalness: 0 })
-const propsMaterial = propMaterial()
+const rockMaterial = propMaterial()
+const grassMaterial = propMaterial()
+const treeBarkMaterial = propMaterial()
+const treeFoliageMaterial = propMaterial()
 const animalLoader = new GLTFLoader()
-const animalAssets = [
-  'https://gobkit.com/freebies/animal006/Doe.glb',
-  'https://gobkit.com/freebies/animal006/Fox.glb',
-  'https://gobkit.com/freebies/animal006/Hare.glb',
-  'https://gobkit.com/freebies/animal006/Squirrel.glb',
-  'https://gobkit.com/freebies/animal012/WildBoar.glb',
-  'https://gobkit.com/freebies/animal012/PalominoHorse.glb',
-  'https://gobkit.com/freebies/animalB/Goat.glb',
-  'https://gobkit.com/freebies/animal005/Sheep.glb',
-]
-type AnimalMotion = 'idle' | 'walk' | 'run'
+export type AnimalMotion = 'idle' | 'walk' | 'run'
+type AnimalAction = AnimalMotion | 'death'
 type AnimalBone = { bone: THREE.Bone; base: THREE.Euler; phase: number; amplitude: number }
-type WildlifeAgent = {
+export type WildlifeKind = 'alpaca' | 'touro' | 'vaca' | 'cervo' | 'burro' | 'raposa' | 'cavalo' | 'cavalo-branco' | 'husky' | 'shiba-inu' | 'cervo-real' | 'lobo'
+type AnimalAsset = {
+  file: string
+  url: string
+  id: WildlifeKind
+  name: string
+  health: number
+  radius: number
+  height: number
+  targetHeight: number
+}
+const animalDefinitions: Omit<AnimalAsset, 'url'>[] = [
+  { file: 'Alpaca', id: 'alpaca', name: 'Alpaca', health: 38, radius: 0.48, height: 1.12, targetHeight: 1.12 },
+  { file: 'Bull', id: 'touro', name: 'Touro', health: 82, radius: 0.76, height: 1.5, targetHeight: 1.5 },
+  { file: 'Cow', id: 'vaca', name: 'Vaca', health: 62, radius: 0.68, height: 1.32, targetHeight: 1.32 },
+  { file: 'Deer', id: 'cervo', name: 'Cervo', health: 38, radius: 0.52, height: 1.25, targetHeight: 1.25 },
+  { file: 'Donkey', id: 'burro', name: 'Burro', health: 52, radius: 0.58, height: 1.28, targetHeight: 1.28 },
+  { file: 'Fox', id: 'raposa', name: 'Raposa', health: 24, radius: 0.38, height: 0.63, targetHeight: 0.63 },
+  { file: 'Horse', id: 'cavalo', name: 'Cavalo selvagem', health: 72, radius: 0.72, height: 1.55, targetHeight: 1.55 },
+  { file: 'Horse_White', id: 'cavalo-branco', name: 'Cavalo branco', health: 72, radius: 0.72, height: 1.55, targetHeight: 1.55 },
+  { file: 'Husky', id: 'husky', name: 'Husky', health: 34, radius: 0.42, height: 0.62, targetHeight: 0.62 },
+  { file: 'ShibaInu', id: 'shiba-inu', name: 'Shiba Inu', health: 28, radius: 0.34, height: 0.5, targetHeight: 0.52 },
+  { file: 'Stag', id: 'cervo-real', name: 'Cervo-real', health: 50, radius: 0.64, height: 1.42, targetHeight: 1.42 },
+  { file: 'Wolf', id: 'lobo', name: 'Lobo', health: 48, radius: 0.45, height: 0.72, targetHeight: 0.72 },
+]
+const animalAssets: AnimalAsset[] = animalDefinitions.map(species => ({
+  ...species,
+  url: `${import.meta.env.BASE_URL}assets/models/quaternius/animals/${species.file}.glb`,
+}))
+export type WildlifeAgent = {
+  id: WildlifeKind
+  name: string
   root: THREE.Group
   model: THREE.Group
   mixer: THREE.AnimationMixer
-  actions: Record<AnimalMotion, THREE.AnimationAction | undefined>
+  actions: Record<AnimalAction, THREE.AnimationAction | undefined>
   active?: THREE.AnimationAction
   position: THREE.Vector3
+  worldPosition: THREE.Vector3
   target: THREE.Vector3
   direction: THREE.Vector3
   state: AnimalMotion
@@ -43,6 +69,42 @@ type WildlifeAgent = {
   phase: number
   baseModelY: number
   bones: AnimalBone[]
+  health: number
+  maxHealth: number
+  radius: number
+  height: number
+  dead: boolean
+  counted: boolean
+  deathTimer: number
+  respawnTimer: number
+  takeDamage: (amount: number) => { amount: number; killed: boolean }
+}
+
+export type ChunkTextureSet = { grass: THREE.Texture; leaves: THREE.Texture; bark: THREE.Texture; stone: THREE.Texture }
+
+export function applyChunkTextures(textures: ChunkTextureSet): void {
+  for (const texture of Object.values(textures)) {
+    texture.wrapS = THREE.RepeatWrapping
+    texture.wrapT = THREE.RepeatWrapping
+    texture.needsUpdate = true
+  }
+  terrainMaterial.map = textures.grass
+  grassMaterial.map = textures.grass
+  treeFoliageMaterial.map = textures.leaves
+  treeBarkMaterial.map = textures.bark
+  rockMaterial.map = textures.stone
+  terrainMaterial.needsUpdate = true
+  grassMaterial.needsUpdate = true
+  treeFoliageMaterial.needsUpdate = true
+  treeBarkMaterial.needsUpdate = true
+  rockMaterial.needsUpdate = true
+}
+
+function wildlifeKind(url: string): Omit<AnimalAsset, 'file' | 'url' | 'targetHeight'> {
+  const species = animalAssets.find(asset => asset.url === url)
+  if (!species) throw new Error(`Espécie de fauna não registrada: ${url}`)
+  const { id, name, health, radius, height } = species
+  return { id, name, health, radius, height }
 }
 
 const animalCache = new Map<string, Promise<{ scene: THREE.Group; animations: THREE.AnimationClip[] }>>()
@@ -60,10 +122,11 @@ function loadAnimal(url: string): Promise<{ scene: THREE.Group; animations: THRE
   return pending
 }
 
-export function resolveAnimalClipName(mode: AnimalMotion, names: readonly string[]): string | undefined {
+export function resolveAnimalClipName(mode: AnimalAction, names: readonly string[]): string | undefined {
   const candidates = mode === 'idle' ? ['idle', 'stand', 'rest']
     : mode === 'walk' ? ['walk', 'walking', 'trot', 'move']
-      : ['run', 'running', 'gallop', 'canter', 'walk', 'walking']
+      : mode === 'run' ? ['run', 'running', 'gallop', 'canter', 'walk', 'walking']
+        : ['death', 'dead', 'die']
   const normalized = names.map(name => name.toLowerCase())
   for (const candidate of candidates) {
     const exact = normalized.findIndex(name => name === candidate)
@@ -124,6 +187,10 @@ export class Chunk {
     return this.currentLod
   }
 
+  wildlifeAgents(): WildlifeAgent[] {
+    return this.wildlife
+  }
+
   build(lod: Lod): void {
     this.currentLod = lod
     this.buildTerrain(lod)
@@ -151,6 +218,7 @@ export class Chunk {
 
     const positions = new Float32Array(count * count * 3)
     const colors = new Float32Array(count * count * 3)
+    const uvs = new Float32Array(count * count * 2)
     const color = new THREE.Color()
     for (let j = 0; j < count; j += 1) {
       for (let i = 0; i < count; i += 1) {
@@ -161,6 +229,8 @@ export class Chunk {
         positions[index * 3] = x
         positions[index * 3 + 1] = height
         positions[index * 3 + 2] = z
+        uvs[index * 2] = (originX + x) * 0.06
+        uvs[index * 2 + 1] = (originZ + z) * 0.06
         const dx = (gridAt(i + 1, j) - gridAt(i - 1, j)) / (2 * step)
         const dz = (gridAt(i, j + 1) - gridAt(i, j - 1)) / (2 * step)
         const slope = Math.hypot(dx, dz)
@@ -184,6 +254,7 @@ export class Chunk {
     const geometry = new THREE.BufferGeometry()
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+    geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2))
     geometry.setIndex(indices)
     geometry.computeVertexNormals()
     geometry.computeBoundingSphere()
@@ -219,7 +290,7 @@ export class Chunk {
     const group = new THREE.Group()
 
     const treeKind = biome.treeKind
-    const treeGeo = treeKind === 'nenhum' ? null : treeGeometry(treeKind)
+    const treeGeo = treeKind === 'nenhum' ? null : treeGeometries(treeKind)
     if (treeGeo) {
       const wanted = Math.round(biome.treeDensity * (0.7 + random() * 0.6))
       const matrix = new THREE.Matrix4()
@@ -239,19 +310,24 @@ export class Chunk {
         placed.push({ x, z, y, s })
       }
       if (placed.length) {
-        const mesh = new THREE.InstancedMesh(treeGeo, propsMaterial, placed.length)
+        const barkMesh = treeGeo.bark ? new THREE.InstancedMesh(treeGeo.bark, treeBarkMaterial, placed.length) : null
+        const foliageMesh = treeGeo.foliage ? new THREE.InstancedMesh(treeGeo.foliage, treeFoliageMaterial, placed.length) : null
         placed.forEach((p, index) => {
           position.set(p.x - originX, p.y - 0.15, p.z - originZ)
           quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), random() * Math.PI * 2)
           scale.set(p.s, p.s * (0.85 + random() * 0.35), p.s)
           matrix.compose(position, quaternion, scale)
-          mesh.setMatrixAt(index, matrix)
+          barkMesh?.setMatrixAt(index, matrix)
+          foliageMesh?.setMatrixAt(index, matrix)
           if (p.s > 0.85) this.colliders.push({ kind: 'circle', x: p.x, z: p.z, radius: 0.42 * p.s })
         })
-        mesh.castShadow = true
-        mesh.receiveShadow = false
-        mesh.computeBoundingSphere()
-        group.add(mesh)
+        for (const mesh of [barkMesh, foliageMesh]) {
+          if (!mesh) continue
+          mesh.castShadow = true
+          mesh.receiveShadow = false
+          mesh.computeBoundingSphere()
+          group.add(mesh)
+        }
       }
     }
 
@@ -279,7 +355,7 @@ export class Chunk {
       }
       buckets.forEach((list, index) => {
         if (!list.length) return
-        const mesh = new THREE.InstancedMesh(variants[index], propsMaterial, list.length)
+        const mesh = new THREE.InstancedMesh(variants[index], rockMaterial, list.length)
         list.forEach((m, i) => mesh.setMatrixAt(i, m))
         mesh.castShadow = true
         mesh.receiveShadow = false
@@ -294,7 +370,7 @@ export class Chunk {
       const quaternion = new THREE.Quaternion()
       const position = new THREE.Vector3()
       const scale = new THREE.Vector3()
-      const mesh = new THREE.InstancedMesh(grassGeometry(), propsMaterial, grassCount)
+      const mesh = new THREE.InstancedMesh(grassGeometry(), grassMaterial, grassCount)
       let filled = 0
       for (let i = 0; i < grassCount; i += 1) {
         const x = originX + random() * CHUNK_SIZE
@@ -331,11 +407,14 @@ export class Chunk {
       if (y < SEA_LEVEL + 2 || this.terrainField.slopeAt(x, z) > 0.65 || this.blocked(x, z)) continue
       const biome = this.terrainField.biomeAt(x, z, y)
       if (biome === 'oceano' || biome === 'vulcanico' || biome === 'cinzas') continue
-      const options = biome === 'deserto' ? [animalAssets[2], animalAssets[3], animalAssets[1]]
-        : biome === 'neve' || biome === 'montanha' ? [animalAssets[0], animalAssets[1], animalAssets[5]]
-      : biome === 'praia' || biome === 'ilha' ? [animalAssets[3], animalAssets[6], animalAssets[2]]
-        : animalAssets
-      const url = options[Math.floor(random() * options.length)]
+      const options = biome === 'deserto' ? animalAssets.filter(asset => ['Alpaca', 'Donkey', 'Fox'].includes(asset.file))
+        : biome === 'neve' || biome === 'montanha' ? animalAssets.filter(asset => ['Deer', 'Horse_White', 'Husky', 'Wolf', 'Stag'].includes(asset.file))
+          : biome === 'praia' || biome === 'ilha' ? animalAssets.filter(asset => ['Alpaca', 'Donkey', 'ShibaInu', 'Fox'].includes(asset.file))
+            : biome === 'pantano' ? animalAssets.filter(asset => ['Fox', 'Wolf', 'Deer'].includes(asset.file))
+              : biome === 'floresta' || biome === 'floresta-densa' ? animalAssets.filter(asset => ['Deer', 'Fox', 'Stag', 'Wolf', 'Husky', 'ShibaInu'].includes(asset.file))
+                : animalAssets
+      const selected = options[Math.floor(random() * options.length)]
+      const url = selected.url
       const localX = x - originX
       const localZ = z - originZ
       const heading = random() * Math.PI * 2
@@ -347,7 +426,8 @@ export class Chunk {
         const animal = clone(source.scene) as THREE.Group
         const bounds = new THREE.Box3().setFromObject(animal)
         const size = bounds.getSize(new THREE.Vector3())
-        const scale = (url.includes('PalominoHorse') ? 1.65 : 0.95) / Math.max(0.01, size.y)
+        const targetHeight = selected.targetHeight
+        const scale = targetHeight / Math.max(0.01, size.y)
         animal.scale.setScalar(scale)
         const scaled = new THREE.Box3().setFromObject(animal)
         const baseModelY = -scaled.min.y
@@ -367,6 +447,7 @@ export class Chunk {
         const idleClip = findClip(resolveAnimalClipName('idle', names))
         const walkClip = findClip(resolveAnimalClipName('walk', names))
         const runClip = findClip(resolveAnimalClipName('run', names)) ?? walkClip
+        const deathClip = findClip(resolveAnimalClipName('death', names))
         const mixer = new THREE.AnimationMixer(animal)
         const makeAction = (clip?: THREE.AnimationClip): THREE.AnimationAction | undefined => {
           if (!clip) return undefined
@@ -375,12 +456,15 @@ export class Chunk {
           action.clampWhenFinished = false
           return action
         }
+        const species = wildlifeKind(url)
         const agent: WildlifeAgent = {
+          ...species,
           root,
           model: animal,
           mixer,
-          actions: { idle: makeAction(idleClip), walk: makeAction(walkClip), run: makeAction(runClip) },
+          actions: { idle: makeAction(idleClip), walk: makeAction(walkClip), run: makeAction(runClip), death: makeAction(deathClip) },
           position: new THREE.Vector3(localX, y, localZ),
+          worldPosition: new THREE.Vector3(x, y, z),
           target,
           direction: new THREE.Vector3(Math.sin(heading), 0, Math.cos(heading)),
           state: 'idle',
@@ -388,6 +472,33 @@ export class Chunk {
           phase,
           baseModelY,
           bones: collectAnimalBones(animal),
+          health: species.health,
+          maxHealth: species.health,
+          dead: false,
+          counted: false,
+          deathTimer: 0,
+          respawnTimer: 0,
+          takeDamage: amount => {
+            if (agent.dead) return { amount: 0, killed: false }
+            const dealt = Math.max(1, Math.round(amount))
+            agent.health = Math.max(0, agent.health - dealt)
+            const killed = agent.health <= 0
+            if (killed) {
+              agent.dead = true
+              const death = agent.actions.death
+              agent.deathTimer = death ? Math.max(0.85, death.getClip().duration) : 0.85
+              agent.respawnTimer = 55
+              agent.state = 'idle'
+              agent.active?.fadeOut(0.1)
+              if (death) {
+                death.reset().fadeIn(0.08).setLoop(THREE.LoopOnce, 1)
+                death.clampWhenFinished = true
+                death.play()
+                agent.active = death
+              } else agent.active = undefined
+            }
+            return { amount: dealt, killed }
+          },
         }
         this.wildlife.push(agent)
       }).catch(() => undefined)
@@ -400,6 +511,28 @@ export class Chunk {
     const originX = this.cx * CHUNK_SIZE
     const originZ = this.cz * CHUNK_SIZE
     for (const agent of this.wildlife) {
+      if (agent.dead) {
+        agent.deathTimer -= step
+        if (agent.actions.death) agent.mixer.update(step)
+        if (agent.deathTimer > 0) {
+          if (!agent.actions.death) agent.root.rotation.z = Math.min(Math.PI / 2, (0.85 - agent.deathTimer) / 0.85 * (Math.PI / 2))
+        } else {
+          agent.root.visible = false
+          agent.respawnTimer -= step
+          if (agent.respawnTimer <= 0) {
+            agent.dead = false
+            agent.counted = false
+            agent.health = agent.maxHealth
+            agent.root.visible = true
+            agent.root.rotation.z = 0
+            agent.position.y = this.terrainField.heightAt(originX + agent.position.x, originZ + agent.position.z)
+            agent.root.position.copy(agent.position)
+            agent.state = 'idle'
+            agent.timer = 2
+          }
+        }
+        continue
+      }
       const worldX = originX + agent.position.x
       const worldZ = originZ + agent.position.z
       const awayX = worldX - player.x
@@ -462,6 +595,7 @@ export class Chunk {
 
       agent.root.position.copy(agent.position)
       agent.root.rotation.y = Math.atan2(agent.direction.x, agent.direction.z)
+      agent.worldPosition.set(originX + agent.position.x, agent.position.y, originZ + agent.position.z)
       const movementAction = agent.state === 'run' ? agent.actions.run ?? agent.actions.walk
         : agent.state === 'walk' ? agent.actions.walk : agent.actions.idle
       const action = agent.state === 'idle' ? agent.actions.idle : movementAction ?? agent.actions.idle
@@ -522,6 +656,10 @@ export class ChunkManager {
 
   updateWildlife(dt: number, player: THREE.Vector3): void {
     for (const chunk of this.chunks.values()) chunk.updateWildlife(dt, player)
+  }
+
+  wildlifeAgents(): WildlifeAgent[] {
+    return [...this.chunks.values()].flatMap(chunk => chunk.wildlifeAgents())
   }
 
   /** Colliders from the chunks touching a world position (3x3 neighbourhood). */

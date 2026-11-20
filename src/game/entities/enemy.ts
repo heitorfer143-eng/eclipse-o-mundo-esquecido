@@ -23,7 +23,7 @@ export type EnemyContext = {
   inCombat: boolean
 }
 
-export type EnemySpawn = { def: EnemyType; level: number; x: number; z: number; elite?: boolean; homeX?: number; homeZ?: number }
+export type EnemySpawn = { def: EnemyType; level: number; x: number; z: number; elite?: boolean; homeX?: number; homeZ?: number; spawnId?: string }
 
 const STATE_LABEL: Record<string, string> = {
   idle: 'Parado',

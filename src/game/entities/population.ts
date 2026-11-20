@@ -20,7 +20,7 @@ export type Chest = {
   light?: THREE.PointLight
 }
 
-export type ResourceKind = 'ferro' | 'prata' | 'mithril' | 'erva' | 'madeira' | 'pesca' | 'cristal'
+export type ResourceKind = 'ferro' | 'prata' | 'mithril' | 'erva' | 'madeira' | 'pesca' | 'cristal' | 'pedra'
 
 export type ResourceNode = {
   id: string
@@ -50,6 +50,7 @@ const RESOURCE_INFO: Record<ResourceKind, { itemId: string; label: string; color
   madeira: { itemId: 'mat-madeira', label: 'Tronco de freixo', color: '#8a6a45' },
   pesca: { itemId: 'comida-peixe', label: 'Cardume', color: '#7fd8ff' },
   cristal: { itemId: 'mat-cristal', label: 'Cristal de gelo', color: '#b6e8ff' },
+  pedra: { itemId: 'mat-pedra', label: 'Veio de pedra', color: '#9b978f' },
 }
 
 /** Spawns and removes townsfolk, chests, harvest nodes and crafting stations with their POI. */
@@ -63,6 +64,8 @@ export class Population {
   private readonly placedNpcs = new Set<string>()
   private readonly populated = new Set<string>()
   private readonly openedChests = new Set<string>()
+  private readonly guardSpawns = new Map<string, string[]>()
+  private readonly guardRespawns = new Map<string, number>()
 
   constructor(scene: THREE.Scene, private readonly world: World, private readonly pois: PoiManager, private readonly spawner: Spawner) {
     this.group.name = 'population'
@@ -74,6 +77,7 @@ export class Population {
       const spots = this.pois.spotsOf(poi.id)
       if (spots && !this.populated.has(poi.id)) this.populate(poi, spots)
       if (!spots && this.populated.has(poi.id)) this.depopulate(poi.id)
+      if (spots) this.updateGuards(dt, poi, spots)
     }
     for (const npc of this.npcs) {
       const near = Math.hypot(npc.position.x - playerPosition.x, npc.position.z - playerPosition.z) < 14
@@ -115,12 +119,39 @@ export class Population {
     })
     if (spots.portal) this.portals.push({ id: `${poi.id}-portal`, poiId: poi.id, position: new THREE.Vector3(spots.portal.x, spots.portal.y, spots.portal.z), name: poi.name })
     // POI guards: creatures appropriate to the region, tied to the site.
-    for (const spot of spots.enemies) {
+    const spawnIds: string[] = []
+    for (const [index, spot] of spots.enemies.entries()) {
+      const spawnId = `${poi.id}-guard-${index}`
+      spawnIds.push(spawnId)
       const def = pickEnemyFor(this.world.biomeAt(spot.x, spot.z), poi.level, this.world.sky.night,
         poi.id === 'vila-brumal' ? 'lobo-sombrio' : undefined)
       if (!def) continue
-      this.spawner.add({ def, level: poi.level, x: spot.x, z: spot.z, homeX: spot.x, homeZ: spot.z })
+      this.spawner.add({ def, level: poi.level, x: spot.x, z: spot.z, homeX: spot.x, homeZ: spot.z, spawnId })
     }
+    this.guardSpawns.set(poi.id, spawnIds)
+  }
+
+  private updateGuards(dt: number, poi: Poi, spots: Spots): void {
+    spots.enemies.forEach((spot, index) => {
+      const spawnId = `${poi.id}-guard-${index}`
+      if (this.spawner.hasSpawn(spawnId)) {
+        this.guardRespawns.delete(spawnId)
+        return
+      }
+      const remaining = (this.guardRespawns.get(spawnId) ?? 22) - dt
+      if (remaining > 0) {
+        this.guardRespawns.set(spawnId, remaining)
+        return
+      }
+      const def = pickEnemyFor(this.world.biomeAt(spot.x, spot.z), poi.level, this.world.sky.night,
+        poi.id === 'vila-brumal' ? 'lobo-sombrio' : undefined)
+      if (!def) {
+        this.guardRespawns.set(spawnId, 5)
+        return
+      }
+      this.spawner.add({ def, level: poi.level, x: spot.x, z: spot.z, homeX: spot.x, homeZ: spot.z, spawnId })
+      this.guardRespawns.delete(spawnId)
+    })
   }
 
   private placeNpc(def: NpcDef, x: number, z: number, y: number, poi: Poi): void {
@@ -134,6 +165,11 @@ export class Population {
 
   private depopulate(poiId: string): void {
     this.populated.delete(poiId)
+    for (const spawnId of this.guardSpawns.get(poiId) ?? []) {
+      this.spawner.removeSpawn(spawnId)
+      this.guardRespawns.delete(spawnId)
+    }
+    this.guardSpawns.delete(poiId)
     for (let i = this.npcs.length - 1; i >= 0; i -= 1) {
       const npc = this.npcs[i]
       if (npc.root.userData.poiId !== poiId) continue
@@ -232,6 +268,14 @@ export class Population {
         crystal.castShadow = true
         group.add(crystal)
       }
+    } else if (kind === 'pedra') {
+      for (let i = 0; i < 4; i += 1) {
+        const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(0.34 + Math.random() * 0.18, 0), material)
+        rock.position.set((Math.random() - 0.5) * 0.7, 0.22, (Math.random() - 0.5) * 0.7)
+        rock.rotation.set(Math.random(), Math.random(), Math.random())
+        rock.castShadow = true
+        group.add(rock)
+      }
     } else {
       const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 0), new THREE.MeshStandardMaterial({ color: '#6f6a63', roughness: 1, flatShading: true }))
       rock.position.y = 0.35
@@ -309,7 +353,8 @@ export class Population {
     node.cooldown = 45 + Math.random() * 30
     node.group.visible = false
     const info = RESOURCE_INFO[node.kind]
-    return { itemId: info.itemId, count: node.kind === 'pesca' ? 1 : 1 + (Math.random() < 0.35 ? 1 : 0) }
+    const count = node.kind === 'pedra' ? 2 + Math.floor(Math.random() * 3) : node.kind === 'pesca' ? 1 : 1 + (Math.random() < 0.35 ? 1 : 0)
+    return { itemId: info.itemId, count }
   }
 
   portalById(poiId: string): Portal | undefined {
