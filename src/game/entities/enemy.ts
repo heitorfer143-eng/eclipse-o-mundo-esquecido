@@ -4,7 +4,7 @@ import { clamp, damp, dampAngle } from '../core/math'
 import type { Collider } from '../world/collision'
 import { resolveCircle } from '../world/collision'
 import { buildEnemyVisual, disposeEnemyVisual, fitEnemyVisual, type EnemyVisual, type EnemyVisualBounds } from './enemyModels'
-import { ExternalCharacter, EXTERNAL_CHARACTER_URLS, type ExternalAnimation } from './externalModels'
+import { ExternalCharacter, externalHumanoidUrlForModel, type ExternalAnimation } from './externalModels'
 import { damageAfterDefense, elementalMultiplier, type StatusKind } from '../combat/damage'
 
 export type EnemyEvent =
@@ -124,13 +124,7 @@ export class Enemy {
     this.attackArea.position.y = 0.055
     this.attackArea.visible = false
     this.root.add(this.attackArea, this.attackWarning)
-    const externalEnemyUrl = this.def.model === 'cavaleiro' ? EXTERNAL_CHARACTER_URLS.knight
-      : this.def.model === 'esqueleto' || this.def.model === 'mumia' ? EXTERNAL_CHARACTER_URLS.mummy
-      : this.def.model === 'goblin' || this.def.model === 'diabrete' ? EXTERNAL_CHARACTER_URLS.orc
-      : this.def.model === 'golem' || this.def.model === 'gigante' || this.def.model === 'troll' ? EXTERNAL_CHARACTER_URLS.brute
-      : this.def.model === 'espectro' ? EXTERNAL_CHARACTER_URLS.ghost
-      : this.def.model === 'yeti' ? EXTERNAL_CHARACTER_URLS.werewolf
-      : this.def.model === 'elemental' ? EXTERNAL_CHARACTER_URLS.witch : undefined
+    const externalEnemyUrl = externalHumanoidUrlForModel(this.def.model)
     if (externalEnemyUrl) {
       // ExternalCharacter normaliza o GLB para a altura final já calculada pelo rig procedural.
       void ExternalCharacter.load(externalEnemyUrl, this.visual.height).then(model => {
