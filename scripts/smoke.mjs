@@ -56,6 +56,20 @@ if (await page.locator('[data-aura]').count()) throw new Error('O criador ainda 
 await captureScreenshot(page, '02-character.png')
 await page.getByRole('button', { name: 'Confirmar e começar' }).click()
 await page.locator('.dialogue').waitFor({ state: 'visible', timeout: 45000 })
+const initialIara = await page.evaluate(() => {
+  const g = window.__eclipse.game
+  const iara = g.population.npcs.find(npc => npc.def.id === 'iara')
+  if (!iara) return { distance: Infinity, cameraSide: Infinity }
+  const cameraBackX = Math.sin(g.player.facing)
+  const cameraBackZ = Math.cos(g.player.facing)
+  return {
+    distance: iara.position.distanceTo(g.player.position),
+    cameraSide: (iara.position.x - g.player.position.x) * cameraBackX + (iara.position.z - g.player.position.z) * cameraBackZ,
+  }
+})
+if (initialIara.distance > 3.4 || initialIara.cameraSide >= 0) {
+  throw new Error(`Iara não iniciou acessível e fora do eixo da câmera: ${JSON.stringify(initialIara)}`)
+}
 await captureScreenshot(page, '03-iara-dialogue.png')
 await page.getByRole('button', { name: 'Aceitar missão: O Despertar' }).click()
 await page.getByRole('button', { name: 'Encerrar conversa' }).click()
@@ -154,7 +168,6 @@ await page.evaluate(() => {
 
 const openingState = await page.evaluate(() => {
   const g = window.__eclipse.game
-  const iara = g.population.npcs.find(npc => npc.def.id === 'iara')
   const profile = window.__eclipse.save.activeCampaign?.profile
   const equipment = g.inventory.equipment
   const externalMaterials = new Set()
@@ -163,15 +176,9 @@ const openingState = await page.evaluate(() => {
     const materials = Array.isArray(object.material) ? object.material : [object.material]
     for (const material of materials) externalMaterials.add(material.name)
   })
-  const cameraBackX = Math.sin(g.player.facing)
-  const cameraBackZ = Math.cos(g.player.facing)
   return {
     mode: g.mode,
     profile,
-    distanceToIara: iara?.position.distanceTo(g.player.position) ?? Infinity,
-    iaraCameraSide: iara
-      ? (iara.position.x - g.player.position.x) * cameraBackX + (iara.position.z - g.player.position.z) * cameraBackZ
-      : Infinity,
     maxEnemyHeight: Math.max(0, ...g.spawner.enemies.map(enemy => enemy.height)),
     quest: g.quests.state('principal-01')?.status ?? null,
     tracked: g.quests.tracked,
@@ -234,7 +241,6 @@ await page.waitForFunction(() => {
   })
   return hasShirt
 }, null, { timeout: 30000 })
-if (openingState.distanceToIara > 3.4 || openingState.iaraCameraSide >= 0) throw new Error('Iara não está acessível ou ficou entre a câmera e o jogador.')
 if (openingState.maxEnemyHeight > 2.45) throw new Error(`Mob maior que o limite: ${openingState.maxEnemyHeight} m.`)
 
 await page.keyboard.press('l')
