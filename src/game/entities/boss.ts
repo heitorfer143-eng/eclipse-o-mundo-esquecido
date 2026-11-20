@@ -4,6 +4,7 @@ import { clamp, damp, dampAngle } from '../core/math'
 import { ELEMENTS, damageAfterDefense, elementalMultiplier } from '../combat/damage'
 import { buildEnemyVisual, disposeEnemyVisual, fitEnemyVisual, type EnemyVisual, type EnemyVisualBounds } from './enemyModels'
 import type { EnemyContext } from './enemy'
+import { ExternalCharacter, EXTERNAL_CHARACTER_URLS, HUMANOID_VISUAL_SCALE, type ExternalAnimation } from './externalModels'
 
 export type BossEvent =
   | { type: 'aoe'; center: THREE.Vector3; radius: number; damage: number; element?: ElementId; name: string }
@@ -44,6 +45,7 @@ export class Boss {
   state: 'idle' | 'chase' | 'windup' | 'recover' | 'stagger' | 'dead' = 'idle'
   private readonly visual: EnemyVisual
   private readonly visualBounds: EnemyVisualBounds
+  private external?: ExternalCharacter
   private readonly telegraphs: ActiveTelegraph[] = []
   private stateTimer = 0
   private cooldowns = new Map<string, number>()
@@ -67,6 +69,21 @@ export class Boss {
     this.visualBounds = fitEnemyVisual(this.visual, MAX_BOSS_HEIGHT, MAX_BOSS_FOOTPRINT)
     this.root.add(this.visual.root)
     this.root.position.copy(this.position)
+    const externalBossUrl = def.model === 'cavaleiro' ? EXTERNAL_CHARACTER_URLS.knight
+      : def.model === 'esqueleto' || def.model === 'mumia' ? EXTERNAL_CHARACTER_URLS.mummy
+      : def.model === 'goblin' || def.model === 'diabrete' ? EXTERNAL_CHARACTER_URLS.orc
+      : def.model === 'golem' || def.model === 'gigante' || def.model === 'troll' ? EXTERNAL_CHARACTER_URLS.brute
+      : def.model === 'espectro' ? EXTERNAL_CHARACTER_URLS.ghost
+      : def.model === 'yeti' ? EXTERNAL_CHARACTER_URLS.werewolf
+      : def.model === 'elemental' ? EXTERNAL_CHARACTER_URLS.witch : undefined
+    if (externalBossUrl) {
+      void ExternalCharacter.load(externalBossUrl, this.visual.height * HUMANOID_VISUAL_SCALE).then(model => {
+        if (this.finished) { model.dispose(); return }
+        this.external = model
+        this.visual.root.visible = false
+        this.root.add(model.root)
+      }).catch(error => console.warn('Não foi possível carregar o modelo 3D do chefe; usando modelo de reserva:', error))
+    }
     for (const attack of def.attacks) this.cooldowns.set(attack.id, 2 + Math.random() * 2)
 
     const color = def.element ? ELEMENTS[def.element].glow : '#b98cff'
@@ -164,6 +181,7 @@ export class Boss {
     this.updateTelegraphs(dt, ctx)
 
     if (this.dead) {
+      this.external?.update(dt, 'death')
       this.deathTimer -= dt
       this.root.position.copy(this.position)
       if (this.deathTimer <= 0) this.finished = true
@@ -243,6 +261,11 @@ export class Boss {
     this.velocity.z = damp(this.velocity.z, 0, 5, dt)
     this.root.position.copy(this.position)
     this.root.rotation.y = this.facing
+    const moving = Math.hypot(this.velocity.x, this.velocity.z) > 0.4
+    const animation: ExternalAnimation = this.state === 'windup' ? 'attack-heavy'
+      : this.state === 'stagger' ? 'hit'
+      : moving ? 'run' : 'idle'
+    this.external?.update(dt, animation)
   }
 
   private chooseAttack(attackIds: string[], distance: number, ctx: EnemyContext, events: BossEvent[]): void {
@@ -428,6 +451,8 @@ export class Boss {
 
   dispose(): void {
     this.clearTelegraphs()
+    this.external?.dispose()
+    this.external = undefined
     this.root.removeFromParent()
     disposeEnemyVisual(this.visual)
     this.aura.geometry.dispose()
