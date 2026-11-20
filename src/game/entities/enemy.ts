@@ -4,7 +4,7 @@ import { clamp, damp, dampAngle } from '../core/math'
 import type { Collider } from '../world/collision'
 import { resolveCircle } from '../world/collision'
 import { buildEnemyVisual, disposeEnemyVisual, fitEnemyVisual, type EnemyVisual, type EnemyVisualBounds } from './enemyModels'
-import { ExternalCharacter, EXTERNAL_CHARACTER_URLS, HUMANOID_VISUAL_SCALE, type ExternalAnimation } from './externalModels'
+import { ExternalCharacter, EXTERNAL_CHARACTER_URLS, type ExternalAnimation } from './externalModels'
 import { damageAfterDefense, elementalMultiplier, type StatusKind } from '../combat/damage'
 
 export type EnemyEvent =
@@ -132,9 +132,8 @@ export class Enemy {
       : this.def.model === 'yeti' ? EXTERNAL_CHARACTER_URLS.werewolf
       : this.def.model === 'elemental' ? EXTERNAL_CHARACTER_URLS.witch : undefined
     if (externalEnemyUrl) {
-      // visual.height já inclui a escala do tipo e o bônus de elite.
-      // Multiplicar por scale novamente aplicava a escala duas vezes.
-      void ExternalCharacter.load(externalEnemyUrl, this.visual.height * HUMANOID_VISUAL_SCALE).then(model => {
+      // ExternalCharacter normaliza o GLB para a altura final já calculada pelo rig procedural.
+      void ExternalCharacter.load(externalEnemyUrl, this.visual.height).then(model => {
         if (this.finished) { model.dispose(); return }
         this.external = model
         this.visual.root.visible = false
