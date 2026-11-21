@@ -46,7 +46,7 @@ jobs:
             if (!request) {
               await github.rest.issues.createComment({
                 owner, repo, issue_number: issue.number,
-                body: '⚠️ Escreva a tarefa no corpo desta issue e abra outra com o rótulo `manus-task`.'
+                body: '⚠️ Escreva a tarefa no corpo desta issue. Para iniciar a automação, o título precisa começar com `[MANUS]`.'
               });
               return;
             }
