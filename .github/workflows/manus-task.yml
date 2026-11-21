@@ -2,7 +2,7 @@ name: Manus task bridge
 
 on:
   issues:
-    types: [opened, labeled]
+    types: [opened]
 
 permissions:
   contents: read
@@ -16,7 +16,7 @@ jobs:
   run-manus:
     if: >-
       github.repository_owner == github.actor &&
-      contains(github.event.issue.labels.*.name, 'manus-task') &&
+      startsWith(github.event.issue.title, '[MANUS]') &&
       !github.event.issue.pull_request
     runs-on: ubuntu-latest
     timeout-minutes: 20
