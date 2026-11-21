@@ -1,0 +1,135 @@
+name: Manus task bridge
+
+on:
+  issues:
+    types: [opened, labeled]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: manus-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  run-manus:
+    if: >-
+      github.repository_owner == github.actor &&
+      contains(github.event.issue.labels.*.name, 'manus-task') &&
+      !github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Validar configuração
+        env:
+          MANUS_API_KEY: ${{ secrets.MANUS_API_KEY }}
+        run: |
+          if [ -z "$MANUS_API_KEY" ]; then
+            echo "::error::Crie o secret MANUS_API_KEY em Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      - name: Criar tarefa no Manus e publicar retorno
+        uses: actions/github-script@v7
+        env:
+          MANUS_API_KEY: ${{ secrets.MANUS_API_KEY }}
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const apiKey = process.env.MANUS_API_KEY;
+            const title = issue.title || 'Tarefa Eclipse';
+            const request = (issue.body || '').trim();
+
+            if (!request) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: issue.number,
+                body: '⚠️ Escreva a tarefa no corpo desta issue e abra outra com o rótulo `manus-task`.'
+              });
+              return;
+            }
+
+            const prompt = [
+              'Você está trabalhando no jogo Eclipse — O Mundo Esquecido.',
+              'Repositório: https://github.com/' + owner + '/' + repo,
+              'Stack: Three.js, TypeScript e Vite; deploy por GitHub Pages.',
+              'Leia o estado atual do repositório e os commits recentes antes de editar.',
+              'Preserve as funcionalidades existentes e não reverta mudanças de outros colaboradores.',
+              'Não reescreva o projeto do zero. Faça mudanças pequenas e focadas.',
+              'Use o conector GitHub autorizado para trabalhar no repositório.',
+              'Prefira criar uma branch e abrir Pull Request; não faça push direto em main.',
+              'Execute build e testes disponíveis. Informe arquivos alterados, commits/PR e resultados reais.',
+              'Não revele segredos, tokens ou dados privados.',
+              '',
+              'TÍTULO: ' + title,
+              'PEDIDO:',
+              request
+            ].join('\n');
+
+            const create = await fetch('https://api.manus.ai/v2/task.create', {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                'x-manus-api-key': apiKey
+              },
+              body: JSON.stringify({
+                message: { content: [{ type: 'text', text: prompt, visibility: 'visible' }] },
+                locale: 'pt-BR',
+                interactive_mode: true,
+                share_visibility: 'private',
+                agent_profile: 'standard'
+              })
+            });
+            const created = await create.json();
+            if (!create.ok || created.ok === false || !created.task_id) {
+              throw new Error(created?.error?.message || 'Manus não aceitou a tarefa (HTTP ' + create.status + ').');
+            }
+
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: issue.number,
+              body: '🤖 **Manus recebeu a tarefa.** [Abrir execução](' + (created.task_url || 'https://manus.im') + ')\n\nID: `' + created.task_id + '`\n\nVou acompanhar o resultado nesta issue.'
+            });
+
+            let finalText = '';
+            let terminal = false;
+            let lastStatus = '';
+            for (let attempt = 0; attempt < 48; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 15000));
+              const url = new URL('https://api.manus.ai/v2/task.listMessages');
+              url.searchParams.set('task_id', created.task_id);
+              url.searchParams.set('order', 'desc');
+              url.searchParams.set('limit', '50');
+              const response = await fetch(url, { headers: { 'x-manus-api-key': apiKey } });
+              const data = await response.json();
+              if (!response.ok || data.ok === false) {
+                throw new Error(data?.error?.message || 'Falha ao consultar a tarefa Manus.');
+              }
+              const messages = data.messages || [];
+              const status = messages.find(m => m.type === 'status_update')?.status_update?.agent_status || '';
+              if (status && status !== lastStatus) {
+                lastStatus = status;
+                core.info('Manus status: ' + status);
+              }
+              const assistant = messages.find(m => m.type === 'assistant_message' && m.assistant_message?.content);
+              if (assistant) finalText = assistant.assistant_message.content;
+              if (status === 'stopped' || status === 'error') {
+                terminal = true;
+                break;
+              }
+              if (status === 'waiting') {
+                finalText = (finalText ? finalText + '\n\n' : '') +
+                  '⏸️ Manus está aguardando uma resposta ou confirmação. Abra a tarefa no link acima para continuar.';
+                terminal = true;
+                break;
+              }
+            }
+
+            const body = terminal
+              ? (lastStatus === 'error' ? '❌ **Manus encontrou um erro.**\n\n' : '✅ **Retorno do Manus:**\n\n') + (finalText || 'A tarefa terminou sem uma mensagem final.')
+              : '⏳ A tarefa ainda está em execução após 12 minutos. Acompanhe pelo [Manus](' + (created.task_url || 'https://manus.im') + ').';
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: issue.number,
+              body: body.slice(0, 60000)
+            });
