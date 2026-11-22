@@ -7,6 +7,7 @@ import { BIOMES } from './biomes'
 import type { BiomeId } from '../data/types'
 import type { Collider } from './collision'
 import { grassGeometry, propMaterial, rockGeometry, treeGeometries } from './props'
+import { addInstancedTreeModels } from './treeModels'
 import { SEA_LEVEL, type Terrain } from './terrain'
 
 export const CHUNK_SIZE = 80
@@ -126,13 +127,16 @@ export function applyChunkTextures(textures: ChunkTextureSet): void {
   }
   terrainMaterial.map = textures.grass
   grassMaterial.map = textures.natureGrass ?? textures.grass
+  grassMaterial.side = THREE.DoubleSide
   treeFoliageMaterial.map = textures.leaves
   treeBarkMaterial.map = textures.treeBark ?? textures.bark
   treeBarkMaterial.normalMap = textures.treeBarkNormal ?? null
   if (textures.treeBarkNormal) treeBarkMaterial.normalScale.set(0.55, 0.55)
   rockMaterial.map = textures.natureRocks ?? textures.rock
+  rockMaterial.bumpMap = textures.natureRocks ?? null
+  rockMaterial.bumpScale = 0.12
   treeNatureLeavesMaterial.map = textures.natureLeaves ?? null
-  if (textures.natureRocks) textures.natureRocks.repeat.set(3, 3)
+  if (textures.natureRocks) textures.natureRocks.repeat.set(1, 1)
   terrainMaterial.needsUpdate = true
   grassMaterial.needsUpdate = true
   treeFoliageMaterial.needsUpdate = true
@@ -360,7 +364,7 @@ export class Chunk {
       const quaternion = new THREE.Quaternion()
       const position = new THREE.Vector3()
       const scale = new THREE.Vector3()
-      const placed: { x: number; z: number; y: number; s: number }[] = []
+      const placed: { x: number; z: number; y: number; s: number; variantRoll: number }[] = []
       for (let attempt = 0; attempt < wanted * 4 && placed.length < wanted; attempt += 1) {
         const x = originX + random() * CHUNK_SIZE
         const z = originZ + random() * CHUNK_SIZE
@@ -370,7 +374,7 @@ export class Chunk {
         if (this.blocked(x, z)) continue
         if (placed.some(p => Math.hypot(p.x - x, p.z - z) < 4.2)) continue
         const s = 0.75 + random() * 0.7
-        placed.push({ x, z, y, s })
+        placed.push({ x, z, y, s, variantRoll: random() })
       }
       if (placed.length) {
         const barkMesh = treeGeo.bark ? new THREE.InstancedMesh(treeGeo.bark, treeBarkMaterial, placed.length) : null
@@ -390,6 +394,7 @@ export class Chunk {
           natureLeavesMesh?.setMatrixAt(index, matrix)
           if (p.s > 0.85) this.colliders.push({ kind: 'circle', x: p.x, z: p.z, radius: 0.42 * p.s })
         })
+        addInstancedTreeModels(group, treeKind, placed.map(p => ({ ...p, x: p.x - originX, z: p.z - originZ })))
         for (const mesh of [barkMesh, foliageMesh, natureLeavesMesh]) {
           if (!mesh) continue
           mesh.castShadow = true
@@ -400,7 +405,7 @@ export class Chunk {
       }
     }
 
-    const rockCount = Math.round(biome.rockDensity * (0.6 + random() * 0.9))
+    const rockCount = Math.round(biome.rockDensity * (1.6 + random() * 1.2))
     if (rockCount > 0) {
       const variants = [rockGeometry(0), rockGeometry(1), rockGeometry(2)]
       const buckets: THREE.Matrix4[][] = [[], [], []]
@@ -435,7 +440,7 @@ export class Chunk {
     }
 
     if (biome.grassDensity > 0) {
-      const grassCount = Math.round(biome.grassDensity * (0.7 + random() * 0.6))
+      const grassCount = Math.round(biome.grassDensity * (2 + random() * 0.8))
       const matrix = new THREE.Matrix4()
       const quaternion = new THREE.Quaternion()
       const position = new THREE.Vector3()

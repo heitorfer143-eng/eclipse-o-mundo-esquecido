@@ -77,6 +77,18 @@ const DEFAULT_APPEARANCE: Appearance = {
   hair: '#2a2024',
 }
 
+export function externalPaletteFromAppearance(appearance: Appearance, modelId?: CharacterModelId): ExternalMaterialPalette {
+  return {
+    skin: appearance.skin,
+    face: appearance.skin,
+    hair: appearance.hair,
+    shirt: appearance.cloth,
+    pants: appearance.clothAccent,
+    belt: appearance.leather,
+    ...(modelId === 'Paladin' ? { hiddenMaterials: ['Helmet'] } : {}),
+  }
+}
+
 function mat(color: string, opts: { roughness?: number; metalness?: number; emissive?: string; emissiveIntensity?: number } = {}): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
     color,
@@ -291,8 +303,8 @@ export class CharacterModel {
 
   constructor(appearance: Partial<Appearance> = {}, externalUrl: string = EXTERNAL_CHARACTER_URLS.player, externalYaw = 0, selectedModelId?: CharacterModelId, externalMaterialPalette?: ExternalMaterialPalette) {
     this.appearance = { ...DEFAULT_APPEARANCE, ...appearance }
-    this.externalMaterialPalette = externalMaterialPalette
     this.selectedModelId = selectedModelId ?? (externalUrl ? 'Knight' : 'Survivor')
+    this.externalMaterialPalette = externalMaterialPalette ?? externalPaletteFromAppearance(this.appearance, this.selectedModelId)
     const skin = mat(this.appearance.skin, { roughness: 0.85 })
     this.skinMaterial = skin
     this.clothMaterial = mat(this.appearance.cloth, { roughness: 0.9 })

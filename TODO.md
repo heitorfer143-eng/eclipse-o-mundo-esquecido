@@ -206,3 +206,11 @@ H poção · Tab inventário · K habilidades · M mapa · L missões · Esc pau
 - [x] Usar o atlas de rochas de modo compatível com as UVs procedurais, otimizar assets para web/mobile, registrar fonte/licença e validar a cena em build/smoke.
 - Validação: `pnpm typecheck`, 62 testes unitários, `pnpm build` e smoke Playwright no preview de produção passaram; o smoke confirmou os URLs dos cinco mapas em materiais de meshes visíveis da cena.
 - O atlas de rochas é UV e não um tile; foi usado um recorte cinza/musgo espelhado como tile leve, mantendo o atlas otimizado arquivado e fallback de material se o mapa opcional falhar.
+
+
+## Prioridade visual reaberta (22 nov 2026)
+- [x] Corrigir cabelo ausente e melhorar o acabamento do protagonista; usar `Casual_Male` sem armadura também para o Paladino enquanto não conquistou armadura, confirmando o material de cabelo visível no smoke.
+- [x] Fazer as animações do protagonista ficarem claramente visíveis no jogo; o smoke real acionou o clip Quaternius `Walk` no `AnimationMixer`, sem root motion.
+- [x] Substituir árvores de primitivas por GLBs reais de carvalho, bétula, abeto e árvore morta; instanciar meshes por chunk, manter materiais e fallback procedural, rochas, terreno, colisões e geração determinística.
+- [x] Variar cottages residenciais de forma determinística entre modelos 3D já carregados em Brumal/Aster; manter tavern/ferreiro, fallback, colocação, colisores, entradas/interiores e navegação de NPCs.
+- [x] Validar visualmente a cena real e preservar sistemas existentes; typecheck, 64 testes, build e smoke Playwright completo passaram sem erros de navegador. O smoke confirmou cabelo, árvores GLB instanciadas, clip de locomoção, casas/interiores, NPCs e campanha única. Alterações preparadas somente na branch `fix/visual-nature-character-assets` para atualizar a PR #3; `main` permanece intocada e não há merge.

@@ -162,13 +162,19 @@ export function rockGeometry(variant: number): THREE.BufferGeometry {
   if (cached) return cached
   const geo = new THREE.IcosahedronGeometry(1, key === 0 ? 0 : 1)
   const position = geo.attributes.position as THREE.BufferAttribute
+  const verticalScale = [0.72, 0.6, 0.84][key]
   for (let i = 0; i < position.count; i += 1) {
-    const n = 0.72 + ((i * 37 + key * 17) % 13) / 26
-    position.setXYZ(i, position.getX(i) * n, position.getY(i) * n * 0.72, position.getZ(i) * n)
+    const x = position.getX(i)
+    const y = position.getY(i)
+    const z = position.getZ(i)
+    // Detail-1 Icosahedra duplicate vertices per triangle; coordinate noise keeps shared
+    // vertices aligned, preserving a watertight silhouette instead of making sharp spikes.
+    const radius = 0.9 + 0.08 * Math.sin(x * 4.1 + y * 7.7 + z * 5.3 + key * 2.1)
+    position.setXYZ(i, x * radius, y * radius * verticalScale, z * radius)
   }
   geo.computeVertexNormals()
-  // A brighter neutral tint lets the stone albedo read instead of multiplying it into near-black.
-  paint(geo, key === 2 ? '#d8d5d1' : '#e3dfd5')
+  // Keep the diffuse atlas colors intact so the stone facets remain readable at gameplay distance.
+  paint(geo, '#ffffff')
   const uv = new Float32Array(position.count * 2)
   const bounds = new THREE.Box3().setFromBufferAttribute(position)
   const size = bounds.getSize(new THREE.Vector3())
@@ -187,14 +193,42 @@ export function rockGeometry(variant: number): THREE.BufferGeometry {
 let grassGeometryCache: THREE.BufferGeometry | null = null
 export function grassGeometry(): THREE.BufferGeometry {
   if (grassGeometryCache) return grassGeometryCache
-  const parts: THREE.BufferGeometry[] = []
-  for (let i = 0; i < 3; i += 1) {
-    const blade = new THREE.ConeGeometry(0.09, 0.72, 3)
-    blade.rotateZ((i - 1) * 0.3)
-    blade.translate((i - 1) * 0.13, 0.36, (i % 2) * 0.1)
-    parts.push(paint(blade, i === 1 ? '#8fbf5a' : '#6fa347'))
+  const positions: number[] = []
+  const uvs: number[] = []
+  const colors: number[] = []
+  const indices: number[] = []
+  const addPoint = (point: THREE.Vector3, u: number, v: number): void => {
+    positions.push(point.x, point.y, point.z)
+    uvs.push(u, v)
+    colors.push(1, 1, 1)
   }
-  grassGeometryCache = merge(parts, 'foliage')
+  for (let i = 0; i < 6; i += 1) {
+    const angle = i * 2.399963229728653
+    const direction = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle))
+    const side = new THREE.Vector3(-direction.z, 0, direction.x)
+    const height = 0.82 + (i % 3) * 0.10
+    const width = 0.17 + (i % 2) * 0.045
+    const lean = direction.multiplyScalar(0.16 + (i % 3) * 0.025)
+    const baseLeft = side.clone().multiplyScalar(-width / 2)
+    const baseRight = side.clone().multiplyScalar(width / 2)
+    const middleLeft = baseLeft.clone().multiplyScalar(0.52).addScaledVector(lean, 0.38).add(new THREE.Vector3(0, height * 0.56, 0))
+    const middleRight = baseRight.clone().multiplyScalar(0.52).addScaledVector(lean, 0.38).add(new THREE.Vector3(0, height * 0.56, 0))
+    const tip = lean.clone().add(new THREE.Vector3(0, height, 0))
+    const first = positions.length / 3
+    addPoint(baseLeft, 0.03, 1)
+    addPoint(baseRight, 0.97, 1)
+    addPoint(middleRight, 0.80, 0.46)
+    addPoint(tip, 0.50, 0)
+    addPoint(middleLeft, 0.20, 0.46)
+    indices.push(first, first + 1, first + 2, first, first + 2, first + 4, first + 2, first + 3, first + 4)
+  }
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+  geometry.setIndex(indices)
+  geometry.computeVertexNormals()
+  grassGeometryCache = geometry
   return grassGeometryCache
 }
 

@@ -1,5 +1,5 @@
 from pathlib import Path
-from PIL import Image, ImageOps
+from PIL import Image, ImageEnhance
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'assets' / 'nature-source'
@@ -24,17 +24,18 @@ dark_green = grass.crop((29, 0, 54, 512)).resize((32, 512), Image.Resampling.LAN
 light_green = grass.crop((87, 0, 112, 512)).resize((32, 512), Image.Resampling.LANCZOS)
 grass_blades.paste(dark_green, (0, 0))
 grass_blades.paste(light_green, (32, 0))
-grass_blades.save(OUTPUT / 'grass-blades.webp', 'WEBP', quality=88, method=6)
+grass_blades = ImageEnhance.Color(grass_blades).enhance(1.2)
+grass_blades = ImageEnhance.Contrast(grass_blades).enhance(1.2)
+grass_blades = ImageEnhance.Brightness(grass_blades).enhance(1.12)
+grass_blades.save(OUTPUT / 'grass-blades.webp', 'WEBP', quality=90, method=6)
 
-# Rocks_Diffuse is a UV atlas for the pack's own meshes, not a tile. Extract a visibly mottled
-# grey-and-moss rock face, mirror it into a seamless 128px detail map, and use it on game rocks.
-rock_face = Image.open(SOURCE / 'Rocks_Diffuse.png').convert('RGB').crop((630, 590, 694, 654))
-rock_tile = Image.new('RGB', (128, 128))
-rock_tile.paste(rock_face, (0, 0))
-rock_tile.paste(ImageOps.mirror(rock_face), (64, 0))
-rock_tile.paste(ImageOps.flip(rock_face), (0, 64))
-rock_tile.paste(ImageOps.flip(ImageOps.mirror(rock_face)), (64, 64))
-rock_tile.save(OUTPUT / 'rock-detail-tile.webp', 'WEBP', quality=84, method=6)
+# Rocks_Diffuse is a UV atlas, not a tiling texture. Use an intact gray stone-facet crop once across
+# each procedural rock's spherical UVs; do not mirror or present the atlas as a seamless ground tile.
+rock_face = Image.open(SOURCE / 'Rocks_Diffuse.png').convert('RGB').crop((896, 512, 1152, 768))
+rock_face = ImageEnhance.Color(rock_face).enhance(1.25)
+rock_face = ImageEnhance.Contrast(rock_face).enhance(1.65)
+rock_face = ImageEnhance.Sharpness(rock_face).enhance(1.7)
+rock_face.save(OUTPUT / 'rock-detail.webp', 'WEBP', quality=90, method=6)
 
 for path in sorted(OUTPUT.glob('*.webp')):
     with Image.open(path) as image:
