@@ -28,7 +28,8 @@ export const QUATERNIUS_CHARACTER_ASSETS = {
     armored: 'assets/models/quaternius/characters/Soldier_Male.gltf',
   },
   Paladin: {
-    starting: 'assets/models/quaternius/characters/Soldier_Male.gltf',
+    // Soldier_Male has no hair mesh; use the same unarmored civilian rig as the Soldier until armor is earned.
+    starting: 'assets/models/quaternius/characters/Casual_Male.gltf',
     armored: 'assets/models/quaternius/characters/Knight_Golden_Male.gltf',
   },
 } as const

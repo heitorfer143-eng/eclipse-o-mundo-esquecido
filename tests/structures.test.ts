@@ -195,6 +195,48 @@ describe('arquitetura procedural do mundo', () => {
     sharedGeometry.dispose()
   })
 
+  it('alterna cottages residenciais deterministicamente entre os modelos compatíveis', () => {
+    const terrain = new Terrain(SEED)
+    const makeTemplate = (width: number, height: number, depth: number): THREE.Group => {
+      const template = new THREE.Group()
+      template.add(new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), new THREE.MeshStandardMaterial()))
+      return template
+    }
+    const templates = [
+      makeTemplate(4, 5, 3),
+      makeTemplate(6, 5, 4),
+      makeTemplate(5, 6, 4),
+      makeTemplate(7, 4, 3),
+    ]
+    const village = buildVillage(terrain, X, Z, SEED, 'Brumal', templates)
+    const repeatedVillage = buildVillage(terrain, X, Z, SEED, 'Brumal', templates)
+    const city = buildCity(terrain, X, Z, SEED, templates)
+    const variants = (site: SiteResult): number[] => {
+      const selected: number[] = []
+      site.group.traverse(object => {
+        if (object.name === 'house-model-cottage') selected.push(object.userData.houseModelAssetIndex as number)
+      })
+      return selected
+    }
+
+    expect(variants(village)).toEqual(variants(repeatedVillage))
+    expect(variants(village).length).toBeGreaterThanOrEqual(6)
+    expect(variants(village).slice(0, 6)).toEqual([0, 3, 0, 3, 0, 3])
+    expect(variants(city)).toEqual([0, 3])
+    expect(village.spots).toEqual(repeatedVillage.spots)
+
+    for (const site of [village, repeatedVillage, city]) disposeSite(site)
+    for (const template of templates) {
+      template.traverse(object => {
+        const mesh = object as THREE.Mesh
+        if (mesh.isMesh) {
+          mesh.geometry.dispose()
+          ;(mesh.material as THREE.Material).dispose()
+        }
+      })
+    }
+  })
+
   it('realoca a oficina para a área plana próxima e mantém a forja e o NPC junto da casa', () => {
     const terrain = {
       heightAt: (x: number, z: number) => x * 0.05 + z * 0.02,

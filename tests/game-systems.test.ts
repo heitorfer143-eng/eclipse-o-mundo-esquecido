@@ -224,9 +224,9 @@ describe('classe e modelos do protagonista', () => {
   it('usa roupa civil no início e o modelo armado correspondente ao equipar armadura', () => {
     expect(characterModelPathFor('Soldier')).toBe('assets/models/quaternius/characters/Casual_Male.gltf')
     expect(characterModelPathFor('Soldier', true)).toBe('assets/models/quaternius/characters/Soldier_Male.gltf')
-    expect(characterModelPathFor('Paladin')).toBe('assets/models/quaternius/characters/Soldier_Male.gltf')
+    expect(characterModelPathFor('Paladin')).toBe('assets/models/quaternius/characters/Casual_Male.gltf')
     expect(characterModelPathFor('Paladin', true)).toBe('assets/models/quaternius/characters/Knight_Golden_Male.gltf')
-    expect(characterModelPathFor('Soldier')).not.toBe(characterModelPathFor('Paladin'))
+    expect(characterModelPathFor('Soldier')).toBe(characterModelPathFor('Paladin'))
   })
 
   it('aplica uma cor de pele e rosto visível ao carregar o modelo externo do jogador', () => {
