@@ -44,6 +44,9 @@ const WORLD_TEXTURE_ASSETS = {
   rock: HOUSE_TEXTURE_ASSETS.stone,
   treeBark: 'assets/textures/world/nature/bark-tree.webp',
   treeBarkNormal: 'assets/textures/world/nature/bark-tree-normal.webp',
+  natureGrass: 'assets/textures/world/nature/grass-blades.webp',
+  natureLeaves: 'assets/textures/world/nature/leaves-atlas.webp',
+  natureRocks: 'assets/textures/world/nature/rock-detail-tile.webp',
 } as const
 
 function createWorldSeed(): number {

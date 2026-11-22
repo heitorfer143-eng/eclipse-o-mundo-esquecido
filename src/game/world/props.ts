@@ -49,8 +49,50 @@ function merge(parts: THREE.BufferGeometry[], uvMode?: 'bark' | 'foliage'): THRE
   return merged
 }
 
-export type TreeGeometrySet = { bark: THREE.BufferGeometry | null; foliage: THREE.BufferGeometry | null }
+export type TreeGeometrySet = { bark: THREE.BufferGeometry | null; foliage: THREE.BufferGeometry | null; natureLeaves: THREE.BufferGeometry | null }
 const TREE_CACHE = new Map<TreeKind, TreeGeometrySet | null>()
+
+const NATURE_LEAF_BOUNDS: readonly [number, number, number, number][] = [
+  [400, 116, 615, 420], [673, 160, 850, 350], [166, 254, 420, 470],
+  [610, 300, 874, 574], [92, 430, 320, 601], [315, 430, 590, 810],
+  [670, 604, 910, 770], [119, 630, 330, 805], [370, 740, 540, 933],
+]
+
+/** Oak-only leaf cards address individual alpha-cut leaves in the supplied atlas. */
+function natureLeafCardGeometry(): THREE.BufferGeometry {
+  const positions: number[] = []
+  const uvs: number[] = []
+  const addVertex = (point: THREE.Vector3, u: number, v: number): void => {
+    positions.push(point.x, point.y, point.z)
+    uvs.push(u, v)
+  }
+  for (let i = 0; i < 27; i += 1) {
+    const [x0, y0, x1, y1] = NATURE_LEAF_BOUNDS[i % NATURE_LEAF_BOUNDS.length]
+    const angle = i * 2.399963229728653
+    const radius = 0.35 + ((i * 37) % 9) * 0.12
+    const center = new THREE.Vector3(Math.cos(angle) * radius, 3.5 + ((i * 29) % 11) * 0.19, Math.sin(angle) * radius)
+    const tilt = ((i % 5) - 2) * 0.11
+    const axisX = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle))
+    const axisY = new THREE.Vector3(-Math.sin(angle) * tilt, 1, Math.cos(angle) * tilt).normalize()
+    const width = 0.42 + (i % 4) * 0.07
+    const height = 0.58 + (i % 3) * 0.09
+    const lowerLeft = center.clone().addScaledVector(axisX, -width / 2).addScaledVector(axisY, -height / 2)
+    const lowerRight = center.clone().addScaledVector(axisX, width / 2).addScaledVector(axisY, -height / 2)
+    const upperRight = center.clone().addScaledVector(axisX, width / 2).addScaledVector(axisY, height / 2)
+    const upperLeft = center.clone().addScaledVector(axisX, -width / 2).addScaledVector(axisY, height / 2)
+    const u0 = (x0 + 2) / 1024
+    const u1 = (x1 - 2) / 1024
+    const vTop = 1 - (y0 + 2) / 1024
+    const vBottom = 1 - (y1 - 2) / 1024
+    addVertex(lowerLeft, u0, vBottom); addVertex(lowerRight, u1, vBottom); addVertex(upperRight, u1, vTop)
+    addVertex(lowerLeft, u0, vBottom); addVertex(upperRight, u1, vTop); addVertex(upperLeft, u0, vTop)
+  }
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+  geometry.computeVertexNormals()
+  return geometry
+}
 
 /** Two merged, vertex-coloured parts per kind keep bark and leaves independently textured. */
 export function treeGeometries(kind: TreeKind): TreeGeometrySet | null {
@@ -107,6 +149,7 @@ export function treeGeometries(kind: TreeKind): TreeGeometrySet | null {
   const geometry: TreeGeometrySet = {
     bark: barkParts.length ? merge(barkParts, 'bark') : null,
     foliage: foliageParts.length ? merge(foliageParts, 'foliage') : null,
+    natureLeaves: kind === 'carvalho' ? natureLeafCardGeometry() : null,
   }
   TREE_CACHE.set(kind, geometry)
   return geometry

@@ -94,16 +94,29 @@ await page.waitForFunction(() => {
   })
   return loaded
 }, null, { timeout: 30000 })
-const rockTextureUrl = await page.evaluate(() => {
-  let url = ''
+const natureTextureStatus = await page.evaluate(() => {
+  const result = { grass: '', bark: '', barkNormal: '', leaves: '', rocks: '' }
+  const urlOf = texture => texture?.image?.currentSrc || texture?.image?.src || ''
   window.__eclipse.game.world.scene.traverse(object => {
-    if (object.name !== 'world-rocks' || !object.isInstancedMesh || Array.isArray(object.material)) return
-    const image = object.material.map?.image
-    if (image?.width) url = image.currentSrc || image.src || ''
+    if (!object.isInstancedMesh || Array.isArray(object.material)) return
+    if (object.name === 'world-grass') result.grass = urlOf(object.material.map)
+    if (object.name === 'world-tree-bark') {
+      result.bark = urlOf(object.material.map)
+      result.barkNormal = urlOf(object.material.normalMap)
+    }
+    if (object.name === 'world-nature-leaves') result.leaves = urlOf(object.material.map)
+    if (object.name === 'world-rocks') result.rocks = urlOf(object.material.map)
   })
-  return url
+  return result
 })
-if (!rockTextureUrl.includes('stone-blocks.webp')) throw new Error(`As rochas não receberam a textura própria: ${rockTextureUrl}`)
+console.log('nature pack textures in scene:', natureTextureStatus)
+if (!natureTextureStatus.grass.includes('/textures/world/nature/grass-blades.webp')
+  || !natureTextureStatus.bark.includes('/textures/world/nature/bark-tree.webp')
+  || !natureTextureStatus.barkNormal.includes('/textures/world/nature/bark-tree-normal.webp')
+  || !natureTextureStatus.leaves.includes('/textures/world/nature/leaves-atlas.webp')
+  || !natureTextureStatus.rocks.includes('/textures/world/nature/rock-detail-tile.webp')) {
+  throw new Error(`O pacote de natureza não foi ligado aos materiais visíveis: ${JSON.stringify(natureTextureStatus)}`)
+}
 if (await page.evaluate(() => window.__eclipse.game.player.element) !== 'gelo') throw new Error('element specialization did not persist to the campaign')
 await page.waitForTimeout(1000)
 

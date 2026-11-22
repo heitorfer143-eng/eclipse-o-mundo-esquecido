@@ -199,3 +199,10 @@ H poção · Tab inventário · K habilidades · M mapa · L missões · Esc pau
 - Smoke percorreu o ciclo da missão e confirmou deltas salvos de +120 XP, +60 ouro, +2 poções e +3 pães, missão concluída e Manto do Andarilho equipado após reload.
 - Retrato curto 360×640: botão Missões dentro da tela e sem sobreposição com joystick/botões; noite verificada visualmente em captura e com luz ambiente 1,4, hemisférica 1,8 e fog 0,0021.
 - Mantido o escopo estrito nas prioridades 1–6; nenhuma prioridade 7–10 implementada.
+
+## Correção da integração visual do pacote de natureza (22 nov 2026)
+- [x] Integrar visivelmente mapas CC0 do Stylized Nature MegaKit a elementos compatíveis do mundo; não deixar texturas apenas armazenadas sem referência nos materiais.
+- [x] Aplicar grama nas touceiras, folhas recortadas em copas de árvores e casca + normal nos troncos; preservar a textura de chão existente e fallbacks.
+- [x] Usar o atlas de rochas de modo compatível com as UVs procedurais, otimizar assets para web/mobile, registrar fonte/licença e validar a cena em build/smoke.
+- Validação: `pnpm typecheck`, 62 testes unitários, `pnpm build` e smoke Playwright no preview de produção passaram; o smoke confirmou os URLs dos cinco mapas em materiais de meshes visíveis da cena.
+- O atlas de rochas é UV e não um tile; foi usado um recorte cinza/musgo espelhado como tile leve, mantendo o atlas otimizado arquivado e fallback de material se o mapa opcional falhar.

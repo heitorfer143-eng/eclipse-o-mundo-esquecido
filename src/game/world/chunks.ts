@@ -20,6 +20,9 @@ const rockMaterial = propMaterial()
 const grassMaterial = propMaterial()
 const treeBarkMaterial = propMaterial()
 const treeFoliageMaterial = propMaterial()
+const treeNatureLeavesMaterial = new THREE.MeshStandardMaterial({
+  color: '#ffffff', roughness: 0.98, metalness: 0, side: THREE.DoubleSide, alphaTest: 0.36,
+})
 const animalLoader = new GLTFLoader()
 export type AnimalMotion = 'idle' | 'walk' | 'run'
 type AnimalAction = AnimalMotion | 'death'
@@ -110,7 +113,10 @@ export type WildlifeAgent = {
   takeDamage: (amount: number) => { amount: number; killed: boolean }
 }
 
-export type ChunkTextureSet = { grass: THREE.Texture; leaves: THREE.Texture; bark: THREE.Texture; stone: THREE.Texture; rock: THREE.Texture; treeBark?: THREE.Texture; treeBarkNormal?: THREE.Texture }
+export type ChunkTextureSet = {
+  grass: THREE.Texture; leaves: THREE.Texture; bark: THREE.Texture; stone: THREE.Texture; rock: THREE.Texture
+  treeBark?: THREE.Texture; treeBarkNormal?: THREE.Texture; natureGrass?: THREE.Texture; natureLeaves?: THREE.Texture; natureRocks?: THREE.Texture
+}
 
 export function applyChunkTextures(textures: ChunkTextureSet): void {
   for (const texture of Object.values(textures)) {
@@ -119,16 +125,19 @@ export function applyChunkTextures(textures: ChunkTextureSet): void {
     texture.needsUpdate = true
   }
   terrainMaterial.map = textures.grass
-  grassMaterial.map = textures.grass
+  grassMaterial.map = textures.natureGrass ?? textures.grass
   treeFoliageMaterial.map = textures.leaves
   treeBarkMaterial.map = textures.treeBark ?? textures.bark
   treeBarkMaterial.normalMap = textures.treeBarkNormal ?? null
   if (textures.treeBarkNormal) treeBarkMaterial.normalScale.set(0.55, 0.55)
-  rockMaterial.map = textures.rock
+  rockMaterial.map = textures.natureRocks ?? textures.rock
+  treeNatureLeavesMaterial.map = textures.natureLeaves ?? null
+  if (textures.natureRocks) textures.natureRocks.repeat.set(3, 3)
   terrainMaterial.needsUpdate = true
   grassMaterial.needsUpdate = true
   treeFoliageMaterial.needsUpdate = true
   treeBarkMaterial.needsUpdate = true
+  treeNatureLeavesMaterial.needsUpdate = true
   rockMaterial.needsUpdate = true
 }
 
@@ -366,6 +375,11 @@ export class Chunk {
       if (placed.length) {
         const barkMesh = treeGeo.bark ? new THREE.InstancedMesh(treeGeo.bark, treeBarkMaterial, placed.length) : null
         const foliageMesh = treeGeo.foliage ? new THREE.InstancedMesh(treeGeo.foliage, treeFoliageMaterial, placed.length) : null
+        const natureLeavesMesh = treeGeo.natureLeaves && treeNatureLeavesMaterial.map
+          ? new THREE.InstancedMesh(treeGeo.natureLeaves, treeNatureLeavesMaterial, placed.length) : null
+        if (barkMesh) barkMesh.name = 'world-tree-bark'
+        if (foliageMesh) foliageMesh.name = 'world-tree-foliage'
+        if (natureLeavesMesh) natureLeavesMesh.name = 'world-nature-leaves'
         placed.forEach((p, index) => {
           position.set(p.x - originX, p.y - 0.15, p.z - originZ)
           quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), random() * Math.PI * 2)
@@ -373,9 +387,10 @@ export class Chunk {
           matrix.compose(position, quaternion, scale)
           barkMesh?.setMatrixAt(index, matrix)
           foliageMesh?.setMatrixAt(index, matrix)
+          natureLeavesMesh?.setMatrixAt(index, matrix)
           if (p.s > 0.85) this.colliders.push({ kind: 'circle', x: p.x, z: p.z, radius: 0.42 * p.s })
         })
-        for (const mesh of [barkMesh, foliageMesh]) {
+        for (const mesh of [barkMesh, foliageMesh, natureLeavesMesh]) {
           if (!mesh) continue
           mesh.castShadow = true
           mesh.receiveShadow = false
@@ -426,6 +441,7 @@ export class Chunk {
       const position = new THREE.Vector3()
       const scale = new THREE.Vector3()
       const mesh = new THREE.InstancedMesh(grassGeometry(), grassMaterial, grassCount)
+      mesh.name = 'world-grass'
       let filled = 0
       for (let i = 0; i < grassCount; i += 1) {
         const x = originX + random() * CHUNK_SIZE
