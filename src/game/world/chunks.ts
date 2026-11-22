@@ -126,13 +126,16 @@ export function applyChunkTextures(textures: ChunkTextureSet): void {
   }
   terrainMaterial.map = textures.grass
   grassMaterial.map = textures.natureGrass ?? textures.grass
+  grassMaterial.side = THREE.DoubleSide
   treeFoliageMaterial.map = textures.leaves
   treeBarkMaterial.map = textures.treeBark ?? textures.bark
   treeBarkMaterial.normalMap = textures.treeBarkNormal ?? null
   if (textures.treeBarkNormal) treeBarkMaterial.normalScale.set(0.55, 0.55)
   rockMaterial.map = textures.natureRocks ?? textures.rock
+  rockMaterial.bumpMap = textures.natureRocks ?? null
+  rockMaterial.bumpScale = 0.12
   treeNatureLeavesMaterial.map = textures.natureLeaves ?? null
-  if (textures.natureRocks) textures.natureRocks.repeat.set(3, 3)
+  if (textures.natureRocks) textures.natureRocks.repeat.set(1, 1)
   terrainMaterial.needsUpdate = true
   grassMaterial.needsUpdate = true
   treeFoliageMaterial.needsUpdate = true
@@ -400,7 +403,7 @@ export class Chunk {
       }
     }
 
-    const rockCount = Math.round(biome.rockDensity * (0.6 + random() * 0.9))
+    const rockCount = Math.round(biome.rockDensity * (1.6 + random() * 1.2))
     if (rockCount > 0) {
       const variants = [rockGeometry(0), rockGeometry(1), rockGeometry(2)]
       const buckets: THREE.Matrix4[][] = [[], [], []]
@@ -435,7 +438,7 @@ export class Chunk {
     }
 
     if (biome.grassDensity > 0) {
-      const grassCount = Math.round(biome.grassDensity * (0.7 + random() * 0.6))
+      const grassCount = Math.round(biome.grassDensity * (2 + random() * 0.8))
       const matrix = new THREE.Matrix4()
       const quaternion = new THREE.Quaternion()
       const position = new THREE.Vector3()

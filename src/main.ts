@@ -46,7 +46,7 @@ const WORLD_TEXTURE_ASSETS = {
   treeBarkNormal: 'assets/textures/world/nature/bark-tree-normal.webp',
   natureGrass: 'assets/textures/world/nature/grass-blades.webp',
   natureLeaves: 'assets/textures/world/nature/leaves-atlas.webp',
-  natureRocks: 'assets/textures/world/nature/rock-detail-tile.webp',
+  natureRocks: 'assets/textures/world/nature/rock-detail.webp',
 } as const
 
 function createWorldSeed(): number {

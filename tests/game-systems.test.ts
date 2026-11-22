@@ -8,7 +8,7 @@ import { ENEMIES } from '../src/game/data/enemyData'
 import { Boss } from '../src/game/entities/boss'
 import { ENEMY_VISUAL_LIMITS, Enemy } from '../src/game/entities/enemy'
 import { pickEnemyFor } from '../src/game/entities/spawner'
-import { CharacterModel, externalAnimationFor, type AnimState } from '../src/game/entities/character'
+import { CharacterModel, externalAnimationFor, externalPaletteFromAppearance, type AnimState } from '../src/game/entities/character'
 import { characterModelPathFor } from '../src/game/entities/characterAssets'
 import { externalHumanoidUrlForModel, EXTERNAL_CHARACTER_URLS, resolveExternalClipName, type ExternalAnimation } from '../src/game/entities/externalModels'
 import { NPCS } from '../src/game/data/npcData'
@@ -78,10 +78,13 @@ describe('mundo procedural', () => {
   })
 
   it('fornece UVs para grama, troncos, copas e rochas texturizadas', () => {
+    const grass = grassGeometry()
     const tree = treeGeometries('carvalho')!
     const rock = rockGeometry(0)
     expect(tree.natureLeaves).not.toBeNull()
-    for (const geometry of [grassGeometry(), rock, tree.bark!, tree.foliage!, tree.natureLeaves!]) {
+    expect(grass.getAttribute('position').count).toBe(30)
+    expect(grass.index?.count).toBe(54)
+    for (const geometry of [grass, rock, tree.bark!, tree.foliage!, tree.natureLeaves!]) {
       expect(geometry.getAttribute('uv')?.count).toBe(geometry.getAttribute('position').count)
     }
     const leafUv = tree.natureLeaves!.getAttribute('uv')
@@ -221,8 +224,19 @@ describe('classe e modelos do protagonista', () => {
   it('usa roupa civil no início e o modelo armado correspondente ao equipar armadura', () => {
     expect(characterModelPathFor('Soldier')).toBe('assets/models/quaternius/characters/Casual_Male.gltf')
     expect(characterModelPathFor('Soldier', true)).toBe('assets/models/quaternius/characters/Soldier_Male.gltf')
-    expect(characterModelPathFor('Paladin')).toBe('assets/models/quaternius/characters/Casual_Male.gltf')
+    expect(characterModelPathFor('Paladin')).toBe('assets/models/quaternius/characters/Soldier_Male.gltf')
     expect(characterModelPathFor('Paladin', true)).toBe('assets/models/quaternius/characters/Knight_Golden_Male.gltf')
+    expect(characterModelPathFor('Soldier')).not.toBe(characterModelPathFor('Paladin'))
+  })
+
+  it('aplica uma cor de pele e rosto visível ao carregar o modelo externo do jogador', () => {
+    const palette = externalPaletteFromAppearance({
+      skin: '#b87355', cloth: '#2e4960', clothAccent: '#95684a', leather: '#49352b', hair: '#201b18',
+    })
+    expect(palette).toMatchObject({ skin: '#b87355', face: '#b87355', hair: '#201b18', shirt: '#2e4960' })
+    expect(externalPaletteFromAppearance({
+      skin: '#b87355', cloth: '#2e4960', clothAccent: '#95684a', leather: '#49352b', hair: '#201b18',
+    }, 'Paladin').hiddenMaterials).toContain('Helmet')
   })
 })
 

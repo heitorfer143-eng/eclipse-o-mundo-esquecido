@@ -9,12 +9,14 @@ function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value))
 }
 
-export type ExternalMaterialPalette = Partial<Record<
-  'skin' | 'face' | 'hair' | 'shirt' | 'pants' | 'belt' | 'main' | 'black' | 'darkgreen'
-  | 'helmet' | 'armor' | 'armorDark' | 'detail' | 'red', string
->>
+type ExternalMaterialPaletteKey =
+  | 'skin' | 'face' | 'hair' | 'shirt' | 'pants' | 'belt' | 'main' | 'black' | 'darkgreen'
+  | 'helmet' | 'armor' | 'armorDark' | 'detail' | 'red'
+export type ExternalMaterialPalette = Partial<Record<ExternalMaterialPaletteKey, string>> & {
+  hiddenMaterials?: readonly string[]
+}
 
-const MATERIAL_PALETTE_KEYS: Record<string, keyof ExternalMaterialPalette> = {
+const MATERIAL_PALETTE_KEYS: Record<string, ExternalMaterialPaletteKey> = {
   skin: 'skin', face: 'face', hair: 'hair', shirt: 'shirt', pants: 'pants', belt: 'belt',
   main: 'main', black: 'black', darkgreen: 'darkgreen', helmet: 'helmet', armor: 'armor',
   armordark: 'armorDark', detail: 'detail', red: 'red',
@@ -23,6 +25,7 @@ const MATERIAL_PALETTE_KEYS: Record<string, keyof ExternalMaterialPalette> = {
 function applyMaterialPalette(scene: THREE.Group, palette?: ExternalMaterialPalette): void {
   if (!palette) return
   const copies = new Map<THREE.Material, THREE.Material>()
+  const hiddenMaterials = new Set((palette.hiddenMaterials ?? []).map(name => name.toLowerCase().replace(/[^a-z]/g, '')))
   scene.traverse(object => {
     const mesh = object as THREE.Mesh
     if (!mesh.isMesh) return
@@ -31,7 +34,9 @@ function applyMaterialPalette(scene: THREE.Group, palette?: ExternalMaterialPale
       if (!copy) {
         copy = material.clone()
         copies.set(material, copy)
-        const key = MATERIAL_PALETTE_KEYS[material.name.toLowerCase().replace(/[^a-z]/g, '')]
+        const normalizedName = material.name.toLowerCase().replace(/[^a-z]/g, '')
+        if (hiddenMaterials.has(normalizedName)) copy.visible = false
+        const key = MATERIAL_PALETTE_KEYS[normalizedName]
         const color = key ? palette[key] : undefined
         if (color && 'color' in copy) (copy as THREE.MeshStandardMaterial).color.set(color)
       }

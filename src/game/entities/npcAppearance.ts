@@ -25,6 +25,8 @@ const ROLE_DETAILS: Record<string, { skin: string; hair: string; leather: string
 
 const ROLE_MODELS: Record<string, NpcAppearance['model']> = {
   ferreiro: 'barbarian',
+  mercador: 'paladin',
+  taverneiro: 'paladin',
   alquimista: 'mage',
   mago: 'mage',
   sacerdote: 'mage',
@@ -40,7 +42,7 @@ export function npcAppearanceFor(def: NpcDef): NpcAppearance {
   const isGuard = def.role === 'guarda'
   return {
     model: isCaptain ? 'paladin' : isGuard ? 'soldier' : ROLE_MODELS[def.role] ?? 'civilian',
-    armored: isGuard,
+    armored: isGuard || isCaptain,
     scale: def.role === 'crianca' ? 0.72 : 1,
     materials: {
       skin: details.skin,

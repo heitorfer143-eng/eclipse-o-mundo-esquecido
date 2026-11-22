@@ -76,13 +76,13 @@ await page.getByRole('button', { name: 'Encerrar conversa' }).click()
 await page.waitForFunction(() => window.__eclipse.game.mode === 'playing' && window.__eclipse.game.quests.tracked === 'principal-01')
 await page.waitForFunction(() => {
   const external = window.__eclipse.game.player.model.external
-  let hasShirt = false
+  let hasVisibleSkin = false
   external?.root.traverse(object => {
     if (!object.isMesh) return
     const materials = Array.isArray(object.material) ? object.material : [object.material]
-    if (materials.some(material => material.name === 'Shirt')) hasShirt = true
+    if (materials.some(material => material.name === 'Skin' && material.color?.r > 0.12 && material.color?.g > 0.08)) hasVisibleSkin = true
   })
-  return hasShirt
+  return hasVisibleSkin
 }, null, { timeout: 30000 })
 const faunaCount = await page.evaluate(() => window.__eclipse.game.world.chunks.wildlifeAgents().filter(animal => !animal.dead).length)
 if (faunaCount < 2) throw new Error(`A fauna não apareceu em quantidade suficiente: ${faunaCount}`)
@@ -95,7 +95,7 @@ await page.waitForFunction(() => {
   return loaded
 }, null, { timeout: 30000 })
 const natureTextureStatus = await page.evaluate(() => {
-  const result = { grass: '', bark: '', barkNormal: '', leaves: '', rocks: '' }
+  const result = { grass: '', bark: '', barkNormal: '', leaves: '', rocks: '', rocksBump: '' }
   const urlOf = texture => texture?.image?.currentSrc || texture?.image?.src || ''
   window.__eclipse.game.world.scene.traverse(object => {
     if (!object.isInstancedMesh || Array.isArray(object.material)) return
@@ -105,7 +105,10 @@ const natureTextureStatus = await page.evaluate(() => {
       result.barkNormal = urlOf(object.material.normalMap)
     }
     if (object.name === 'world-nature-leaves') result.leaves = urlOf(object.material.map)
-    if (object.name === 'world-rocks') result.rocks = urlOf(object.material.map)
+    if (object.name === 'world-rocks') {
+      result.rocks = urlOf(object.material.map)
+      result.rocksBump = urlOf(object.material.bumpMap)
+    }
   })
   return result
 })
@@ -114,7 +117,8 @@ if (!natureTextureStatus.grass.includes('/textures/world/nature/grass-blades.web
   || !natureTextureStatus.bark.includes('/textures/world/nature/bark-tree.webp')
   || !natureTextureStatus.barkNormal.includes('/textures/world/nature/bark-tree-normal.webp')
   || !natureTextureStatus.leaves.includes('/textures/world/nature/leaves-atlas.webp')
-  || !natureTextureStatus.rocks.includes('/textures/world/nature/rock-detail-tile.webp')) {
+  || !natureTextureStatus.rocks.includes('/textures/world/nature/rock-detail.webp')
+  || !natureTextureStatus.rocksBump.includes('/textures/world/nature/rock-detail.webp')) {
   throw new Error(`O pacote de natureza não foi ligado aos materiais visíveis: ${JSON.stringify(natureTextureStatus)}`)
 }
 if (await page.evaluate(() => window.__eclipse.game.player.element) !== 'gelo') throw new Error('element specialization did not persist to the campaign')
@@ -175,19 +179,64 @@ await page.waitForTimeout(150)
 await captureScreenshot(page, 'night-lighting.png')
 await page.evaluate(() => {
   const g = window.__eclipse.game
-  g.world.sky.timeOfDay = 0.3
+  g.world.sky.timeOfDay = 0.5
   g.world.sky.update(0, g.camera.camera, g.player.position)
 })
+await page.waitForTimeout(300)
+await captureScreenshot(page, 'world-nature-day.png')
+const closeRock = await page.evaluate(() => {
+  const g = window.__eclipse.game
+  let selected = null
+  let largestScale = 0
+  g.world.scene.traverse(object => {
+    if (object.name !== 'world-rocks' || !object.isInstancedMesh || Array.isArray(object.material)) return
+    object.updateWorldMatrix(true, false)
+    const world = object.matrixWorld.elements
+    const instances = object.instanceMatrix.array
+    for (let i = 0; i < object.count; i += 1) {
+      const m = i * 16
+      const scale = Math.max(Math.hypot(instances[m], instances[m + 1], instances[m + 2]),
+        Math.hypot(instances[m + 4], instances[m + 5], instances[m + 6]),
+        Math.hypot(instances[m + 8], instances[m + 9], instances[m + 10]))
+      if (scale <= largestScale) continue
+      const x = world[0] * instances[m + 12] + world[4] * instances[m + 13] + world[8] * instances[m + 14] + world[12]
+      const y = world[1] * instances[m + 12] + world[5] * instances[m + 13] + world[9] * instances[m + 14] + world[13]
+      const z = world[2] * instances[m + 12] + world[6] * instances[m + 13] + world[10] * instances[m + 14] + world[14]
+      selected = { x, y, z, scale }
+      largestScale = scale
+    }
+  })
+  if (!selected) return null
+  g.camera.update = () => {}
+  const range = Math.max(4.5, selected.scale * 2.1)
+  g.camera.camera.position.set(selected.x + range * 0.7, selected.y + selected.scale * 1.1, selected.z + range * 0.7)
+  g.camera.camera.fov = 52
+  g.camera.camera.lookAt(selected.x, selected.y, selected.z)
+  g.camera.camera.updateProjectionMatrix()
+  return selected
+})
+if (!closeRock) throw new Error('Não foi possível enquadrar uma instância real de rocha para revisão visual.')
+await page.waitForTimeout(120)
+await captureScreenshot(page, 'world-rock-closeup.png')
+await page.evaluate(() => { delete window.__eclipse.game.camera.update })
 
 const openingState = await page.evaluate(() => {
   const g = window.__eclipse.game
   const profile = window.__eclipse.save.activeCampaign?.profile
   const equipment = g.inventory.equipment
   const externalMaterials = new Set()
+  let externalHelmetPresent = false
+  let externalHelmetVisible = true
   g.player.model.external?.root.traverse(object => {
     if (!object.isMesh) return
     const materials = Array.isArray(object.material) ? object.material : [object.material]
-    for (const material of materials) externalMaterials.add(material.name)
+    for (const material of materials) {
+      externalMaterials.add(material.name)
+      if (material.name === 'Helmet') {
+        externalHelmetPresent = true
+        externalHelmetVisible = material.visible
+      }
+    }
   })
   return {
     mode: g.mode,
@@ -201,6 +250,8 @@ const openingState = await page.evaluate(() => {
     visualGear: g.player.model.visibleGearState,
     externalModelLoaded: Boolean(g.player.model.external),
     externalMaterials: [...externalMaterials],
+    externalHelmetPresent,
+    externalHelmetVisible,
     activeCampaigns: g.save.data.campaigns.length,
   }
 })
@@ -213,7 +264,8 @@ if (openingState.profile?.name !== 'Teste Eclipse' || openingState.profile.model
 }
 if (openingState.playerAuraVisible) throw new Error('A aura do protagonista ainda está visível.')
 if (openingState.armorEquipped || openingState.activeCampaigns !== 1 || !openingState.storyFlags.includes('iara-intro')
-  || !openingState.externalModelLoaded || !openingState.externalMaterials.includes('Shirt') || !openingState.externalMaterials.includes('Pants')) {
+  || !openingState.externalModelLoaded || !openingState.externalMaterials.includes('Skin') || !openingState.externalMaterials.includes('Main')
+  || !openingState.externalHelmetPresent || openingState.externalHelmetVisible) {
   throw new Error('A campanha não começou com uma identidade única, sem armadura e com a introdução marcada.')
 }
 if (openingState.visualGear.armor || openingState.visualGear.helmet || openingState.visualGear.boots) {
@@ -246,13 +298,13 @@ const restoredLook = await page.evaluate(() => {
 if (restoredLook.armor) throw new Error(`A validação visual alterou o equipamento inicial: ${JSON.stringify(restoredLook)}`)
 await page.waitForFunction(() => {
   const external = window.__eclipse.game.player.model.external
-  let hasShirt = false
+  let hasStartingModel = false
   external?.root.traverse(object => {
     if (!object.isMesh) return
     const materials = Array.isArray(object.material) ? object.material : [object.material]
-    if (materials.some(material => material.name === 'Shirt')) hasShirt = true
+    if (materials.some(material => material.name === 'Main')) hasStartingModel = true
   })
-  return hasShirt
+  return hasStartingModel
 }, null, { timeout: 30000 })
 if (openingState.maxEnemyHeight > 2.45) throw new Error(`Mob maior que o limite: ${openingState.maxEnemyHeight} m.`)
 

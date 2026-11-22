@@ -28,7 +28,7 @@ export const QUATERNIUS_CHARACTER_ASSETS = {
     armored: 'assets/models/quaternius/characters/Soldier_Male.gltf',
   },
   Paladin: {
-    starting: 'assets/models/quaternius/characters/Casual_Male.gltf',
+    starting: 'assets/models/quaternius/characters/Soldier_Male.gltf',
     armored: 'assets/models/quaternius/characters/Knight_Golden_Male.gltf',
   },
 } as const
