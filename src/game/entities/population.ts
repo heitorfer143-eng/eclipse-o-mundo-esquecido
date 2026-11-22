@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import type { NpcDef } from '../data/types'
+import type { EnemyType, NpcDef } from '../data/types'
 import { NPCS } from '../data/npcData'
 import type { Poi, PoiManager } from '../world/poi'
 import type { Spots } from '../world/structures'
@@ -51,6 +51,12 @@ const RESOURCE_INFO: Record<ResourceKind, { itemId: string; label: string; color
   pesca: { itemId: 'comida-peixe', label: 'Cardume', color: '#7fd8ff' },
   cristal: { itemId: 'mat-cristal', label: 'Cristal de gelo', color: '#b6e8ff' },
   pedra: { itemId: 'mat-pedra', label: 'Veio de pedra', color: '#9b978f' },
+}
+const ECHO_CAVE_GUARDS: readonly EnemyType['id'][] = ['aranha-tecela', 'morcego-sombrio', 'aranha-tecela']
+function guardOverride(poi: Poi, index: number): EnemyType['id'] | undefined {
+  if (poi.id === 'caverna-dos-ecos') return ECHO_CAVE_GUARDS[index % ECHO_CAVE_GUARDS.length]
+  if (poi.id === 'vila-brumal') return 'lobo-sombrio'
+  return undefined
 }
 
 /** Spawns and removes townsfolk, chests, harvest nodes and crafting stations with their POI. */
@@ -128,8 +134,7 @@ export class Population {
     for (const [index, spot] of spots.enemies.entries()) {
       const spawnId = `${poi.id}-guard-${index}`
       spawnIds.push(spawnId)
-      const def = pickEnemyFor(this.world.biomeAt(spot.x, spot.z), poi.level, this.world.sky.night,
-        poi.id === 'vila-brumal' ? 'lobo-sombrio' : undefined)
+      const def = pickEnemyFor(this.world.biomeAt(spot.x, spot.z), poi.level, this.world.sky.night, guardOverride(poi, index))
       if (!def) continue
       this.spawner.add({ def, level: poi.level, x: spot.x, z: spot.z, homeX: spot.x, homeZ: spot.z, spawnId })
     }
@@ -148,8 +153,7 @@ export class Population {
         this.guardRespawns.set(spawnId, remaining)
         return
       }
-      const def = pickEnemyFor(this.world.biomeAt(spot.x, spot.z), poi.level, this.world.sky.night,
-        poi.id === 'vila-brumal' ? 'lobo-sombrio' : undefined)
+      const def = pickEnemyFor(this.world.biomeAt(spot.x, spot.z), poi.level, this.world.sky.night, guardOverride(poi, index))
       if (!def) {
         this.guardRespawns.set(spawnId, 5)
         return
@@ -369,16 +373,19 @@ export class Population {
       chest.group.remove(chest.light)
       chest.light = undefined
     }
-    return rollChest(chest.tier, chest.tier * 8, lootBonus)
+    const loot = rollChest(chest.tier, chest.tier * 8, lootBonus)
+    if (chest.id === 'caverna-dos-ecos-bau-0') loot.items.push({ itemId: 'comida-fruta-eco', count: 1 })
+    return loot
   }
 
-  gather(node: ResourceNode): { itemId: string; count: number } | null {
+  gather(node: ResourceNode, canAdd?: (itemId: string, count: number) => boolean): { itemId: string; count: number } | null {
     if (node.depleted) return null
+    const info = RESOURCE_INFO[node.kind]
+    const count = node.kind === 'pedra' ? 2 + Math.floor(Math.random() * 3) : node.kind === 'pesca' ? 1 : 1 + (Math.random() < 0.35 ? 1 : 0)
+    if (canAdd && !canAdd(info.itemId, count)) return null
     node.depleted = true
     node.cooldown = 45 + Math.random() * 30
     node.group.visible = false
-    const info = RESOURCE_INFO[node.kind]
-    const count = node.kind === 'pedra' ? 2 + Math.floor(Math.random() * 3) : node.kind === 'pesca' ? 1 : 1 + (Math.random() < 0.35 ? 1 : 0)
     return { itemId: info.itemId, count }
   }
 

@@ -110,7 +110,7 @@ export type WildlifeAgent = {
   takeDamage: (amount: number) => { amount: number; killed: boolean }
 }
 
-export type ChunkTextureSet = { grass: THREE.Texture; leaves: THREE.Texture; bark: THREE.Texture; stone: THREE.Texture; rock: THREE.Texture }
+export type ChunkTextureSet = { grass: THREE.Texture; leaves: THREE.Texture; bark: THREE.Texture; stone: THREE.Texture; rock: THREE.Texture; treeBark?: THREE.Texture; treeBarkNormal?: THREE.Texture }
 
 export function applyChunkTextures(textures: ChunkTextureSet): void {
   for (const texture of Object.values(textures)) {
@@ -121,7 +121,9 @@ export function applyChunkTextures(textures: ChunkTextureSet): void {
   terrainMaterial.map = textures.grass
   grassMaterial.map = textures.grass
   treeFoliageMaterial.map = textures.leaves
-  treeBarkMaterial.map = textures.bark
+  treeBarkMaterial.map = textures.treeBark ?? textures.bark
+  treeBarkMaterial.normalMap = textures.treeBarkNormal ?? null
+  if (textures.treeBarkNormal) treeBarkMaterial.normalScale.set(0.55, 0.55)
   rockMaterial.map = textures.rock
   terrainMaterial.needsUpdate = true
   grassMaterial.needsUpdate = true

@@ -9,6 +9,7 @@ import { characterModelUrlFor } from './characterAssets'
 import { DEFAULT_CHARACTER_PROFILE, parseCharacterProfile, type CharacterProfile } from '../data/characterProfile'
 import { attackDuration, comboMultiplier, weaponProfile, type WeaponProfile } from '../combat/weapons'
 import type { AbilityDef } from '../combat/abilities'
+import type { SkillEffects } from '../systems/skills'
 
 export type PlayerIntent = {
   moveX: number
@@ -36,7 +37,7 @@ export type PlayerEvent =
   | { type: 'jump' }
   | { type: 'land'; impact: number }
   | { type: 'roll' }
-  | { type: 'swing'; charged: boolean }
+  | { type: 'swing'; charged: boolean; weapon: WeaponKind; combo: number }
   | { type: 'attack'; window: AttackWindow; combo: number }
   | { type: 'cast'; charged: boolean }
   | { type: 'hurt'; amount: number }
@@ -117,6 +118,7 @@ export class Player {
   private animTime = 0
   private spawnPoint = new THREE.Vector3()
   private characterProfile: CharacterProfile
+  private skillEffects: Partial<SkillEffects> = {}
 
   constructor(
     private readonly world: PlayerWorld,
@@ -225,13 +227,15 @@ export class Player {
     if (this.dead) return 'Você está caído.'
     if (this.mode === 'attack' || this.mode === 'roll' || this.mode === 'cast' || this.mode === 'hurt') return 'Ação em andamento.'
     if (this.cooldownLeft(ability.id) > 0) return `Recarga: ${this.cooldownLeft(ability.id).toFixed(1)}s`
-    if (this.mana < ability.mana) return 'Mana insuficiente.'
+    const manaCost = ability.mana * (1 - clamp(this.skillEffects.manaCostReduction ?? 0, 0, 0.5))
+    if (this.mana < manaCost) return 'Mana insuficiente.'
     return null
   }
 
   /** Spend resources and lock the character into a cast animation. */
   beginCast(ability: AbilityDef): void {
-    this.mana = Math.max(0, this.mana - ability.mana)
+    const manaCost = ability.mana * (1 - clamp(this.skillEffects.manaCostReduction ?? 0, 0, 0.5))
+    this.mana = Math.max(0, this.mana - manaCost)
     this.manaDelay = 2.4
     this.cooldowns.set(ability.id, ability.cooldown)
     this.lastCombatAt = this.animTime
@@ -268,6 +272,10 @@ export class Player {
     this.health = clamp(healthRatio * stats.maxHealth, 1, stats.maxHealth)
     this.mana = manaRatio * stats.maxMana
     this.stamina = staminaRatio * stats.maxStamina
+  }
+
+  setSkillEffects(effects: SkillEffects): void {
+    this.skillEffects = { ...effects }
   }
 
   setWeapon(kind: WeaponKind): void {
@@ -334,7 +342,7 @@ export class Player {
     if (this.staminaDelay <= 0 && !this.sprinting && !this.climbing && !this.gliding) {
       this.stamina = Math.min(this.stats.maxStamina, this.stamina + 16 * dt)
     }
-    if (this.manaDelay <= 0) this.mana = Math.min(this.stats.maxMana, this.mana + (2.4 + this.stats.maxMana * 0.004) * dt)
+    if (this.manaDelay <= 0) this.mana = Math.min(this.stats.maxMana, this.mana + (2.4 + this.stats.maxMana * 0.004 + (this.skillEffects.manaRegen ?? 0)) * dt)
     if (this.animTime - this.lastDamageAt > 7) this.health = Math.min(this.stats.maxHealth, this.health + 0.5 * dt)
 
     const wish = this.wishDirection(intent, cameraYaw)
@@ -352,7 +360,9 @@ export class Player {
     if (this.mode === 'roll' && this.actionTimer <= 0) this.mode = 'idle'
 
     const busy = this.mode === 'attack' || this.mode === 'roll' || this.mode === 'cast' || this.mode === 'hurt'
+    const wasBlocking = this.blocking
     this.blocking = intent.blockHeld && !busy && this.grounded && this.stamina > 1
+    if (this.blocking && !wasBlocking) this.triggerParry()
 
     if (intent.rollPressed && !busy && this.grounded && this.stamina >= 18) {
       this.startRoll(wish, wishLen, events)
@@ -575,7 +585,7 @@ export class Player {
     this.spendStamina(profile.stamina * (charged ? 1.5 : 1))
     this.lastCombatAt = this.animTime
     void charged
-    events.push({ type: 'swing', charged })
+    events.push({ type: 'swing', charged, weapon: profile.id, combo: this.comboIndex })
   }
 
   private updateActionTimers(dt: number, events: PlayerEvent[]): void {
@@ -603,6 +613,7 @@ export class Player {
   takeDamage(rawAmount: number, from?: THREE.Vector3): number {
     if (this.mode === 'dead' || this.invulnerable > 0) return 0
     let amount = rawAmount * (100 / (100 + this.effective.defense * 1.6))
+    if (this.mode === 'roll') amount *= 1 - clamp(this.skillEffects.dodgeReduction ?? 0, 0, 0.5)
     if (this.blocking && from) {
       const toSource = Math.atan2(-(from.x - this.position.x), -(from.z - this.position.z))
       let delta = Math.abs(((toSource - this.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI)

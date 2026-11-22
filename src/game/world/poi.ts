@@ -66,6 +66,7 @@ const FIXED_POIS: FixedPoi[] = [
   { id: 'cratera-eclipse', kind: 'ruinas', name: 'Coração da Cicatriz', anchor: [0, 0], biomes: ['cinzas'], level: 40, radius: 70, bossId: 'colosso-da-cratera' },
   { id: 'ilha-secreta', kind: 'ilha', name: 'Ilha de Nyth', anchor: [-1520, 1180], biomes: ['ilha', 'praia'], level: 45, radius: 40, bossId: 'soberano-da-sombra' },
   { id: 'porto-gaivota', kind: 'porto', name: 'Porto Gaivota', anchor: [520, 1220], biomes: ['praia', 'planicie'], level: 6, radius: 34 },
+  { id: 'caverna-dos-ecos', kind: 'caverna', name: 'Caverna dos Ecos', anchor: [360, 980], biomes: ['floresta-densa', 'floresta'], level: 5, radius: 30 },
 ]
 
 const CELL = 460
@@ -93,7 +94,7 @@ function buildSite(poi: Poi, terrain: Terrain, houseModels: readonly (THREE.Obje
     case 'santuario': return buildShrine(terrain, poi.x, poi.z)
     case 'torre': return buildTower(terrain, poi.x, poi.z, poi.seed)
     case 'porto': return buildPort(terrain, poi.x, poi.z, poi.seed, houseModels)
-    case 'caverna': return buildCave(terrain, poi.x, poi.z, poi.seed)
+    case 'caverna': return buildCave(terrain, poi.x, poi.z, poi.seed, poi.id === 'caverna-dos-ecos')
     case 'ilha': return buildIslandSite(terrain, poi.x, poi.z, poi.seed)
   }
 }

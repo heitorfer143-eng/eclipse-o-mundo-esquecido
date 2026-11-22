@@ -29,7 +29,10 @@ export class Weather {
   private changeIn = 60
   private readonly points: THREE.Points
   private readonly material: THREE.PointsMaterial
+  private readonly rainStreaks: THREE.LineSegments
+  private readonly rainMaterial: THREE.LineBasicMaterial
   private readonly positions: Float32Array
+  private readonly streakPositions: Float32Array
   private readonly velocities: Float32Array
   private fogAmount = 0
   private tint = new THREE.Color('#ffffff')
@@ -41,6 +44,7 @@ export class Weather {
 
   constructor(scene: THREE.Scene) {
     this.positions = new Float32Array(PARTICLES * 3)
+    this.streakPositions = new Float32Array(PARTICLES * 6)
     this.velocities = new Float32Array(PARTICLES * 3)
     for (let i = 0; i < PARTICLES; i += 1) {
       this.positions[i * 3] = (Math.random() - 0.5) * AREA
@@ -57,6 +61,14 @@ export class Weather {
     this.points.frustumCulled = false
     this.points.renderOrder = 5
     scene.add(this.points)
+
+    const rainGeometry = new THREE.BufferGeometry()
+    rainGeometry.setAttribute('position', new THREE.BufferAttribute(this.streakPositions, 3))
+    this.rainMaterial = new THREE.LineBasicMaterial({ color: '#bcd4e8', transparent: true, opacity: 0, depthWrite: false, fog: false })
+    this.rainStreaks = new THREE.LineSegments(rainGeometry, this.rainMaterial)
+    this.rainStreaks.frustumCulled = false
+    this.rainStreaks.renderOrder = 5
+    scene.add(this.rainStreaks)
   }
 
   get label(): string {
@@ -99,6 +111,8 @@ export class Weather {
     const info = STATE_INFO[this.state]
     this.material.size = info.size
     this.material.color.set(info.color)
+    this.rainMaterial.color.set(info.color)
+    this.rainMaterial.opacity = info.opacity
     this.tint.set(info.tint)
     this.fogAmount = info.fog
     this.material.opacity = info.opacity
@@ -148,9 +162,12 @@ export class Weather {
     }
 
     const active = this.material.opacity > 0.01
-    this.points.visible = active
+    const isRain = this.state === 'chuva' || this.state === 'tempestade'
+    this.points.visible = active && !isRain
+    this.rainStreaks.visible = active && isRain
     if (!active) return
     this.points.position.set(camera.position.x, camera.position.y, camera.position.z)
+    this.rainStreaks.position.copy(camera.position)
     const wind = this.state === 'areia' ? 18 : 4
     for (let i = 0; i < PARTICLES; i += 1) {
       const idx = i * 3
@@ -165,8 +182,19 @@ export class Weather {
       if (this.positions[idx] > AREA / 2) this.positions[idx] -= AREA
       if (this.positions[idx + 2] > AREA / 2) this.positions[idx + 2] -= AREA
       if (this.positions[idx + 2] < -AREA / 2) this.positions[idx + 2] += AREA
+      if (isRain) {
+        const line = i * 6
+        const streak = this.state === 'tempestade' ? 0.028 : 0.022
+        this.streakPositions[line] = this.positions[idx]
+        this.streakPositions[line + 1] = this.positions[idx + 1]
+        this.streakPositions[line + 2] = this.positions[idx + 2]
+        this.streakPositions[line + 3] = this.positions[idx] - (this.velocities[idx] + wind * 0.25) * streak
+        this.streakPositions[line + 4] = this.positions[idx + 1] - this.velocities[idx + 1] * streak
+        this.streakPositions[line + 5] = this.positions[idx + 2] - this.velocities[idx + 2] * streak
+      }
     }
-    ;(this.points.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true
+    if (isRain) (this.rainStreaks.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true
+    else (this.points.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true
   }
 
   get fog(): number {

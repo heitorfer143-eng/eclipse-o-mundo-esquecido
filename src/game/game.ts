@@ -19,7 +19,7 @@ import type { CharacterProfile } from './data/characterProfile'
 import { Effects } from './combat/effects'
 import { Projectiles } from './combat/projectiles'
 import { abilityUnlocked, abilitiesFor, ELEMENTAL_MASTERY_LEVEL, type AbilityDef } from './combat/abilities'
-import { ELEMENTS, criticalDamage, rollCritical } from './combat/damage'
+import { ELEMENTS, criticalDamage, rollCritical, type StatusKind } from './combat/damage'
 import { weaponProfile } from './combat/weapons'
 import { Inventory } from './systems/inventory'
 import { Progression, derivedStats, type AttributeKey, type DerivedStats, type StatBonus } from './systems/stats'
@@ -65,7 +65,9 @@ type CombatTarget = {
   radius: number
   height: number
   alive: boolean
-  takeDamage: (amount: number, options?: { element?: ElementId; crit?: boolean; knockback?: number; from?: THREE.Vector3 }) => { amount: number; crit: boolean; killed: boolean }
+  health?: number
+  maxHealth?: number
+  takeDamage: (amount: number, options?: { element?: ElementId; crit?: boolean; knockback?: number; from?: THREE.Vector3; status?: StatusKind; statusSeconds?: number; statusPower?: number }) => { amount: number; crit: boolean; killed: boolean }
 }
 
 type HouseSession = {
@@ -371,7 +373,7 @@ export class Game {
       onEnemyHit: (projectile, target) => {
         const source = (target as typeof target & { source?: CombatTarget }).source
         if (!source) return
-        const result = source.takeDamage(projectile.damage, { element: projectile.element, crit: projectile.crit, from: projectile.position })
+        const result = source.takeDamage(this.applyExecuteBonus(source, projectile.damage), { element: projectile.element, crit: projectile.crit, from: projectile.position })
         this.ui.popDamage(source.position.clone().setY(source.position.y + source.height * 0.9), String(result.amount), result.crit ? 'crit' : projectile.element ? 'magic' : 'hit')
         if (result.killed) this.onTargetKilled(source)
       },
@@ -477,7 +479,7 @@ export class Game {
         position: this.player.position.clone().setY(this.player.position.y + 1.35).add(direction.clone().multiplyScalar(0.6)),
         direction,
         speed: window.ranged === 'flecha' ? 42 : 26,
-        damage: criticalDamage(power * window.multiplier * (1 + this.skills.effects().physicalDamage), crit),
+        damage: criticalDamage(power * window.multiplier, crit),
         radius: window.ranged === 'flecha' ? 0.28 : 0.4,
         kind: window.ranged === 'flecha' ? 'flecha' : 'energia',
         color: window.ranged === 'flecha' ? '#e8dcc0' : ELEMENTS[this.player.element].color,
@@ -490,7 +492,7 @@ export class Game {
       return
     }
     const direction = new THREE.Vector3(-Math.sin(this.player.facing), 0, -Math.cos(this.player.facing))
-    const damage = stats.attack * window.multiplier * (1 + this.skills.effects().physicalDamage)
+    const damage = stats.attack * window.multiplier
     this.damageInArc(this.player.position, direction, window.reach, window.arc, damage, {
       element: this.inventory.weaponElement(),
       knockback: window.knockback,
@@ -499,7 +501,7 @@ export class Game {
     })
   }
 
-  private damageInArc(origin: THREE.Vector3, direction: THREE.Vector3, reach: number, arc: number, damage: number, options: { element?: ElementId; knockback: number; charged: boolean; combo: number }): void {
+  private damageInArc(origin: THREE.Vector3, direction: THREE.Vector3, reach: number, arc: number, damage: number, options: { element?: ElementId; knockback: number; charged: boolean; combo: number; status?: StatusKind; statusSeconds?: number }): void {
     const targets = this.allTargets()
     let hits = 0
     for (const target of targets) {
@@ -513,12 +515,15 @@ export class Game {
       const dot = distance < 0.2 ? 1 : (dx / distance) * direction.x + (dz / distance) * direction.z
       if (dot < Math.cos(arc)) continue
       const crit = rollCritical(this.player.effective.critChance + this.player.weaponProfile.critBonus)
-      const result = target.takeDamage(criticalDamage(damage, crit), { element: options.element, crit, knockback: options.knockback, from: origin })
+      const result = target.takeDamage(criticalDamage(this.applyExecuteBonus(target, damage), crit), {
+        element: options.element, crit, knockback: options.knockback, from: origin,
+        status: options.status, statusSeconds: options.statusSeconds,
+      })
       hits += 1
       this.ui.popDamage(target.position.clone().setY(target.position.y + target.height * 0.9), String(result.amount), crit ? 'crit' : 'hit')
       this.audio.play(crit ? 'heavy' : 'hit')
       this.effects.burst(target.position.clone().setY(target.position.y + 1), crit ? '#ffd166' : '#ffd9c0', crit ? 14 : 7, 4, 0.4)
-      const lifesteal = this.player.effective.lifesteal + this.skills.effects().lifesteal
+      const lifesteal = this.player.effective.lifesteal
       if (lifesteal > 0) this.player.heal(result.amount * lifesteal)
       if (result.killed) this.onTargetKilled(target)
     }
@@ -541,17 +546,26 @@ export class Game {
     return list
   }
 
+  private applyExecuteBonus(target: CombatTarget, damage: number): number {
+    const effects = this.skills.effects()
+    return target.health !== undefined && target.maxHealth && target.health / target.maxHealth < 0.3
+      ? damage * (1 + effects.executeBonus)
+      : damage
+  }
+
   private enemyTarget(enemy: Enemy): CombatTarget {
     return {
       position: enemy.position,
       radius: enemy.radius,
       height: enemy.height,
       alive: enemy.alive,
-      takeDamage: (amount, options) => {
-        const result = enemy.takeDamage(amount, options ?? {})
-        if (options?.element) enemy.applyStatus(statusForElement(options.element), 3, 1)
-        return result
-      },
+      get health() { return enemy.health },
+      maxHealth: enemy.maxHealth,
+      takeDamage: (amount, options) => enemy.takeDamage(amount, {
+        ...options,
+        statusDuration: this.skills.effects().statusDuration,
+        statusDamage: this.skills.effects().statusDamage,
+      }),
     }
   }
 
@@ -585,6 +599,8 @@ export class Game {
       radius: boss.radius,
       height: 4,
       alive: !boss.dead,
+      get health() { return boss.health },
+      maxHealth: boss.maxHealth,
       takeDamage: (amount, options) => boss.takeDamage(amount, options ?? {}),
     }
   }
@@ -610,7 +626,7 @@ export class Game {
     this.player.kills = this.kills
     const largeAnimal = ['touro', 'vaca', 'burro', 'cavalo', 'cavalo-branco', 'cervo-real'].includes(animal.id)
     const xp = largeAnimal ? 12 : animal.id === 'cervo' || animal.id === 'lobo' ? 8 : 4
-    const gold = largeAnimal ? 5 : animal.id === 'lobo' ? 4 : 2
+    const gold = Math.round((largeAnimal ? 5 : animal.id === 'lobo' ? 4 : 2) * (1 + this.skills.effects().lootBonus))
     const dropCount = largeAnimal ? 2 : 1
     this.grantXp(xp)
     this.inventory.gold += gold
@@ -675,7 +691,7 @@ export class Game {
     const level = enemy.level
     const xp = Math.round(enemy.xp * (enemy.elite ? 1.6 : 1))
     this.grantXp(xp)
-    const gold = Math.round((2 + Math.random() * 5) * level * (enemy.elite ? 2 : 1))
+    const gold = Math.round((2 + Math.random() * 5) * level * (enemy.elite ? 2 : 1) * (1 + this.skills.effects().lootBonus))
     this.inventory.gold += gold
     this.ui.toast(`+${xp} XP · +${gold} de ouro`, 'info')
     const drops = rollLoot(enemy.def.loot, this.skills.effects().lootBonus)
@@ -756,7 +772,7 @@ export class Game {
     this.kills += 1
     this.audio.play('win')
     this.grantXp(boss.def.rewardXp)
-    this.inventory.gold += boss.def.rewardGold
+    this.inventory.gold += Math.round(boss.def.rewardGold * (1 + this.skills.effects().lootBonus))
     this.giveLoot(bossLoot(boss.def.rewardItems, this.skills.effects().lootBonus))
     this.quests.progress('chefe', boss.def.id)
     this.checkQuestReady()
@@ -888,77 +904,64 @@ export class Game {
     const stats = this.player.effective
     const effects = this.skills.effects()
     const mastery = this.progression.level >= ELEMENTAL_MASTERY_LEVEL ? 1.2 : 1
-    const power = stats.spellPower * ability.power * (1 + effects.magicDamage) * mastery * (1 + effects.manaBonus * 0)
-    const color = ELEMENTS[ability.element].color
-    const direction = this.aimDirection()
-    const origin = this.player.position.clone().setY(this.player.position.y + 1.3)
-    if (ability.kind === 'projetil') {
-      this.projectiles.spawn({
-        owner: 'player',
-        position: origin.clone().add(direction.clone().multiplyScalar(0.8)),
-        direction,
-        speed: 26,
-        damage: power,
-        radius: 0.5,
-        kind: 'energia',
-        color,
-        element: ability.element,
-        life: 3,
-        homing: ability.tier >= 2 ? 2.2 : 0,
-        aoeRadius: ability.tier >= 3 ? ability.radius : 0,
-        crit: rollCritical(stats.critChance),
-      })
-      return
-    }
-    if (ability.kind === 'area') {
-      const center = this.player.position.clone().add(direction.clone().multiplyScalar(Math.min(ability.range, 12)))
-      const ground = this.world.groundAt(center.x, center.z, center.y)
-      center.y = ground
-      this.effects.explosion(center, ability.radius, color)
-      this.damageArea(center, ability.radius, power, ability.element, ability.status, ability.statusSeconds)
-      return
-    }
-    if (ability.kind === 'cone') {
-      this.effects.slash(this.player.position, Math.atan2(direction.x, direction.z), ability.range, color)
-      this.damageInArc(this.player.position, direction, ability.range, ability.arc, power, { element: ability.element, knockback: 1.4, charged: true, combo: 0 })
-      for (const enemy of this.spawner.enemies) {
-        if (!enemy.alive) continue
-        const dx = enemy.position.x - this.player.position.x
-        const dz = enemy.position.z - this.player.position.z
-        const distance = Math.hypot(dx, dz)
-        if (distance > ability.range + enemy.radius) continue
-        const dot = distance < 0.2 ? 1 : (dx / distance) * direction.x + (dz / distance) * direction.z
-        if (dot >= Math.cos(ability.arc) && ability.status) enemy.applyStatus(ability.status, ability.statusSeconds, 1)
+    const power = stats.spellPower * ability.power * mastery
+    const castCount = 1 + (effects.doubleCastChance > 0 && Math.random() < effects.doubleCastChance ? 1 : 0)
+    for (let cast = 0; cast < castCount; cast += 1) {
+      const color = ELEMENTS[ability.element].color
+      const direction = this.aimDirection()
+      const origin = this.player.position.clone().setY(this.player.position.y + 1.3)
+      if (ability.kind === 'projetil') {
+        this.projectiles.spawn({
+          owner: 'player', position: origin.clone().add(direction.clone().multiplyScalar(0.8)), direction,
+          speed: 26, damage: power, radius: 0.5, kind: 'energia', color, element: ability.element,
+          life: 3, homing: ability.tier >= 2 ? 2.2 : 0, aoeRadius: ability.tier >= 3 ? ability.radius : 0,
+          crit: rollCritical(stats.critChance),
+        })
+        continue
       }
-      return
+      if (ability.kind === 'area') {
+        const center = this.player.position.clone().add(direction.clone().multiplyScalar(Math.min(ability.range, 12)))
+        center.y = this.world.groundAt(center.x, center.z, center.y)
+        this.effects.explosion(center, ability.radius, color)
+        this.damageArea(center, ability.radius, power, ability.element, ability.status, ability.statusSeconds)
+        continue
+      }
+      if (ability.kind === 'cone') {
+        this.effects.slash(this.player.position, Math.atan2(direction.x, direction.z), ability.range, color)
+        this.damageInArc(this.player.position, direction, ability.range, ability.arc, power, {
+          element: ability.element, knockback: 1.4, charged: true, combo: 0,
+          status: ability.status, statusSeconds: ability.statusSeconds,
+        })
+        continue
+      }
+      if (ability.kind === 'buff') {
+        this.player.applyBuff({
+          id: ability.id, name: ability.name, seconds: ability.duration,
+          defenseMult: ability.defenseBonus, speedMult: ability.speedBonus,
+          critBonus: ability.critBonus, stealthBonus: ability.stealthBonus,
+        })
+        this.effects.rise(this.player.position, color, 24, 1)
+        continue
+      }
+      // Mobilidade: dash elemental curto; duplicações repetem o impulso, sem mexer na colisão do root.
+      this.player.applyBuff({ id: ability.id, name: ability.name, seconds: Math.max(0.6, ability.duration), defenseMult: 0,
+        speedMult: Math.max(0.6, ability.speedBonus), critBonus: 0, stealthBonus: ability.stealthBonus })
+      this.player.velocity.add(direction.clone().setY(0).normalize().multiplyScalar(9))
+      this.effects.burst(this.player.position, color, 22, 6, 0.5, 0)
     }
-    if (ability.kind === 'buff') {
-      this.player.applyBuff({
-        id: ability.id,
-        name: ability.name,
-        seconds: ability.duration,
-        defenseMult: 1 + ability.defenseBonus,
-        speedMult: 1 + ability.speedBonus,
-        critBonus: ability.critBonus,
-        stealthBonus: ability.stealthBonus,
-      })
-      this.effects.rise(this.player.position, color, 24, 1)
-      return
-    }
-    // Mobilidade: dash elemental curto.
-    this.player.applyBuff({ id: ability.id, name: ability.name, seconds: Math.max(0.6, ability.duration), defenseMult: 1, speedMult: 1 + Math.max(0.6, ability.speedBonus), critBonus: 0, stealthBonus: ability.stealthBonus })
-    this.player.velocity.add(direction.clone().setY(0).normalize().multiplyScalar(9))
-    this.effects.burst(this.player.position, color, 22, 6, 0.5, 0)
   }
 
   private damageArea(center: THREE.Vector3, radius: number, damage: number, element: ElementId, status?: string, statusSeconds = 0): void {
+    const effects = this.skills.effects()
     for (const enemy of this.spawner.enemies) {
       if (!enemy.alive) continue
       const distance = enemy.position.distanceTo(center)
       if (distance > radius + enemy.radius) continue
       const crit = rollCritical(this.player.effective.critChance)
-      const result = enemy.takeDamage(criticalDamage(damage, crit), { element, crit, from: this.player.position })
-      if (status) enemy.applyStatus(status as Parameters<Enemy['applyStatus']>[0], statusSeconds, 1)
+      const result = enemy.takeDamage(criticalDamage(this.applyExecuteBonus(this.enemyTarget(enemy), damage), crit), {
+        element, crit, from: this.player.position, status: status as StatusKind | undefined,
+        statusSeconds: statusSeconds || undefined, statusDuration: effects.statusDuration, statusDamage: effects.statusDamage,
+      })
       this.ui.popDamage(enemy.position.clone().setY(enemy.position.y + enemy.height), String(result.amount), 'magic')
       if (result.killed) this.onEnemyDeath(enemy)
     }
@@ -971,7 +974,8 @@ export class Game {
     if (this.boss && !this.boss.dead) {
       const distance = this.boss.position.distanceTo(center)
       if (distance < radius + this.boss.radius) {
-        const result = this.boss.takeDamage(damage, { element, from: this.player.position })
+        const target = this.bossTarget(this.boss)
+        const result = this.boss.takeDamage(this.applyExecuteBonus(target, damage), { element, from: this.player.position })
         this.ui.popDamage(this.boss.position.clone().setY(this.boss.position.y + 3), String(result.amount), 'magic')
         if (result.killed) this.onBossDeath(this.boss)
       }
@@ -1116,7 +1120,11 @@ export class Game {
           : 'Você precisa de uma picareta. Compre uma no ferreiro.', 'warn')
         return
       }
-      const gathered = this.population.gather(nearby.node)
+      const gathered = this.population.gather(nearby.node, (itemId, count) => this.inventory.canAdd(itemId, count))
+      if (!gathered && !nearby.node.depleted) {
+        this.ui.toast('Mochila cheia — libere espaço para colher este recurso.', 'warn')
+        return
+      }
       if (gathered) {
         const def = itemById(gathered.itemId)
         this.inventory.add(gathered.itemId, gathered.count)
@@ -1125,6 +1133,7 @@ export class Game {
         this.quests.progress('coletar', gathered.itemId)
         this.quests.syncInventory(this.inventory)
         this.checkQuestReady()
+        this.saveGame(true)
       }
     } else if (nearby.kind === 'station') {
       this.ui.openCraft(this.panelContext(), nearby.station.kind)
@@ -1380,6 +1389,14 @@ export class Game {
 
   private turnInQuest(id: string): void {
     const quest = questById(id)
+    if (!quest || !this.quests.ready(id)) {
+      this.ui.toast('Objetivos incompletos', 'warn')
+      return
+    }
+    if (!this.inventory.canAddItems(quest.rewards.items ?? [])) {
+      this.ui.toast('Mochila cheia — libere espaço para receber todas as recompensas.', 'warn')
+      return
+    }
     const reward = this.quests.complete(id)
     if (!quest || !reward) {
       this.ui.toast('Objetivos incompletos', 'warn')
@@ -1402,7 +1419,8 @@ export class Game {
       this.ui.toast('Seu primeiro manto foi vestido: o Sobrevivente agora tem proteção visível.', 'item')
     }
     this.audio.play('win')
-    this.ui.toast(`Missão concluída: ${quest.name} · +${reward.xp} XP · +${reward.gold} ouro`, 'level')
+    const itemSummary = (reward.items ?? []).map(item => `${item.count}× ${itemById(item.itemId)?.name ?? item.itemId}`).join(', ')
+    this.ui.toast(`Missão concluída: ${quest.name} · +${reward.xp} XP · +${reward.gold} ouro${itemSummary ? ` · ${itemSummary}` : ''}`, 'level')
     this.saveGame(true)
   }
 
@@ -1607,18 +1625,20 @@ export class Game {
     const bonus = this.inventory.bonus() as StatBonus
     const stats = derivedStats(this.progression.attributes, this.progression.level, {
       ...bonus,
-      ataque: bonus.ataque * (1 + effects.physicalDamage),
-      magia: bonus.magia * (1 + effects.magicDamage),
       critico: bonus.critico + effects.critBonus * 100,
       rouboDeVida: bonus.rouboDeVida + effects.lifesteal * 100,
       stamina: bonus.stamina + effects.staminaBonus,
       mana: bonus.mana + effects.manaBonus,
-      defesa: bonus.defesa * (1 + effects.defenseBonus),
+      defesa: bonus.defesa + effects.defenseBonus,
       furtividade: bonus.furtividade + effects.stealth * 100,
-      velocidade: bonus.velocidade * (1 + effects.moveSpeed),
     })
+    stats.attack *= 1 + effects.physicalDamage
+    stats.spellPower *= 1 + effects.magicDamage
+    stats.attackSpeed = clamp(stats.attackSpeed * (1 + effects.attackSpeedBonus), 0.8, 2.4)
+    stats.moveSpeed = clamp(stats.moveSpeed * (1 + effects.moveSpeed), 3.6, 8.1)
     this.pendingStats = stats
     this.player.setStats(stats)
+    this.player.setSkillEffects(effects)
     this.player.setWeapon(this.inventory.weapon())
     this.player.model.setEquipment({
       weapon: this.inventory.weapon(),
@@ -1949,15 +1969,5 @@ export class Game {
   }
 }
 
-function statusForElement(element: ElementId): Parameters<Enemy['applyStatus']>[0] {
-  switch (element) {
-    case 'fogo': return 'queimando'
-    case 'gelo': return 'congelado'
-    case 'raio': return 'eletrificado'
-    case 'vento': return 'lento'
-    case 'sombra': return 'enfraquecido'
-    default: return 'sangrando'
-  }
-}
 
 export { buyPrice, sellPrice, clamp, damp }

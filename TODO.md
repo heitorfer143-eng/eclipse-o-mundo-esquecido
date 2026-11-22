@@ -185,3 +185,17 @@ H poção · Tab inventário · K habilidades · M mapa · L missões · Esc pau
 - [x] Melhorar o combate com avisos visuais antes dos ataques inimigos, dando tempo para esquivar ou bloquear; windup/indicadores cobertos por testes unitários e integrados ao ciclo de combate.
 - [x] Dar mais utilidade aos animais: permitir montar alguns e encontrar animais raros em regiões específicas; smoke desktop/mobile completa montar/desmontar e valida retenção do animal no mundo, com regras por habitat/raridade cobertas por testes.
 - [x] Criar destinos de exploração — masmorras pequenas e ruínas com recompensas que incentivem sair da vila; Ruínas da Vigília e baús/recompensa extra cobertos por testes de estruturas e integração do mundo.
+
+## Próximo ciclo: prioridades 1 a 6 escolhidas (20 nov 2026)
+- [x] Fechar “O Despertar” de ponta a ponta: contar 3 lobos sombrios derrotados e 3 ervas coletadas; permitir falar com Velho Thom, derrotar o Guardião e entregar a missão a Iara; exibir e salvar a recompensa de 120 XP, 60 ouro, 2 poções e 3 pães.
+- [x] Polir as animações do protagonista: transições naturais entre andar, correr, atacar, esquivar/rolar, receber dano e morrer, mantendo poses coerentes e sem root motion que desloque colisões.
+- [x] Aprofundar o combate: diferenciar padrões de inimigos e melhorar impacto de golpes, bloqueios e acertos, preservando avisos prévios justos e consistentes com as áreas reais de ataque.
+- [x] Distribuir progressão por níveis: habilidades, equipamentos e desafios devem desbloquear-se gradualmente e comunicar claramente requisitos e recompensas; preservar a escolha fixa de elemento da campanha.
+- [x] Expandir exploração com ao menos uma área única adicional, como caverna ou acampamento, com inimigos e recompensas próprios, mantendo geração, terreno e rotas existentes.
+- [x] Melhorar inventário e crafting: explicar requisitos de ferramenta/receita, materiais que faltam e alterações de atributos dos equipamentos antes de equipar ou fabricar.
+
+### Validação deste ciclo
+- `pnpm typecheck`, `pnpm test` (62/62) e `pnpm build` passaram; `pnpm smoke` desktop/mobile passou sem erros de navegador.
+- Smoke percorreu o ciclo da missão e confirmou deltas salvos de +120 XP, +60 ouro, +2 poções e +3 pães, missão concluída e Manto do Andarilho equipado após reload.
+- Retrato curto 360×640: botão Missões dentro da tela e sem sobreposição com joystick/botões; noite verificada visualmente em captura e com luz ambiente 1,4, hemisférica 1,8 e fog 0,0021.
+- Mantido o escopo estrito nas prioridades 1–6; nenhuma prioridade 7–10 implementada.

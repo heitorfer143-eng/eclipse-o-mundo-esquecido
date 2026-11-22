@@ -98,6 +98,26 @@ const ARMOR_PALETTES: Record<ArmorVisualStyle, ArmorPalette> = {
   aetherion: { main: '#c4a253', trim: '#3c4d56', accent: '#79dce7', roughness: 0.32, metalness: 0.78, glow: '#3baebb', glowIntensity: 0.42 },
 }
 
+type ProceduralPoseSample = { object: THREE.Object3D; position: THREE.Vector3; quaternion: THREE.Quaternion; scale: THREE.Vector3 }
+
+function capturePose(objects: readonly THREE.Object3D[]): ProceduralPoseSample[] {
+  return objects.map(object => ({
+    object,
+    position: object.position.clone(),
+    quaternion: object.quaternion.clone(),
+    scale: object.scale.clone(),
+  }))
+}
+
+function blendPoseFrom(samples: readonly ProceduralPoseSample[], dt: number): void {
+  const weight = 1 - Math.exp(-Math.max(0, dt) * 14)
+  for (const sample of samples) {
+    sample.object.position.lerp(sample.position, weight)
+    sample.object.quaternion.slerp(sample.quaternion, weight)
+    sample.object.scale.lerp(sample.scale, weight)
+  }
+}
+
 function armorPlateGeometry(width: number, height: number, depth: number): THREE.BufferGeometry {
   const shape = new THREE.Shape()
   shape.moveTo(-width * 0.46, height * 0.44)
@@ -265,7 +285,7 @@ export class CharacterModel {
   private externalRequest = 0
   private disposed = false
   private auraEnabled = false
-  private readonly externalMaterialPalette?: ExternalMaterialPalette
+  private externalMaterialPalette?: ExternalMaterialPalette
   private survivorAppearance = false
   private armorStyle: ArmorVisualStyle = 'andarilho'
 
@@ -675,18 +695,25 @@ export class CharacterModel {
     const oneShot = state.mode === 'attack' || state.mode === 'cast' || state.mode === 'roll'
       || state.mode === 'jump' || state.mode === 'hurt' || state.mode === 'dead'
     const restartAction = oneShot && this.externalMode === externalMode && state.actionTime < this.externalActionTime - 0.001
-    this.external?.update(dt, externalMode, restartAction, state.actionDuration)
+    this.external?.update(dt, externalMode, restartAction, state.actionDuration, state.actionTime, state.charging)
     this.externalMode = externalMode
     this.externalActionTime = state.actionTime
     const speed = state.speed
     const move = clamp(speed / 7, 0, 1)
     if (state.mode === 'walk' || state.mode === 'run') this.walkCycle += dt * (4 + speed * 1.15)
-    else this.walkCycle += dt * 1.2
+    else if (state.mode !== 'idle') this.walkCycle += dt * 1.2
 
     const cycle = this.walkCycle
     const swing = Math.sin(cycle) * (0.35 + move * 0.55)
     const bob = Math.abs(Math.sin(cycle)) * (0.03 + move * 0.07)
     const lean = move * 0.12
+
+    // Keep the previous visual pose, then blend toward this frame's target pose.
+    // These transforms are visual children only; the character root and gameplay colliders stay fixed.
+    const previousPose = capturePose([
+      this.body, this.hips, this.torso, this.head, this.armL, this.armR, this.foreL, this.foreR,
+      this.legL, this.legR, this.shinL, this.shinR, this.cape, this.capeMesh,
+    ])
 
     // Reset to a neutral stance, then layer the state.
     this.body.position.set(0, 0, 0)
@@ -702,6 +729,7 @@ export class CharacterModel {
     this.legR.rotation.set(0, 0, -0.02)
     this.shinL.rotation.set(0, 0, 0)
     this.shinR.rotation.set(0, 0, 0)
+    this.torso.position.set(0, 0.14, 0)
     this.cape.rotation.set(0, 0, 0)
     this.capeMesh.scale.set(1, 1, 1)
     this.cape.visible = !this.survivorAppearance || state.mode === 'glide'
@@ -890,6 +918,8 @@ export class CharacterModel {
         break
       }
     }
+
+    blendPoseFrom(previousPose, dt)
 
     // Eyelids: occasional blink.
     this.blinkTimer -= dt

@@ -885,7 +885,7 @@ export function buildPort(terrain: Terrain, x: number, z: number, seed: number, 
   return { group, colliders: b.colliders, spots: b.spots }
 }
 
-export function buildCave(terrain: Terrain, x: number, z: number, seed: number): SiteResult {
+export function buildCave(terrain: Terrain, x: number, z: number, seed: number, echoVariant = false): SiteResult {
   const y = terrain.heightAt(x, z)
   const b = new StructureBuilder(x, z, y, paletteForBiome(terrain.biomeAt(x, z, y)))
   const rng = mulberry32(seed)
@@ -911,8 +911,17 @@ export function buildCave(terrain: Terrain, x: number, z: number, seed: number):
     const ez = z - 6 + (rng() - 0.5) * 6
     b.spots.enemies.push({ x: ex, z: ez, y: terrain.heightAt(ex, ez) })
   }
+  if (echoVariant) {
+    // Luminous crystal veins distinguish the early-game echo cave without changing shared cave RNG.
+    for (const [dx, dz, height] of [[-5, 2, 1.7], [0, 4, 2.3], [5, 2, 1.7]] as const) {
+      const ground = terrain.heightAt(x + dx, z + dz)
+      b.cone(x + dx, ground + height / 2, z + dz, 0.52, height, 'brilho-azul', 5)
+      b.cone(x + dx, ground + height + 0.28, z + dz, 0.34, 0.56, 'brilho-violeta', 5)
+    }
+    b.lights.push({ x, y: y + 2.2, z: z + 2, color: '#8fdfff', intensity: 5, distance: 16 })
+  }
   const group = b.build()
-  group.name = 'Caverna'
+  group.name = echoVariant ? 'Caverna dos Ecos' : 'Caverna'
   return { group, colliders: b.colliders, spots: b.spots }
 }
 

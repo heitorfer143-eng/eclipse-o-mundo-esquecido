@@ -195,7 +195,10 @@ export class Enemy {
   }
 
   /** Apply a hit; returns the damage actually dealt and whether it was critical or lethal. */
-  takeDamage(raw: number, options: { element?: ElementId; crit?: boolean; knockback?: number; from?: THREE.Vector3; ignoreDefense?: boolean } = {}): { amount: number; crit: boolean; killed: boolean } {
+  takeDamage(raw: number, options: {
+    element?: ElementId; crit?: boolean; knockback?: number; from?: THREE.Vector3; ignoreDefense?: boolean
+    status?: StatusKind; statusSeconds?: number; statusPower?: number; statusDuration?: number; statusDamage?: number
+  } = {}): { amount: number; crit: boolean; killed: boolean } {
     if (this.dead) return { amount: 0, crit: false, killed: false }
     const resist = elementalMultiplier(options.element, this.def.element)
     let amount = options.ignoreDefense ? raw : damageAfterDefense(raw, this.defense)
@@ -208,11 +211,14 @@ export class Enemy {
     this.health = Math.max(0, this.health - amount)
     this.flash = 1
     this.aggro = true
-    if (options.element) {
+    if (options.element || options.status) {
       const statusForElement: Record<ElementId, StatusKind | undefined> = { fogo: 'queimando', gelo: 'congelado', raio: 'eletrificado', terra: 'lento', vento: undefined, sombra: 'enfraquecido' }
-      const status = statusForElement[options.element]
-      if (status) this.setStatus(status, status === 'congelado' ? 1.6 : 4, 1)
-      if (this.hasStatus('molhado') && options.element === 'raio') this.setStatus('eletrificado', 3, 1.5)
+      const status = options.status ?? (options.element ? statusForElement[options.element] : undefined)
+      const defaultSeconds = status === 'congelado' ? 1.6 : 4
+      const seconds = (options.statusSeconds ?? defaultSeconds) * (1 + (options.statusDuration ?? 0))
+      const power = (options.statusPower ?? 1) * (1 + (options.statusDamage ?? 0))
+      if (status) this.setStatus(status, seconds, power)
+      if (this.hasStatus('molhado') && options.element === 'raio') this.setStatus('eletrificado', 3 * (1 + (options.statusDuration ?? 0)), 1.5 * (1 + (options.statusDamage ?? 0)))
     }
     if (options.knockback && options.from) {
       const away = new THREE.Vector3(this.position.x - options.from.x, 0, this.position.z - options.from.z)

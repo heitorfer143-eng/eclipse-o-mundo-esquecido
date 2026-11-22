@@ -211,12 +211,22 @@ export const NPCS: NpcDef[] = [
     nodes: {
       raiz: {
         id: 'raiz',
-        text: 'Ah, é você. Sentei aqui para descansar e acabei ficando três horas. A idade faz isso: o corpo senta e a cabeça continua andando.',
+        text: 'Ah, é você — a pessoa da marca que brilhou na clareira. Sentei aqui para descansar e acabei ficando três horas. A idade faz isso: o corpo senta e a cabeça continua andando.',
         choices: [
+          { text: 'Você sabe alguma coisa sobre a marca no meu braço?', next: 'marca' },
           { text: 'Você está bem, Thom?', next: 'anel' },
           { text: 'Como era o mundo antes?', next: 'passado' },
           { text: 'Alguma novidade na vila?', next: 'fofoca' },
           { text: 'Vou deixar você descansar.' },
+        ],
+      },
+      marca: {
+        id: 'marca',
+        text: 'Vi a marca acender quando a floresta escureceu. O Guardião despertou perto da clareira; não vá sozinho sem se preparar. Iara precisa saber que você está inteiro.',
+        choices: [
+          { text: 'Vou voltar para falar com Iara.', next: 'raiz' },
+          { text: 'E o anel que você perdeu?', next: 'anel' },
+          { text: 'Vou me preparar primeiro.' },
         ],
       },
       anel: {

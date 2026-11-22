@@ -204,10 +204,10 @@ export class Sky {
     this.sun.target.updateMatrixWorld()
     this.sun.intensity = 0.4 + day * 2.25
     this.sun.color.copy(day > 0.2 ? this.sunDay : this.sunHorizon).lerp(this.sunNight, night * 0.9)
-    this.hemi.intensity = 0.78 - day * 0.05
+    this.hemi.intensity = 0.78 + night * 1.02 - day * 0.05
     this.hemi.color.copy(this.hemiDay).lerp(this.hemiNight, night)
     this.hemi.groundColor.copy(this.groundDay).lerp(this.groundNight, night)
-    this.ambient.intensity = 0.35 + night * 0.23
+    this.ambient.intensity = 0.35 + night * 1.05
     this.ambient.color.copy(this.ambientDay).lerp(this.ambientNight, night)
 
     this.starMaterial.opacity = clamp(night * 1.1 - 0.12, 0, 0.78)
@@ -230,7 +230,7 @@ export class Sky {
     this.fogColor.copy(horizon).lerp(this.white, 0.08).lerp(this.fogNight, night * 0.55)
     if (this.weatherTint) this.fogColor.lerp(this.weatherTint, 0.55)
     this.fog.color.copy(this.fogColor)
-    this.fog.density = 0.0022 + this.weatherFog + night * 0.0005
+    this.fog.density = 0.0018 + this.weatherFog + night * 0.0003
   }
 }
 

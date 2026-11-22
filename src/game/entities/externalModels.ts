@@ -5,6 +5,10 @@ import { clone } from 'three/addons/utils/SkeletonUtils.js'
 const loader = new GLTFLoader()
 const cache = new Map<string, Promise<{ scene: THREE.Group; animations: THREE.AnimationClip[] }>>()
 
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value))
+}
+
 export type ExternalMaterialPalette = Partial<Record<
   'skin' | 'face' | 'hair' | 'shirt' | 'pants' | 'belt' | 'main' | 'black' | 'darkgreen'
   | 'helmet' | 'armor' | 'armorDark' | 'detail' | 'red', string
@@ -41,9 +45,14 @@ function stripRootMotion(clip: THREE.AnimationClip): THREE.AnimationClip {
   clip.tracks = clip.tracks.filter(track => {
     const split = track.name.lastIndexOf('.')
     if (split < 0) return true
-    const property = track.name.slice(split + 1)
-    const node = track.name.slice(0, split).split(/[/.|:]/).at(-1)?.toLowerCase()
-    return !(property === 'position' && (node === 'root' || node === 'hips'))
+    const property = track.name.slice(split + 1).replace(/\[.*$/, '').toLowerCase()
+    const path = track.name.slice(0, split)
+    const bracketNode = path.match(/\[([^\]]+)\]/)?.[1]
+    const rawNode = bracketNode ?? path.split(/[/.|:]/).at(-1) ?? ''
+    const node = rawNode.toLowerCase().replace(/[^a-z]/g, '').replace(/^mixamorig/, '')
+    const isRoot = node === 'root' || node.endsWith('root')
+    const isHips = node.includes('hips') || node.endsWith('pelvis')
+    return !(property === 'position' && (isRoot || isHips))
   })
   clip.resetDuration()
   return clip
@@ -93,7 +102,15 @@ export function resolveExternalClipName(mode: ExternalAnimation, clipNames: read
   return undefined
 }
 
-type MotionBone = { bone: THREE.Bone; base: THREE.Euler; phase: number; amplitude: number }
+type MotionBone = {
+  bone: THREE.Bone
+  base: THREE.Quaternion
+  phase: number
+  amplitude: number
+  role: 'arm' | 'leg' | 'torso'
+  side: -1 | 1
+  distal: boolean
+}
 
 export class ExternalCharacter {
   readonly root = new THREE.Group()
@@ -103,8 +120,7 @@ export class ExternalCharacter {
   private active?: THREE.AnimationAction
   private mode = ''
   private motionPhase = 0
-  private deathElapsed = 0
-  private fallbackPoseActive = false
+  private fallbackPoseWeight = 0
 
   private constructor(scene: THREE.Group, clips: THREE.AnimationClip[], targetHeight: number, palette?: ExternalMaterialPalette) {
     const bounds = new THREE.Box3().setFromObject(scene)
@@ -131,13 +147,23 @@ export class ExternalCharacter {
     scene.traverse(object => {
       const bone = object as THREE.Bone
       if (!bone.isBone) return
-      const name = bone.name.toLowerCase().replace(/[^a-z]/g, '')
+      const name = bone.name.toLowerCase().replace(/[^a-z]/g, '').replace(/^mixamorig/, '')
       const leg = /upleg|thigh|lowerleg|leg|calf|shin|paw/.test(name)
       const arm = /upperarm|lowerarm|arm/.test(name)
-      if (!leg && !arm) return
-      const left = /left|(^|[^a-z])l($|[^a-z])/.test(bone.name.toLowerCase())
+      const torso = /spine|chest|hips|pelvis|neck/.test(name)
+      if (!leg && !arm && !torso) return
+      const left = name.includes('left') || name.endsWith('l')
       const phase = arm ? (left ? Math.PI : 0) : (left ? 0 : Math.PI)
-      this.motionBones.push({ bone, base: bone.rotation.clone(), phase: phase + (boneIndex % 2) * 0.12, amplitude: leg ? 0.42 : 0.24 })
+      const role = leg ? 'leg' : arm ? 'arm' : 'torso'
+      this.motionBones.push({
+        bone,
+        base: bone.quaternion.clone(),
+        phase: phase + (boneIndex % 2) * 0.12,
+        amplitude: leg ? 0.42 : 0.24,
+        role,
+        side: left ? -1 : 1,
+        distal: /lower|fore|hand|wrist|shin|calf|foot/.test(name),
+      })
       boneIndex += 1
     })
     this.mixer = new THREE.AnimationMixer(scene)
@@ -168,16 +194,16 @@ export class ExternalCharacter {
 
   play(mode: ExternalAnimation, force = false, actionDuration?: number): void {
     const clipName = resolveExternalClipName(mode, [...this.actions.keys()])
-    if (mode === 'death' && !clipName) {
-      this.active?.fadeOut(0.08)
-      this.active = undefined
-      this.mode = mode
-      this.deathElapsed = 0
-      return
-    }
     const next = (clipName ? this.actions.get(clipName) : undefined)
       ?? this.actions.get('idle') ?? this.actions.values().next().value
-    if (!next || (this.active === next && !force)) return
+    if (!next) {
+      this.mode = mode
+      return
+    }
+    if (this.active === next && !force) {
+      this.mode = mode
+      return
+    }
     this.active?.fadeOut(0.12)
     this.active = next
     this.active.reset().fadeIn(0.12)
@@ -192,54 +218,81 @@ export class ExternalCharacter {
     this.active.timeScale = Math.max(0.65, Math.min(4, rateSync))
     this.active.play()
     this.mode = mode
-    if (mode !== 'death') {
-      this.deathElapsed = 0
-      this.root.position.y = 0
-      this.root.rotation.z = 0
-    }
   }
 
-  update(dt: number, mode?: ExternalAnimation, restart = false, actionDuration?: number): void {
+  update(dt: number, mode?: ExternalAnimation, restart = false, actionDuration?: number, actionTime = 0, charging = false): void {
     const currentMode = mode ?? this.mode as ExternalAnimation
     if (mode && (mode !== this.mode || restart)) this.play(mode, restart, actionDuration)
     const names = [...this.actions.keys()]
-    const fallbackDeath = currentMode === 'death' && !resolveExternalClipName('death', names)
-    const fallbackLocomotion = (currentMode === 'walk' || currentMode === 'run') && !resolveExternalClipName(currentMode, names)
-    if (!fallbackDeath && !fallbackLocomotion && this.fallbackPoseActive) {
-      this.resetFallbackPose()
-      this.fallbackPoseActive = false
-    }
+    const hasClip = Boolean(resolveExternalClipName(currentMode, names))
+    const fallbackLocomotion = (currentMode === 'walk' || currentMode === 'run') && !hasClip
+    const fallbackAction = !hasClip && (
+      currentMode === 'death' || currentMode === 'hit' || currentMode === 'block'
+      || currentMode.startsWith('attack') || currentMode.startsWith('dodge-')
+      || (currentMode === 'attack' && charging)
+    )
+    const wantsFallback = fallbackLocomotion || fallbackAction
     this.mixer.update(dt)
-    if (fallbackDeath) {
-      this.fallbackPoseActive = true
-      this.animateFallbackDeath(dt)
-    } else if (fallbackLocomotion) {
-      this.fallbackPoseActive = true
-      this.animateFallbackLocomotion(dt, currentMode as 'walk' | 'run')
-    }
+    this.fallbackPoseWeight += ((wantsFallback ? 1 : 0) - this.fallbackPoseWeight) * (1 - Math.exp(-Math.max(0, dt) * 14))
+    if (this.fallbackPoseWeight > 0.001) this.animateFallbackPose(dt, currentMode, actionTime, actionDuration, charging, fallbackLocomotion, this.fallbackPoseWeight)
   }
 
-  private animateFallbackLocomotion(dt: number, mode: 'walk' | 'run'): void {
-    this.motionPhase += dt * (mode === 'run' ? 10.5 : 7.2)
-    this.root.position.y = Math.sin(this.motionPhase * 2) * 0.025
+  private animateFallbackPose(
+    dt: number,
+    mode: ExternalAnimation,
+    actionTime: number,
+    actionDuration: number | undefined,
+    charging: boolean,
+    locomotion: boolean,
+    weight: number,
+  ): void {
+    if (locomotion) this.motionPhase += dt * (mode === 'run' ? 10.5 : 7.2)
+    const t = clamp01(actionTime / Math.max(0.1, actionDuration ?? 0.8))
+    const windup = clamp01(t / 0.35)
+    const strike = clamp01((t - 0.28) / 0.34)
+    const recover = clamp01((t - 0.62) / 0.38)
     for (const item of this.motionBones) {
-      const swing = Math.sin(this.motionPhase + item.phase) * item.amplitude
-      item.bone.rotation.set(item.base.x + swing, item.base.y, item.base.z)
+      let x = 0
+      let y = 0
+      let z = 0
+      if (locomotion && item.role !== 'torso') {
+        const swing = Math.sin(this.motionPhase + item.phase) * item.amplitude
+        x += item.role === 'leg' ? swing : -swing * 0.65
+      } else if (mode === 'death') {
+        if (item.role === 'torso') x += 1.15
+        else if (item.role === 'arm') { x += item.distal ? 0.35 : 0.55; z += item.side * 0.35 }
+        else x += item.distal ? 0.7 : 0.45
+      } else if (mode === 'hit') {
+        if (item.role === 'torso') x += 0.38 * (1 - t)
+        else if (item.role === 'arm') x -= 0.58 * (1 - t)
+      } else if (mode === 'block') {
+        if (item.role === 'arm') { x -= item.distal ? 0.85 : 1.05; z += item.side * 0.3 }
+        if (item.role === 'torso') y -= 0.18
+      } else if (mode.startsWith('dodge-')) {
+        if (item.role === 'torso') { x += 0.2 + Math.sin(t * Math.PI * 2) * 0.3; z += mode === 'dodge-left' ? -0.35 : mode === 'dodge-right' ? 0.35 : 0 }
+        else if (item.role === 'arm') x -= item.distal ? 1.0 : 1.3
+        else x += item.distal ? 1.15 : -0.85
+      } else if (mode.startsWith('attack')) {
+        if (charging) {
+          if (item.role === 'arm') { x -= item.distal ? 0.55 : 1.25; z += item.side * 0.22 }
+        } else if (item.role === 'arm') {
+          x += item.side === 1
+            ? -0.35 - 0.85 * windup + 1.75 * strike - 0.55 * recover
+            : -0.2 - 0.35 * windup + 0.75 * strike
+          z += item.side * (0.12 + 0.35 * windup - 0.5 * strike)
+        } else if (item.role === 'torso') y += 0.35 * windup - 0.7 * strike + 0.3 * recover
+        else x -= 0.18
+      }
+      const baseEuler = new THREE.Euler().setFromQuaternion(item.base, item.bone.rotation.order)
+      const target = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+        baseEuler.x + x,
+        baseEuler.y + y,
+        baseEuler.z + z,
+        item.bone.rotation.order,
+      ))
+      // Blend from the active mixer pose, so clips and procedural fallbacks crossfade naturally.
+      item.bone.quaternion.slerp(target, weight)
     }
-  }
-
-  private animateFallbackDeath(dt: number): void {
-    this.deathElapsed = Math.min(1.2, this.deathElapsed + dt)
-    const t = Math.min(1, this.deathElapsed / 0.9)
-    this.root.rotation.z = -t * 1.1
-    this.root.position.y = -t * 0.42
-    for (const item of this.motionBones) item.bone.rotation.copy(item.base)
-  }
-
-  private resetFallbackPose(): void {
-    this.root.position.y = 0
-    this.root.rotation.z = 0
-    for (const item of this.motionBones) item.bone.rotation.copy(item.base)
   }
 
   dispose(): void {

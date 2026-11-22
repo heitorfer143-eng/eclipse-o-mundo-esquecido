@@ -190,20 +190,20 @@ kbd {
 .hud__meta { font-size: 11px; letter-spacing: 0.12em; color: #b6a892; text-transform: uppercase; margin-top: 2px; }
 .title__eyebrow, .hud__meta { font-family: 'Alegreya SC', var(--sans); }
 
-.hud__topright { position: absolute; right: 22px; top: 20px; width: 260px; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+.hud__topright { position: absolute; right: 22px; top: 20px; width: 280px; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
 .hud__gold { display: flex; align-items: center; gap: 6px; font-family: var(--serif); font-size: 16px; color: var(--gold); }
 .hud__quest-open { position: relative; z-index: 5; pointer-events: auto; align-self: stretch; display: none; align-items: center; gap: 8px; min-height: 40px; padding: 7px 10px; border: 1px solid rgba(214, 180, 110, 0.42); border-radius: 8px; background: rgba(12, 10, 16, 0.82); color: var(--parchment); font: inherit; font-size: 12px; text-align: left; cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.24); }
-.touch-capable .hud__quest-open { position: fixed; left: max(8px, env(safe-area-inset-left, 0px)); top: max(112px, calc(env(safe-area-inset-top, 0px) + 104px)); right: auto; z-index: 10; display: flex; align-self: auto; width: min(160px, 28vw); }
+.touch-capable .hud__quest-open { position: fixed; left: auto; right: max(8px, env(safe-area-inset-right, 0px)); top: auto; bottom: max(128px, calc(env(safe-area-inset-bottom, 0px) + 120px)); z-index: 10; display: flex; align-self: auto; width: min(170px, 44vw); min-height: 44px; }
 .hud__quest-open:hover, .hud__quest-open:focus-visible { border-color: var(--gold); background: rgba(55, 42, 28, 0.92); outline: none; }
 .hud__quest-open svg { width: 17px; height: 17px; flex: none; color: var(--gold); }
 .hud__quest-key { margin-left: auto; padding: 1px 5px; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 4px; color: #b7aa94; font: 10px var(--sans); }
-.quest { pointer-events: none; text-align: right; border-right: 2px solid rgba(214, 180, 110, 0.5); padding: 6px 9px 6px 0; max-width: 260px; background: linear-gradient(270deg, rgba(10, 8, 14, 0.36), transparent); }
+.quest { pointer-events: none; text-align: right; border-right: 3px solid rgba(214, 180, 110, 0.68); padding: 8px 11px 8px 6px; width: 100%; max-width: 280px; background: linear-gradient(270deg, rgba(10, 8, 14, 0.64), rgba(10, 8, 14, 0.18)); border-radius: 0 7px 7px 0; }
 .quest.ready { border-right-color: #ff9a78; background: linear-gradient(270deg, rgba(85, 33, 26, 0.52), transparent); }
-.quest__name { font-family: var(--serif); font-size: 13px; color: var(--parchment); letter-spacing: 0.05em; }
-.quest__progress { margin-top: 2px; color: var(--gold); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; }
-.quest__objective { margin-top: 4px; color: #e3d5ba; font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
-.quest__locator { margin-top: 4px; color: #ffbd84; font-size: 10px; font-weight: 600; line-height: 1.3; text-shadow: 0 1px 3px #000; }
-.quest__reward { margin-top: 3px; color: #a99c88; font-size: 9.5px; line-height: 1.3; }
+.quest__name { font-family: var(--serif); font-size: 14px; color: var(--parchment); letter-spacing: 0.05em; }
+.quest__progress { margin-top: 3px; color: var(--gold); font-size: 11px; font-weight: 700; letter-spacing: 0.06em; }
+.quest__objective { margin-top: 5px; color: #f0e4cd; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.quest__locator { margin-top: 5px; color: #ffbd84; font-size: 11px; font-weight: 600; line-height: 1.35; text-shadow: 0 1px 3px #000; }
+.quest__reward { margin-top: 4px; color: #c8b99e; font-size: 10px; line-height: 1.35; }
 
 .hud__bottomleft { position: absolute; left: 22px; bottom: 20px; display: flex; align-items: flex-end; gap: 14px; }
 .minimap { position: relative; width: 138px; height: 138px; border-radius: 50%; overflow: hidden; border: 1px solid rgba(214, 180, 110, 0.4); box-shadow: var(--shadow); background: #12100f; }
@@ -481,7 +481,7 @@ kbd {
   .title__menu .btn { min-height: 44px; }
   .title__foot { flex-direction: column; align-items: flex-start; gap: 8px; font-size: 10px; line-height: 1.6; }
   .hud__topleft { left: 12px; top: max(12px, env(safe-area-inset-top)); width: min(178px, 46vw); }
-  .hud__topright { right: 12px; top: max(12px, env(safe-area-inset-top)); width: min(156px, 40vw); }
+  .hud__topright { right: 12px; top: max(12px, env(safe-area-inset-top)); width: min(180px, 46vw); }
   .hud__bottomleft { left: 12px; bottom: max(12px, env(safe-area-inset-bottom)); }
   .minimap { width: 78px; height: 78px; }
   .hud__bottomcenter { bottom: max(12px, env(safe-area-inset-bottom)); gap: 5px; }
@@ -494,8 +494,9 @@ kbd {
 
 /* Touch HUD refinements: keep a clear camera-look lane between controls. */
 @media (max-width: 640px) and (orientation: portrait) {
+  .touch-capable .hud__quest-open { bottom: max(188px, calc(env(safe-area-inset-bottom, 0px) + 176px)); }
   .hud__topleft { left: max(8px, env(safe-area-inset-left, 0px)); top: max(8px, env(safe-area-inset-top, 0px)); width: min(178px, 45vw); }
-  .hud__topright { right: max(8px, env(safe-area-inset-right, 0px)); top: max(62px, calc(env(safe-area-inset-top, 0px) + 54px)); width: min(150px, 39vw); }
+  .hud__topright { right: max(8px, env(safe-area-inset-right, 0px)); top: max(62px, calc(env(safe-area-inset-top, 0px) + 54px)); width: min(188px, 48vw); }
   .hud__bottomleft { left: max(8px, env(safe-area-inset-left, 0px)); bottom: max(8px, env(safe-area-inset-bottom, 0px)); gap: 6px; }
   .minimap { width: 72px; height: 72px; }
   .hud__bottomcenter { bottom: calc(228px + env(safe-area-inset-bottom, 0px)); gap: 4px; }
@@ -540,12 +541,12 @@ kbd {
   .compass__mark--poi { display: none; }
   .hud__location { font-size: 14px; margin-top: 2px; }
   .hud__meta { font-size: 9px; }
-  .quest { padding-block: 3px; }
-  .quest__name { font-size: 11px; }
-  .quest__progress { font-size: 9px; }
-  .quest__objective { font-size: 10px; line-height: 1.25; }
-  .quest__locator { font-size: 9px; }
-  .quest__reward { font-size: 9px; }
+  .quest { padding: 6px 8px 6px 4px; }
+  .quest__name { font-size: 13px; }
+  .quest__progress { font-size: 10px; }
+  .quest__objective { font-size: 11px; line-height: 1.3; }
+  .quest__locator { font-size: 10px; }
+  .quest__reward { font-size: 9.5px; }
   .hud__quest-open { min-height: 36px; padding: 5px 8px; font-size: 10px; }
   .hud__bottomleft { left: max(8px, env(safe-area-inset-left, 0px)); bottom: max(8px, env(safe-area-inset-bottom, 0px)); }
   .minimap { width: 62px; height: 62px; }

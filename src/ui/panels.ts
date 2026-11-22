@@ -12,6 +12,7 @@ import { BIOMES } from '../game/world/biomes'
 import type { Settings } from '../engine/save'
 import { enemyById } from '../game/data/enemyData'
 import { itemIcon } from './icons'
+import type { StatKey } from '../game/data/types'
 
 export type PanelActions = {
   equip: (index: number) => void
@@ -52,6 +53,10 @@ export type PanelContext = {
 export type DialogueChoiceView = { text: string; kind?: 'quest' | 'shop' | 'heal' | 'normal' }
 
 const fmt = (value: number): string => (Number.isInteger(value) ? String(value) : value.toFixed(1))
+const STAT_LABEL: Record<StatKey, string> = {
+  ataque: 'Ataque', defesa: 'Defesa', vida: 'Vida', mana: 'Mana', stamina: 'Stamina',
+  critico: 'Crítico', velocidade: 'Velocidade', magia: 'Magia', furtividade: 'Furtividade', rouboDeVida: 'Roubo de vida',
+}
 
 /** Modal panels. One overlay at a time; every action is delegated back to the game. */
 export class Panels {
@@ -151,6 +156,22 @@ export class Panels {
     mid.className = 'col col--mid scroll'
     const stack = inventory.stacks[this.selectedBag]
     const def = stack ? itemById(stack.id) : undefined
+    const equipmentPreview = stack ? inventory.previewEquipIndex(this.selectedBag) : null
+    const equipLocked = Boolean(def?.level && progression.level < def.level)
+    const previewMarkup = equipmentPreview && stack && def ? (() => {
+      const currentDef = equipmentPreview.current ? itemById(equipmentPreview.current.id) : undefined
+      const selectedStats = statLine(def, stack.plus)
+      const currentStats = currentDef && equipmentPreview.current ? statLine(currentDef, equipmentPreview.current.plus) : []
+      const changes = Object.entries(equipmentPreview.changes) as [StatKey, number][]
+      return `<div class="detail__desc" style="margin-top:12px"><strong>Comparação para ${SLOT_LABEL[equipmentPreview.slot]}</strong>
+        <div class="small muted">Substitui: ${currentDef ? `${currentDef.name}${equipmentPreview.current?.plus ? ` +${equipmentPreview.current.plus}` : ''}` : 'slot vazio'}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px">
+          <div><strong>Novo item</strong>${selectedStats.length ? selectedStats.map(line => `<div>${line}</div>`).join('') : '<div class="muted">Sem atributos diretos</div>'}</div>
+          <div><strong>Item atual</strong>${currentStats.length ? currentStats.map(line => `<div>${line}</div>`).join('') : '<div class="muted">Slot vazio/sem atributos</div>'}</div>
+        </div>
+        <div style="margin-top:8px"><strong>Variação direta</strong>${changes.length ? changes.map(([key, value]) => `<span class="${value >= 0 ? 'gold' : 'miss'}" style="margin-left:8px">${value > 0 ? '+' : ''}${fmt(value)} ${STAT_LABEL[key]}</span>`).join('') : '<span class="muted">Sem alteração nos atributos listados</span>'}</div>
+      </div>`
+    })() : ''
     mid.innerHTML = `
       <div class="slot__label" style="display:flex;justify-content:space-between;margin-bottom:8px"><span>Mochila · ${inventory.totalItems()}/${inventory.capacity}</span><span>${inventory.stacks.length} espaços</span></div>
       <div class="bag-grid">
@@ -170,11 +191,12 @@ export class Panels {
           <div class="detail__desc">${def.description}</div>
           ${def.lore ? `<div class="detail__lore">${def.lore}</div>` : ''}
           <div class="detail__actions">
-            ${def.kind === 'arma' || def.kind === 'armadura' || def.kind === 'capacete' || def.kind === 'botas' || def.kind === 'anel' || def.kind === 'reliquia' ? '<button class="btn btn--primary" data-equip type="button">Equipar</button>' : ''}
+            ${equipmentPreview ? `<button class="btn btn--primary" data-equip type="button" ${equipLocked ? 'disabled' : ''}>Equipar</button>` : ''}
             ${def.kind === 'pocao' || def.kind === 'comida' ? '<button class="btn btn--primary" data-use type="button">Usar</button>' : ''}
             <button class="btn" data-upgrade type="button">Aprimorar ${stack.plus < 5 ? `+${stack.plus + 1}` : '(máx)'}</button>
             <button class="btn btn--ghost" data-drop type="button">Descartar</button>
           </div>
+          ${equipmentPreview ? `<div class="small ${equipLocked ? 'miss' : 'muted'}">Nível mínimo para equipar: ${def.level ?? 1} · seu nível: ${progression.level}${equipLocked ? ' — nível insuficiente' : ''}</div>${previewMarkup}` : ''}
           <div class="small muted">Valor de venda: ${Math.round(def.value * (0.45 + stack.plus * 0.08))} de ouro</div>
         ` : '<div class="muted">Mochila vazia. Explore, colete e saqueie para encher esta bolsa.</div>'}
       </div>`
@@ -359,15 +381,25 @@ export class Panels {
     list.innerHTML = recipes.map(recipe => {
       const error = canCraft(recipe, ctx.inventory, ctx.progression.level)
       const output = itemById(recipe.output.itemId)
+      const materialsAvailable = recipe.inputs.every(input => ctx.inventory.has(input.itemId, input.count))
+      const outputFits = materialsAvailable && ctx.inventory.canAddAfterRemoving(recipe.inputs, recipe.output.itemId, recipe.output.count)
+      const requiredLevel = recipe.minLevel ?? 1
       return `<div class="recipe${error ? '' : ' craftable'}">
         <div class="recipe__icon ${output ? `border-${output.rarity}` : ''}" style="color:var(--parchment)">${output ? itemIcon(output) : '?'}</div>
         <div class="recipe__body">
           <div class="recipe__name">${recipe.name} ${recipe.output.count > 1 ? `×${recipe.output.count}` : ''}</div>
-          <div class="recipe__req">${recipe.inputs.map(input => {
+          <div class="recipe__req">Estação: ${STATION_LABEL[recipe.station]}</div>
+          <div class="recipe__req ${ctx.progression.level < requiredLevel ? 'miss' : ''}">Nível: ${requiredLevel} requerido · ${ctx.progression.level} atual${ctx.progression.level < requiredLevel ? ' — insuficiente' : ' — atendido'}</div>
+          <div class="recipe__req ${ctx.inventory.gold < recipe.gold ? 'miss' : ''}">Ouro: ${ctx.inventory.gold}/${recipe.gold} (${ctx.inventory.gold >= recipe.gold ? 'suficiente' : 'faltam ' + (recipe.gold - ctx.inventory.gold)})</div>
+          <div class="recipe__req">Materiais: ${recipe.inputs.map(input => {
             const def = itemById(input.itemId)
-            const missing = ctx.inventory.count(input.itemId) < input.count
-            return `<span class="${missing ? 'miss' : ''}">${def?.name ?? input.itemId} ${ctx.inventory.count(input.itemId)}/${input.count}</span>`
-          }).join(' · ')}${recipe.gold ? ` · ${recipe.gold} de ouro` : ''}</div>
+            const owned = ctx.inventory.count(input.itemId)
+            const missing = Math.max(0, input.count - owned)
+            return `<span class="${missing ? 'miss' : ''}">${def?.name ?? input.itemId} ${owned}/${input.count}${missing ? ` — faltam ${missing}` : ''}</span>`
+          }).join(' · ')}</div>
+          <div class="recipe__req ${materialsAvailable && !outputFits ? 'miss' : ''}">${materialsAvailable
+            ? `Espaço: ${ctx.inventory.capacity - ctx.inventory.stacks.length} espaços livres agora · resultado ${output?.name ?? recipe.output.itemId} ×${recipe.output.count} ${outputFits ? 'cabe após consumir os materiais' : 'não cabe mesmo após consumir os materiais'}`
+            : 'Espaço: será verificado depois que você reunir os materiais.'}</div>
           ${error ? `<div class="small muted">${error}</div>` : ''}
         </div>
         <button class="btn btn--sm" data-craft="${recipe.id}" type="button" ${error ? 'disabled' : ''}>Criar</button>
@@ -388,10 +420,17 @@ export class Panels {
       const def = itemById(entry.itemId)
       if (!def) return ''
       const affordable = ctx.inventory.gold >= entry.price
-      return `<div class="shop-item ${`border-${def.rarity}`}">
+      const levelOk = !def.level || ctx.progression.level >= def.level
+      const spaceOk = ctx.inventory.canAdd(def.id)
+      const canBuy = affordable && levelOk && spaceOk
+      return `<div class="shop-item ${`border-${def.rarity}`} ${canBuy ? '' : 'locked'}">
         <div class="recipe__icon" style="color:var(--parchment)">${itemIcon(def)}</div>
-        <div class="shop-item__body"><div class="shop-item__name ${'rarity-' + def.rarity}">${def.name}</div><div class="small muted">${RARITY_LABEL[def.rarity]}${def.level ? ` · Nv ${def.level}` : ''}</div></div>
-        <div style="text-align:right"><div class="shop-item__price">${entry.price} ◈</div><button class="btn btn--sm" data-buy="${def.id}" type="button" ${affordable ? '' : 'disabled'}>Comprar</button></div>
+        <div class="shop-item__body"><div class="shop-item__name ${'rarity-' + def.rarity}">${def.name}</div><div class="small muted">${RARITY_LABEL[def.rarity]}</div>
+          <div class="small ${levelOk ? 'muted' : 'miss'}">Nível: ${def.level ?? 1} requerido · ${ctx.progression.level} atual${levelOk ? '' : ' — insuficiente'}</div>
+          <div class="small ${affordable ? 'muted' : 'miss'}">Ouro: ${ctx.inventory.gold}/${entry.price}${affordable ? ' — suficiente' : ` — faltam ${entry.price - ctx.inventory.gold}`}</div>
+          <div class="small ${spaceOk ? 'muted' : 'miss'}">Espaço: ${ctx.inventory.capacity - ctx.inventory.stacks.length} livre${ctx.inventory.capacity - ctx.inventory.stacks.length === 1 ? '' : 's'} · ${spaceOk ? 'cabe no inventário' : 'inventário cheio'}</div>
+        </div>
+        <div style="text-align:right"><div class="shop-item__price">${entry.price} ◈</div><button class="btn btn--sm" data-buy="${def.id}" type="button" ${canBuy ? '' : 'disabled'}>Comprar</button></div>
       </div>`
     }).join('')}</div>`
     const sell = document.createElement('div')

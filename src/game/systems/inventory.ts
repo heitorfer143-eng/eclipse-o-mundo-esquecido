@@ -17,6 +17,12 @@ export const SLOT_LABEL: Record<EquipSlot, string> = {
 }
 
 export type Stack = { id: string; count: number; plus: number }
+export type EquipmentPreview = {
+  slot: EquipSlot
+  selected: Stack
+  current: Stack | null
+  changes: Partial<Record<StatKey, number>>
+}
 
 export type SetBonus = { id: string; name: string; pieces: number; description: string; bonus: StatBonus }
 
@@ -127,6 +133,73 @@ export class Inventory {
     return this.count(id) >= count
   }
 
+  private canAddToStacks(stacks: Stack[], id: string, count: number, plus: number): boolean {
+    if (count <= 0) return true
+    const def = itemById(id)
+    if (!def) return false
+    const maxStack = def.stack ?? (isEquipment(def) ? 1 : 20)
+    let remaining = count
+    if (maxStack > 1) {
+      for (const stack of stacks) {
+        if (stack.id !== id || stack.plus !== plus) continue
+        remaining -= Math.max(0, maxStack - stack.count)
+        if (remaining <= 0) return true
+      }
+    }
+    return Math.ceil(remaining / maxStack) <= Math.max(0, this.capacity - stacks.length)
+  }
+
+  /** Whether all items fit, accounting for available room in matching stacks. */
+  canAdd(id: string, count = 1, plus = 0): boolean {
+    return this.canAddToStacks(this.stacks, id, count, plus)
+  }
+
+  /** Whether a whole reward batch fits, including slots created by earlier rewards in the batch. */
+  canAddItems(items: readonly { itemId: string; count: number; plus?: number }[]): boolean {
+    const projected = this.stacks.map(stack => ({ ...stack }))
+    for (const item of items) {
+      const plus = item.plus ?? 0
+      if (!this.canAddToStacks(projected, item.itemId, item.count, plus)) return false
+      const def = itemById(item.itemId)
+      if (!def || item.count <= 0) continue
+      const maxStack = def.stack ?? (isEquipment(def) ? 1 : 20)
+      let remaining = item.count
+      if (maxStack > 1) {
+        for (const stack of projected) {
+          if (stack.id !== item.itemId || stack.plus !== plus) continue
+          const added = Math.min(remaining, Math.max(0, maxStack - stack.count))
+          stack.count += added
+          remaining -= added
+          if (remaining <= 0) break
+        }
+      }
+      while (remaining > 0) {
+        const added = Math.min(maxStack, remaining)
+        projected.push({ id: item.itemId, count: added, plus })
+        remaining -= added
+      }
+    }
+    return true
+  }
+
+  /** Preflight an addition after the supplied materials have been consumed. */
+  canAddAfterRemoving(removals: { itemId: string; count: number }[], id: string, count = 1, plus = 0): boolean {
+    const remainingStacks = this.stacks.map(stack => ({ ...stack }))
+    for (const removal of removals) {
+      let remaining = removal.count
+      for (let index = remainingStacks.length - 1; index >= 0 && remaining > 0; index -= 1) {
+        const stack = remainingStacks[index]
+        if (stack.id !== removal.itemId) continue
+        const taken = Math.min(stack.count, remaining)
+        stack.count -= taken
+        remaining -= taken
+        if (stack.count <= 0) remainingStacks.splice(index, 1)
+      }
+      if (remaining > 0) return false
+    }
+    return this.canAddToStacks(remainingStacks, id, count, plus)
+  }
+
   /** Adds items, returning how many could not fit. */
   add(id: string, count = 1, plus = 0): number {
     const def = itemById(id)
@@ -186,6 +259,29 @@ export class Inventory {
     if (!slot) return null
     if (slot === 'anel1' && this.equipment.anel1) return 'anel2'
     return slot
+  }
+
+  /** Direct attribute comparison for the selected bag item and its destination slot. */
+  previewEquipIndex(index: number): EquipmentPreview | null {
+    const selected = this.stacks[index]
+    if (!selected) return null
+    const def = itemById(selected.id)
+    const slot = def && isEquipment(def) ? this.slotForIndex(index) : null
+    if (!def || !slot) return null
+    const current = this.equipment[slot]
+    const currentDef = current ? itemById(current.id) : undefined
+    const keys = new Set<StatKey>([
+      ...Object.keys(def.stats ?? {}) as StatKey[],
+      ...Object.keys(currentDef?.stats ?? {}) as StatKey[],
+    ])
+    const changes: Partial<Record<StatKey, number>> = {}
+    for (const key of keys) {
+      const selectedValue = Math.round((def.stats?.[key] ?? 0) * plusMultiplier(selected.plus))
+      const currentValue = Math.round((currentDef?.stats?.[key] ?? 0) * plusMultiplier(current?.plus ?? 0))
+      const delta = selectedValue - currentValue
+      if (delta !== 0) changes[key] = delta
+    }
+    return { slot, selected: { ...selected }, current: current ? { ...current } : null, changes }
   }
 
   /** Equip an item from a bag slot. Returns an error message, or null on success. */

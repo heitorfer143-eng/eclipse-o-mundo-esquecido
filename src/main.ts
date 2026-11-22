@@ -42,6 +42,8 @@ const WORLD_TEXTURE_ASSETS = {
   bark: HOUSE_TEXTURE_ASSETS.wood,
   stone: 'assets/textures/castle-stone.webp',
   rock: HOUSE_TEXTURE_ASSETS.stone,
+  treeBark: 'assets/textures/world/nature/bark-tree.webp',
+  treeBarkNormal: 'assets/textures/world/nature/bark-tree-normal.webp',
 } as const
 
 function createWorldSeed(): number {
@@ -118,7 +120,7 @@ async function boot(): Promise<void> {
     const worldTextureEntries = Object.entries(WORLD_TEXTURE_ASSETS) as [keyof typeof WORLD_TEXTURE_ASSETS, string][]
     const worldTexturePromises = worldTextureEntries.map(async ([key, path]) => {
       try {
-        return [key, await assets.texture(`${import.meta.env.BASE_URL}${path}`, { repeat: 1 })] as const
+        return [key, await assets.texture(`${import.meta.env.BASE_URL}${path}`, { color: key !== 'treeBarkNormal', repeat: 1 })] as const
       } catch (error) {
         console.warn(`Textura de mundo indisponível; será usado o material base: ${path}`, error)
         return null
@@ -133,9 +135,9 @@ async function boot(): Promise<void> {
     if (textureSet) {
       for (const model of loadedModels.slice(0, 3)) if (model) applyHouseTextures(model, textureSet)
     }
-    if (loadedWorldTextures.every(entry => entry !== null)) {
-      applyWorldTextures(Object.fromEntries(loadedWorldTextures) as ChunkTextureSet)
-    }
+    const worldTextureMap = Object.fromEntries(loadedWorldTextures.filter(entry => entry !== null)) as Partial<ChunkTextureSet>
+    const requiredWorldMaps: (keyof ChunkTextureSet)[] = ['grass', 'leaves', 'bark', 'stone', 'rock']
+    if (requiredWorldMaps.every(key => worldTextureMap[key])) applyWorldTextures(worldTextureMap as ChunkTextureSet)
     houseModels = loadedModels
   } finally {
     stopAssetProgress()

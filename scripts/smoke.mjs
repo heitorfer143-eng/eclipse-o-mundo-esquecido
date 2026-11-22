@@ -149,8 +149,8 @@ const lighting = await page.evaluate(() => {
 })
 console.log('day/night lighting:', lighting)
 if (lighting.day.sun < 2.6 || lighting.day.hemi < 0.72 || lighting.day.ambient < 0.34
-  || lighting.night.level < 0.99 || lighting.night.sun < 0.39 || lighting.night.hemi < 0.77
-  || lighting.night.ambient < 0.57 || lighting.night.fogDensity > 0.0028) {
+  || lighting.night.level < 0.99 || lighting.night.sun < 0.39 || lighting.night.hemi < 1.75
+  || lighting.night.ambient < 1.35 || lighting.night.fogDensity > 0.0022) {
   throw new Error(`A iluminação noturna segue escura ou a luz do dia foi alterada: ${JSON.stringify(lighting)}`)
 }
 await page.evaluate(() => {
@@ -506,6 +506,61 @@ if (recreated.count !== 1 || recreated.name !== 'Nara Eclipse' || recreated.mode
 }
 await page.getByRole('button', { name: 'Aceitar missão: O Despertar' }).click()
 await page.getByRole('button', { name: 'Encerrar conversa' }).click()
+const skillIntegration = await page.evaluate(() => {
+  const g = window.__eclipse.game
+  const savedRanks = g.skills.toJSON()
+  const base = { attack: g.player.stats.attack, spellPower: g.player.stats.spellPower, mana: g.player.stats.maxMana,
+    moveSpeed: g.player.stats.moveSpeed, defense: g.player.stats.defense, lifesteal: g.player.stats.lifesteal }
+  g.skills.ranks.set('lamina-forca', 1)
+  g.skills.ranks.set('lamina-guarda', 1)
+  g.skills.ranks.set('arcano-poder', 1)
+  g.skills.ranks.set('arcano-mana', 2)
+  g.skills.ranks.set('sombra-agil', 1)
+  g.skills.ranks.set('sombra-sanguessuga', 1)
+  g.skills.ranks.set('arcano-foco', 1)
+  g.skills.ranks.set('arcano-eco', 2)
+  g.refreshStats()
+  const upgraded = { attack: g.player.stats.attack, spellPower: g.player.stats.spellPower, mana: g.player.stats.maxMana,
+    moveSpeed: g.player.stats.moveSpeed, defense: g.player.stats.defense, lifesteal: g.player.stats.lifesteal }
+  const abilityIndex = g.abilities().findIndex(ability => ability.kind === 'projetil')
+  const ability = g.abilities()[abilityIndex]
+  const manaBefore = g.player.mana
+  const projectilesBefore = g.projectiles.activeCount
+  const originalRandom = Math.random
+  try {
+    Math.random = () => 0
+    g.castAbility(abilityIndex)
+  } finally {
+    Math.random = originalRandom
+  }
+  const cast = { projectiles: g.projectiles.activeCount - projectilesBefore, spent: manaBefore - g.player.mana, expectedCost: ability.mana * 0.94 }
+  g.projectiles.clear()
+  g.player.mode = 'idle'
+  g.player.cooldowns.delete(ability.id)
+  g.skills.load(savedRanks)
+  g.refreshStats()
+  return { base, upgraded, cast }
+})
+console.log('skill integration:', skillIntegration)
+if (Math.abs(skillIntegration.upgraded.attack / skillIntegration.base.attack - 1.08) > 0.001
+  || Math.abs(skillIntegration.upgraded.spellPower / skillIntegration.base.spellPower - 1.08) > 0.001
+  || skillIntegration.upgraded.mana - skillIntegration.base.mana !== 40
+  || skillIntegration.upgraded.defense - skillIntegration.base.defense !== 6
+  || Math.abs(skillIntegration.upgraded.moveSpeed / skillIntegration.base.moveSpeed - 1.04) > 0.001
+  || Math.abs(skillIntegration.upgraded.lifesteal - skillIntegration.base.lifesteal - 0.03) > 0.001
+  || skillIntegration.cast.projectiles !== 2 || Math.abs(skillIntegration.cast.spent - skillIntegration.cast.expectedCost) > 0.02) {
+  throw new Error(`Efeitos passivos/conjuração dupla não foram aplicados exatamente uma vez: ${JSON.stringify(skillIntegration)}`)
+}
+await page.evaluate(() => {
+  const g = window.__eclipse.game
+  g.ui.openCraft(g.panelContext(), 'forja')
+})
+const craftHint = await page.locator('.recipe').first().textContent()
+if (!craftHint?.includes('Espaço: será verificado depois que você reunir os materiais.')
+  || craftHint.includes('não cabe mesmo após consumir os materiais')) {
+  throw new Error(`O crafting atribuiu falta de espaço apesar dos materiais ausentes: ${craftHint}`)
+}
+await page.locator('.panel__close').evaluate(button => button.click())
 await page.keyboard.press('l')
 await page.locator('.quest-detail__obj').first().waitFor()
 const wolfKill = await page.evaluate(() => {
@@ -528,16 +583,67 @@ if (!wolfKill.dead || !wolfKill.counted || wolfKill.progress !== 1 || wolfKill.s
 }
 await page.locator('.panel__close').evaluate(button => button.click())
 await page.waitForFunction(() => window.__eclipse.game.mode === 'playing')
-const preparedTurnIn = await page.evaluate(() => {
+const missionProof = await page.evaluate(() => {
   const g = window.__eclipse.game
-  g.quests.progress('matar', 'lobo-sombrio', 2)
-  g.inventory.add('mat-erva', 3)
-  g.quests.syncInventory(g.inventory)
-  g.quests.progress('falar', 'velho-thom', 1)
-  g.quests.progress('chefe', 'guardiao-floresta-corrompido', 1)
-  return { ready: g.quests.ready('principal-01'), progress: g.quests.state('principal-01')?.progress }
+  const neutral = { moveX: 0, moveY: 0, sprint: false, jumpPressed: false, jumpHeld: false, rollPressed: false,
+    attackPressed: false, attackHeld: false, blockHeld: false, lookX: 0, lookY: 0, interact: false }
+  const remainingWolves = g.spawner.enemies.filter(enemy => enemy.def.id === 'lobo-sombrio' && enemy.alive)
+  if (remainingWolves.length < 2) throw new Error(`Restam ${remainingWolves.length} lobos vivos; são necessários mais dois.`)
+  for (const wolf of remainingWolves.slice(0, 2)) g.damageArea(wolf.position.clone(), 0.2, 100000, 'fogo')
+  const wolvesDone = g.quests.objectiveProgress('principal-01', 'obj-p01-1')
+  const wolfSave = g.save.data.game?.quests?.states?.['principal-01']?.progress?.['obj-p01-1'] ?? 0
+  const herbs = g.population.nodes.filter(node => node.kind === 'erva' && !node.depleted)
+  if (herbs.length < 3) throw new Error(`Há somente ${herbs.length} ervas físicas disponíveis.`)
+  for (const node of herbs.slice(0, 3)) {
+    g.player.teleport(node.position.clone())
+    g.update(1 / 60, { ...neutral, interact: true })
+    g.update(1 / 60, neutral)
+  }
+  const herbsDone = g.quests.objectiveProgress('principal-01', 'obj-p01-2')
+  const herbCount = g.inventory.count('mat-erva')
+  return { wolvesDone, wolfSave, herbsDone, herbCount }
 })
-if (!preparedTurnIn.ready) throw new Error(`A missão inicial não ficou pronta para entrega: ${JSON.stringify(preparedTurnIn)}`)
+if (missionProof.wolvesDone !== 3 || missionProof.wolfSave !== 3 || missionProof.herbsDone !== 3 || missionProof.herbCount < 3) {
+  throw new Error(`Abates/coletas reais não completaram a missão: ${JSON.stringify(missionProof)}`)
+}
+const thomConversation = await page.evaluate(() => {
+  const g = window.__eclipse.game
+  g.openNpcDialogue('velho-thom')
+  return {
+    text: g.dialogue.node?.text ?? '',
+    talked: g.quests.objectiveProgress('principal-01', 'obj-p01-3'),
+    dialogue: document.querySelector('.dialogue')?.textContent ?? '',
+  }
+})
+if (!thomConversation.text.includes('marca') || thomConversation.talked !== 1
+  || !thomConversation.dialogue.includes('Você está bem, Thom?')) {
+  throw new Error(`Thom não explicou a marca/manteve a missão secundária: ${JSON.stringify(thomConversation)}`)
+}
+await page.getByRole('button', { name: 'Encerrar conversa' }).click()
+await page.waitForFunction(() => window.__eclipse.game.mode === 'playing')
+const bossProof = await page.evaluate(() => {
+  const g = window.__eclipse.game
+  const poi = g.world.pois.list().find(entry => entry.bossId === 'guardiao-floresta-corrompido')
+  if (!poi) throw new Error('O POI do Guardião não existe no mapa.')
+  const x = poi.x
+  const z = poi.z + poi.radius + 4
+  g.player.teleport(g.player.position.clone().set(x, g.world.groundAt(x, z, 200), z))
+  g.update(1 / 60, { moveX: 0, moveY: 0, sprint: false, jumpPressed: false, jumpHeld: false, rollPressed: false,
+    attackPressed: false, attackHeld: false, blockHeld: false, lookX: 0, lookY: 0, interact: false })
+  const boss = g.boss
+  if (!boss || boss.def.id !== 'guardiao-floresta-corrompido') throw new Error('O Guardião não apareceu no fluxo real do POI.')
+  g.damageArea(boss.position.clone(), boss.radius + 1, 100000, 'fogo')
+  return {
+    dead: boss.dead,
+    objective: g.quests.objectiveProgress('principal-01', 'obj-p01-4'),
+    savedObjective: g.save.data.game?.quests?.states?.['principal-01']?.progress?.['obj-p01-4'] ?? 0,
+    ready: g.quests.ready('principal-01'),
+  }
+})
+console.log('mission gameplay proof:', { ...missionProof, thomTalked: thomConversation.talked, bossProof })
+if (!bossProof.dead || bossProof.objective !== 1 || bossProof.savedObjective !== 1 || !bossProof.ready) {
+  throw new Error(`A luta real contra o Guardião não completou/salvou a missão: ${JSON.stringify(bossProof)}`)
+}
 await page.evaluate(() => window.__eclipse.game.openNpcDialogue('iara'))
 const turnInButton = page.getByRole('button', { name: 'Concluir missão: O Despertar' })
 const dialoguePointerUnlocked = await page.evaluate(() => document.pointerLockElement !== document.querySelector('#game'))
@@ -548,6 +654,11 @@ const turnInHitTarget = await turnInButton.evaluate(button => {
   return hit === button || button.contains(hit)
 })
 if (!turnInHitTarget) throw new Error('O botão Concluir missão está encoberto na interface.')
+const rewardBefore = await page.evaluate(() => {
+  const g = window.__eclipse.game
+  const totalXp = p => p.xp + Array.from({ length: p.level - 1 }, (_, i) => Math.round(58 * (i + 1) ** 1.42)).reduce((sum, value) => sum + value, 0)
+  return { gold: g.inventory.gold, xp: totalXp(g.progression), potions: g.inventory.count('pocao-vida-1'), bread: g.inventory.count('comida-pao') }
+})
 await turnInButton.click()
 await page.waitForFunction(() => {
   const external = window.__eclipse.game.player.model.external
@@ -572,9 +683,47 @@ if (armorAfterMission.quest !== 'concluida' || armorAfterMission.equipped !== 'a
   || !armorAfterMission.visual.armor) {
   throw new Error(`A entrega da missão não vestiu a primeira armadura: ${JSON.stringify(armorAfterMission)}`)
 }
+const rewardAfter = await page.evaluate(() => {
+  const g = window.__eclipse.game
+  const totalXp = p => p.xp + Array.from({ length: p.level - 1 }, (_, i) => Math.round(58 * (i + 1) ** 1.42)).reduce((sum, value) => sum + value, 0)
+  const state = g.save.data.game?.quests?.states?.['principal-01']
+  const savedProgression = g.save.data.game?.progression
+  return {
+    gold: g.inventory.gold, xp: totalXp(g.progression), potions: g.inventory.count('pocao-vida-1'), bread: g.inventory.count('comida-pao'),
+    savedXp: savedProgression ? totalXp(savedProgression) : null,
+    savedGold: g.save.data.game?.inventory?.gold, savedPotions: g.save.data.game?.inventory?.stacks?.find(stack => stack.id === 'pocao-vida-1')?.count ?? 0,
+    savedBread: g.save.data.game?.inventory?.stacks?.find(stack => stack.id === 'comida-pao')?.count ?? 0, savedStatus: state?.status,
+  }
+})
+const rewardDelta = { xp: rewardAfter.xp - rewardBefore.xp, gold: rewardAfter.gold - rewardBefore.gold,
+  potions: rewardAfter.potions - rewardBefore.potions, bread: rewardAfter.bread - rewardBefore.bread }
+console.log('exact saved mission rewards:', { rewardBefore, rewardAfter, rewardDelta })
+if (rewardDelta.xp !== 120 || rewardDelta.gold !== 60 || rewardDelta.potions !== 2 || rewardDelta.bread !== 3
+  || rewardAfter.savedXp !== rewardAfter.xp
+  || rewardAfter.savedGold !== rewardAfter.gold || rewardAfter.savedPotions !== rewardAfter.potions
+  || rewardAfter.savedBread !== rewardAfter.bread || rewardAfter.savedStatus !== 'concluida') {
+  throw new Error(`Recompensa exata não foi aplicada e salva: ${JSON.stringify({ rewardBefore, rewardAfter, rewardDelta })}`)
+}
+await page.reload({ waitUntil: 'domcontentloaded' })
+await page.waitForFunction(() => window.__eclipse?.game, { timeout: 30000 })
+await page.getByRole('button', { name: 'Continuar campanha' }).click()
+await page.waitForFunction(() => window.__eclipse.game.mode === 'playing', null, { timeout: 30000 })
+const reloadedReward = await page.evaluate(() => {
+  const g = window.__eclipse.game
+  const totalXp = p => p.xp + Array.from({ length: p.level - 1 }, (_, i) => Math.round(58 * (i + 1) ** 1.42)).reduce((sum, value) => sum + value, 0)
+  return { status: g.quests.state('principal-01')?.status, gold: g.inventory.gold,
+    xp: totalXp(g.progression), potions: g.inventory.count('pocao-vida-1'), bread: g.inventory.count('comida-pao'), armor: g.inventory.equipment.armadura?.id ?? null }
+})
+if (reloadedReward.status !== 'concluida' || reloadedReward.xp !== rewardAfter.xp || reloadedReward.gold !== rewardAfter.gold
+  || reloadedReward.potions !== rewardAfter.potions || reloadedReward.bread !== rewardAfter.bread
+  || reloadedReward.armor !== 'armadura-andarilho') {
+  throw new Error(`Recompensas não sobreviveram ao reload: ${JSON.stringify(reloadedReward)}`)
+}
+console.log('mission reward survives reload:', reloadedReward)
 await page.waitForTimeout(150)
 await captureScreenshot(page, 'character-after-mission.png')
-await page.getByRole('button', { name: 'Encerrar conversa' }).click()
+const closeDialogue = page.getByRole('button', { name: 'Encerrar conversa' })
+if (await closeDialogue.isVisible()) await closeDialogue.click()
 await page.keyboard.press('Escape')
 await page.waitForFunction(() => window.__eclipse.game.mode === 'paused' && document.pointerLockElement === null)
 await page.locator('.pause-card').waitFor()

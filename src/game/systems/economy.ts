@@ -66,7 +66,7 @@ export class Shop {
     if (def.level && level < def.level) return `Requer nível ${def.level}.`
     const cost = entry.price * count
     if (inventory.gold < cost) return 'Ouro insuficiente.'
-    if (inventory.stacks.length >= inventory.capacity && !inventory.has(itemId)) return 'Inventário cheio.'
+    if (!inventory.canAdd(itemId, count)) return 'Inventário cheio.'
     inventory.gold -= cost
     inventory.add(itemId, count)
     return null
@@ -98,6 +98,7 @@ export function canCraft(recipe: RecipeDef, inventory: Inventory, level: number)
       return `Faltam ${input.count - inventory.count(input.itemId)}x ${def?.name ?? input.itemId}.`
     }
   }
+  if (!inventory.canAddAfterRemoving(recipe.inputs, recipe.output.itemId, recipe.output.count)) return 'Inventário cheio.'
   return null
 }
 
@@ -106,8 +107,7 @@ export function craft(recipe: RecipeDef, inventory: Inventory, level: number): s
   if (error) return error
   for (const input of recipe.inputs) inventory.remove(input.itemId, input.count)
   inventory.gold -= recipe.gold
-  const leftover = inventory.add(recipe.output.itemId, recipe.output.count)
-  if (leftover > 0) return 'Espaço insuficiente no inventário.'
+  inventory.add(recipe.output.itemId, recipe.output.count)
   return null
 }
 

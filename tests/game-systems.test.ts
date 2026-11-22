@@ -13,6 +13,7 @@ import { characterModelPathFor } from '../src/game/entities/characterAssets'
 import { externalHumanoidUrlForModel, EXTERNAL_CHARACTER_URLS, resolveExternalClipName, type ExternalAnimation } from '../src/game/entities/externalModels'
 import { NPCS } from '../src/game/data/npcData'
 import { itemById } from '../src/game/data/itemData'
+import { RECIPES } from '../src/game/data/recipeData'
 import { QUESTS, questById } from '../src/game/data/questData'
 import { DialogueRunner } from '../src/game/systems/dialogue'
 import { Inventory } from '../src/game/systems/inventory'
@@ -25,7 +26,8 @@ import { resolveAnimalClipName, selectWildlifeForBiome, wildlifeCanBeMounted, wi
 import { npcAmbientLine, npcDailyDestination } from '../src/game/entities/npcRoutines'
 import { grassGeometry, rockGeometry, treeGeometries } from '../src/game/world/props'
 import { ABILITIES, abilityUnlocked, ELEMENTAL_MASTERY_LEVEL } from '../src/game/combat/abilities'
-import { shopFor } from '../src/game/systems/economy'
+import { canCraft, craft, shopFor } from '../src/game/systems/economy'
+import { Weather } from '../src/game/world/weather'
 
 const samplePoints = [
   [-1420, -930],
@@ -34,6 +36,21 @@ const samplePoints = [
   [980, 430],
   [1450, 1120],
 ] as const
+
+describe('clima e alinhamento de partículas', () => {
+  it('mantém os traços de chuva centrados na câmera durante o deslocamento', () => {
+    const scene = new THREE.Scene()
+    const camera = new THREE.PerspectiveCamera(68, 1, 0.1, 900)
+    const weather = new Weather(scene)
+    camera.position.set(18, 12, -9)
+    weather.set('chuva', true)
+    weather.update(1 / 60, camera, 'floresta', 0)
+    const streaks = (weather as unknown as { rainStreaks: THREE.LineSegments }).rainStreaks
+    expect(streaks.position.toArray()).toEqual(camera.position.toArray())
+    streaks.geometry.dispose()
+    ;(streaks.material as THREE.Material).dispose()
+  })
+})
 
 describe('mundo procedural', () => {
   it('é determinístico para a mesma seed e varia entre seeds', () => {
@@ -88,6 +105,25 @@ describe('interiores de casas', () => {
   })
 })
 
+describe('efeitos agregados da árvore de habilidades', () => {
+  it('soma corretamente os bônus por nível sem multiplicá-los duas vezes', () => {
+    const skills = new SkillTree()
+    skills.ranks.set('lamina-forca', 2)
+    skills.ranks.set('lamina-critico', 1)
+    skills.ranks.set('arcano-poder', 2)
+    skills.ranks.set('arcano-mana', 2)
+    skills.ranks.set('arcano-regeneracao', 1)
+    skills.ranks.set('sombra-agil', 2)
+    skills.ranks.set('sombra-sanguessuga', 1)
+    skills.ranks.set('sombra-veneno', 1)
+    skills.ranks.set('sombra-sorte', 1)
+    expect(skills.effects()).toMatchObject({
+      physicalDamage: 0.16, critBonus: 0.05, magicDamage: 0.16, manaBonus: 40,
+      manaRegen: 0.8, moveSpeed: 0.08, lifesteal: 0.03, statusDamage: 0.15, lootBonus: 0.08,
+    })
+  })
+})
+
 describe('progressão elemental e ferramentas', () => {
   it('desbloqueia os três círculos nos níveis 1, 14 e 22 e reserva a maestria para o 40', () => {
     expect(ABILITIES.filter(ability => ability.tier === 1).every(ability => ability.level === 1)).toBe(true)
@@ -108,6 +144,61 @@ describe('progressão elemental e ferramentas', () => {
     expect(inventory.has('tool-picareta')).toBe(true)
     expect(itemById('mat-pedra')).toBeDefined()
     expect(inventory.gold).toBeLessThan(500)
+  })
+})
+
+describe('clareza e transações de inventário', () => {
+  it('canAdd contabiliza espaço em pilhas e a prévia compara o equipamento com o slot de destino', () => {
+    const inventory = new Inventory()
+    inventory.capacity = 1
+    inventory.add('mat-ferro', 98)
+    expect(inventory.canAdd('mat-ferro', 1)).toBe(true)
+    expect(inventory.canAdd('mat-ferro', 2)).toBe(false)
+    expect(inventory.canAdd('mat-madeira', 1)).toBe(false)
+    expect(inventory.canAddItems([{ itemId: 'mat-ferro', count: 1 }])).toBe(true)
+    expect(inventory.canAddItems([{ itemId: 'mat-ferro', count: 1 }, { itemId: 'pocao-vida-1', count: 1 }])).toBe(false)
+
+    const gear = new Inventory()
+    gear.equipment.arma = { id: 'arma-espada-1', count: 1, plus: 0 }
+    gear.add('arma-espada-2')
+    expect(gear.previewEquipIndex(0)).toEqual({
+      slot: 'arma',
+      selected: { id: 'arma-espada-2', count: 1, plus: 0 },
+      current: { id: 'arma-espada-1', count: 1, plus: 0 },
+      changes: { ataque: 5, critico: 2 },
+    })
+  })
+
+  it('não consome materiais nem ouro se o resultado do crafting não couber', () => {
+    const inventory = new Inventory()
+    inventory.capacity = 3
+    inventory.gold = 30
+    inventory.add('mat-ferro', 5)
+    inventory.add('mat-madeira', 2)
+    inventory.add('mat-couro', 2)
+    const recipe = RECIPES.find(entry => entry.id === 'receita-espada-2')!
+
+    expect(canCraft(recipe, inventory, 7)).toBe('Inventário cheio.')
+    expect(craft(recipe, inventory, 7)).toBe('Inventário cheio.')
+    expect(inventory.count('mat-ferro')).toBe(5)
+    expect(inventory.count('mat-madeira')).toBe(2)
+    expect(inventory.count('mat-couro')).toBe(2)
+    expect(inventory.gold).toBe(30)
+    expect(inventory.has('arma-espada-2')).toBe(false)
+  })
+
+  it('bloqueia compra sem espaço ou nível suficiente sem descontar ouro', () => {
+    const inventory = new Inventory()
+    inventory.gold = 10_000
+    inventory.capacity = 1
+    inventory.add('mat-ferro', 1)
+    const shop = shopFor('ferreiro')
+
+    expect(shop.buy('arma-espada-1', inventory, 1)).toBe('Inventário cheio.')
+    expect(inventory.gold).toBe(10_000)
+    expect(inventory.count('mat-ferro')).toBe(1)
+    expect(shop.buy('arma-espada-2', inventory, 1)).toBe('Requer nível 7.')
+    expect(inventory.gold).toBe(10_000)
   })
 })
 
@@ -426,6 +517,22 @@ describe('arco opcional da memória', () => {
   })
 })
 
+describe('diálogo inicial de Velho Thom', () => {
+  it('fala da marca e mantém acessível a oferta da missão secundária do anel', () => {
+    const quests = new QuestLog()
+    const dialogue = new DialogueRunner()
+    const thom = NPCS.find(npc => npc.id === 'velho-thom')!
+    dialogue.open(thom, quests, 3)
+    expect(dialogue.node?.text).toContain('marca')
+    const choices = dialogue.choices(quests, 3)
+    expect(choices.some(choice => choice.next === 'marca')).toBe(true)
+    const anelChoice = choices.findIndex(choice => choice.next === 'anel')
+    expect(anelChoice).toBeGreaterThanOrEqual(0)
+    dialogue.select(anelChoice, quests, 3)
+    expect(dialogue.choices(quests, 3)).toContainEqual(expect.objectContaining({ action: 'aceitar', quest: 'secundaria-01' }))
+  })
+})
+
 describe('retorno contextual dos diálogos', () => {
   it('abre a Iara no nó de retorno sem reproduzir o texto da introdução', () => {
     const quests = new QuestLog()
@@ -599,6 +706,29 @@ describe('escala dos chefes', () => {
     const firstBoss = BOSSES.find(boss => boss.id === 'guardiao-floresta-corrompido')!
     expect(firstBoss.level).toBe(2)
     expect(firstBoss.health).toBe(320)
+  })
+})
+
+describe('efeitos de status', () => {
+  it('aplica bônus de dano e duração ao status elemental e o remove ao expirar', () => {
+    const enemy = new Enemy({ def: ENEMIES.find(entry => entry.id === 'lobo-sombrio')!, level: 1, x: 0, z: 0 })
+    const ctx = {
+      playerPosition: new THREE.Vector3(100, 0, 100), playerDead: true, playerStealth: 0,
+      groundAt: () => 0, collidersNear: () => [], night: 0, inCombat: false,
+    }
+    try {
+      enemy.takeDamage(1, { element: 'fogo', statusDuration: 0.5, statusDamage: 1 })
+      expect(enemy.hasStatus('queimando')).toBe(true)
+      const beforeTick = enemy.health
+      enemy.update(1, ctx, [])
+      expect(enemy.health).toBeLessThan(beforeTick - 6)
+      const afterTick = enemy.health
+      enemy.update(5.1, ctx, [])
+      expect(enemy.hasStatus('queimando')).toBe(false)
+      expect(enemy.health).toBe(afterTick)
+    } finally {
+      enemy.dispose()
+    }
   })
 })
 
